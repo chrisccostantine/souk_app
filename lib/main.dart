@@ -948,7 +948,7 @@ class SellerHubPage extends StatefulWidget {
   State<SellerHubPage> createState() => _SellerHubPageState();
 }
 
-class _SellerHubPageState extends State<SellerHubPage> {
+class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserver {
   final _productFormKey = GlobalKey<FormState>();
   final _shopifyStore = TextEditingController();
   final _productName = TextEditingController();
@@ -960,12 +960,27 @@ class _SellerHubPageState extends State<SellerHubPage> {
   String? _shopifyMessage;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshShopifyStatus();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _shopifyStore.dispose();
     _productName.dispose();
     _productPrice.dispose();
     _productStock.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshShopifyStatus();
+    }
   }
 
   void _submitProduct() {
@@ -1069,7 +1084,30 @@ class _SellerHubPageState extends State<SellerHubPage> {
     );
   }
 
-  void _syncShopify() {
+  Future<void> _refreshShopifyStatus() async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      return;
+    }
+    try {
+      final status = await SoukApi(baseUrl: soukApiUrl).fetchShopifyStatus(shopId);
+      if (!mounted) {
+        return;
+      }
+      final connected = status['connected'] == true;
+      setState(() {
+        _shopifyConnected = connected;
+        if (connected) {
+          _shopifyPending = false;
+          _shopifyMessage = 'Shopify connected. You can sync products now.';
+        }
+      });
+    } catch (_) {
+      // Keep the current UI state; auth and sync actions surface explicit errors.
+    }
+  }
+
+  Future<void> _syncShopify() async {
     if (!_shopifyConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1079,16 +1117,34 @@ class _SellerHubPageState extends State<SellerHubPage> {
       );
       return;
     }
-    setState(() {
-      _shopifySynced = true;
-      _shopifyMessage = 'Products, collections, images, prices, and inventory synced just now';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Shopify products synced'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      return;
+    }
+    try {
+      final result = await SoukApi(baseUrl: soukApiUrl).syncShopify(shopId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _shopifySynced = true;
+        _shopifyMessage =
+            'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Shopify products synced'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on SoukApiException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override

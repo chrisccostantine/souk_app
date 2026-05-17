@@ -366,7 +366,53 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
         apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
     });
-    res.send('Shopify connected. You can return to Souk and sync products.');
+    const deepLink = `souk://shopify-connected?shopId=${encodeURIComponent(stateData.shopId)}`;
+    res.type('html').send(`<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shopify connected</title>
+    <script>
+      window.location.href = "${deepLink}";
+    </script>
+    <style>
+      body { font-family: system-ui, sans-serif; padding: 24px; line-height: 1.4; }
+      a { display: inline-block; margin-top: 16px; }
+    </style>
+  </head>
+  <body>
+    <h1>Shopify connected</h1>
+    <p>You can return to Souk and sync products.</p>
+    <a href="${deepLink}">Open Souk</a>
+  </body>
+</html>`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/shopify/status', async (req, res, next) => {
+  try {
+    const { shopId } = req.query;
+    if (!shopId) {
+      const error = new Error('shopId is required');
+      error.status = 400;
+      throw error;
+    }
+    const connection = await prisma.shopifyConnection.findUnique({
+      where: { shopId: String(shopId) },
+      select: {
+        shopDomain: true,
+        lastSyncedAt: true,
+        updatedAt: true,
+      },
+    });
+    res.json({
+      connected: Boolean(connection),
+      shopDomain: connection?.shopDomain ?? null,
+      lastSyncedAt: connection?.lastSyncedAt ?? null,
+      connectedAt: connection?.updatedAt ?? null,
+    });
   } catch (error) {
     next(error);
   }

@@ -58,6 +58,10 @@ class SoukApi {
     return body['installUrl'] as String;
   }
 
+  Future<Map<String, dynamic>> fetchShopifyStatus(String shopId) async {
+    return _get('/api/shopify/status', {'shopId': shopId});
+  }
+
   Future<Map<String, dynamic>> syncShopify(String shopId) async {
     return _post('/api/shopify/sync', {'shopId': shopId});
   }

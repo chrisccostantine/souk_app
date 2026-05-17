@@ -95,6 +95,14 @@ The response includes an `installUrl`. Open that URL so the seller logs in with 
 
 The mobile app asks only for the Shopify store URL, for example `merchant-store.myshopify.com`. The seller's Shopify credentials are entered only on Shopify's login page.
 
+After OAuth succeeds, the callback page tries to reopen the app with:
+
+```text
+souk://shopify-connected
+```
+
+The mobile app also checks `/api/shopify/status` whenever it returns from the browser, so it can mark the store as connected even if the browser cannot auto-open the app.
+
 Sync catalog, collections, images, descriptions, prices, and inventory:
 
 ```http
