@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const SoukApp());
+
+const shopifyConnectUrl = String.fromEnvironment('SHOPIFY_CONNECT_URL');
 
 class SoukApp extends StatelessWidget {
   const SoukApp({super.key});
@@ -896,7 +899,45 @@ class _SellerHubPageState extends State<SellerHubPage> {
     _productStock.text = '12';
   }
 
-  void _connectShopify() {
+  Future<void> _connectShopify() async {
+    if (shopifyConnectUrl.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Shopify connection is not configured'),
+            content: const Text(
+              'Run the app with SHOPIFY_CONNECT_URL set to your Railway OAuth start URL or Shopify app install URL.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    final launched = await launchUrl(
+      Uri.parse(shopifyConnectUrl),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (!launched) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open Shopify'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _shopifyPending = true;
       _shopifySynced = false;
