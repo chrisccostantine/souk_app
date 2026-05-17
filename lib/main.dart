@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -957,7 +959,10 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
   bool _shopifyConnected = false;
   bool _shopifyPending = false;
   bool _shopifySynced = false;
+  bool _shopifySyncing = false;
+  double _shopifySyncProgress = 0;
   String? _shopifyMessage;
+  Timer? _shopifySyncTimer;
 
   @override
   void initState() {
@@ -969,6 +974,7 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _shopifySyncTimer?.cancel();
     _shopifyStore.dispose();
     _productName.dispose();
     _productPrice.dispose();
@@ -1112,6 +1118,9 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
   }
 
   Future<void> _syncShopify() async {
+    if (_shopifySyncing) {
+      return;
+    }
     if (!_shopifyConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1125,12 +1134,16 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
     if (soukApiUrl.isEmpty || shopId == null) {
       return;
     }
+    _startShopifySyncProgress();
     try {
       final result = await SoukApi(baseUrl: soukApiUrl).syncShopify(shopId);
       if (!mounted) {
         return;
       }
+      _shopifySyncTimer?.cancel();
       setState(() {
+        _shopifySyncing = false;
+        _shopifySyncProgress = 1;
         _shopifySynced = true;
         _shopifyMessage =
             'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
@@ -1148,7 +1161,50 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
           behavior: SnackBarBehavior.floating,
         ),
       );
+      _stopShopifySyncProgress('Sync failed. Check the message and try again.');
+    } catch (error) {
+      _stopShopifySyncProgress('Sync failed. Check your connection and try again.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sync failed: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
+  }
+
+  void _startShopifySyncProgress() {
+    _shopifySyncTimer?.cancel();
+    setState(() {
+      _shopifySyncing = true;
+      _shopifySynced = false;
+      _shopifySyncProgress = 0.05;
+      _shopifyMessage = 'Starting Shopify sync... 5%';
+    });
+    _shopifySyncTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _shopifySyncProgress = (_shopifySyncProgress + 0.07).clamp(0.05, 0.9);
+        final percent = (_shopifySyncProgress * 100).round();
+        _shopifyMessage = percent >= 90
+            ? 'Shopify is still processing products and collections... 90%'
+            : 'Syncing Shopify products... $percent%';
+      });
+    });
+  }
+
+  void _stopShopifySyncProgress(String message) {
+    _shopifySyncTimer?.cancel();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _shopifySyncing = false;
+      _shopifySyncProgress = 0;
+      _shopifyMessage = message;
+    });
   }
 
   @override
@@ -1174,6 +1230,8 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
           connected: _shopifyConnected,
           pending: _shopifyPending,
           synced: _shopifySynced,
+          syncing: _shopifySyncing,
+          syncProgress: _shopifySyncProgress,
           message: _shopifyMessage,
           onConnect: _connectShopify,
           onSync: _syncShopify,
@@ -2208,6 +2266,8 @@ class ShopifySyncCard extends StatelessWidget {
     required this.connected,
     required this.pending,
     required this.synced,
+    required this.syncing,
+    required this.syncProgress,
     required this.message,
     required this.onConnect,
     required this.onSync,
@@ -2217,6 +2277,8 @@ class ShopifySyncCard extends StatelessWidget {
   final bool connected;
   final bool pending;
   final bool synced;
+  final bool syncing;
+  final double syncProgress;
   final String? message;
   final VoidCallback onConnect;
   final VoidCallback onSync;
@@ -2282,7 +2344,7 @@ class ShopifySyncCard extends StatelessWidget {
                 children: [
                   Tag(label: connected ? 'Connected' : 'Not connected'),
                   if (pending && !connected) const Tag(label: 'Login pending'),
-                  Tag(label: synced ? 'Inventory synced' : 'Waiting to sync'),
+                  Tag(label: syncing ? 'Syncing' : synced ? 'Inventory synced' : 'Waiting to sync'),
                   const Tag(label: 'Two-way stock'),
                 ],
               ),
@@ -2290,12 +2352,27 @@ class ShopifySyncCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(message!, style: Theme.of(context).textTheme.bodySmall),
               ],
+              if (syncing) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 8,
+                    value: syncProgress.clamp(0, 0.95),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${(syncProgress * 100).round()}% complete',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ],
               const SizedBox(height: 14),
               Row(
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: onConnect,
+                      onPressed: syncing ? null : onConnect,
                       icon: const Icon(Icons.login),
                       label: const Text('Connect Shopify'),
                     ),
@@ -2303,9 +2380,15 @@ class ShopifySyncCard extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: FilledButton.tonalIcon(
-                      onPressed: onSync,
-                      icon: const Icon(Icons.cloud_sync_outlined),
-                      label: const Text('Sync products'),
+                      onPressed: syncing ? null : onSync,
+                      icon: syncing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.cloud_sync_outlined),
+                      label: Text(syncing ? 'Syncing...' : 'Sync products'),
                     ),
                   ),
                 ],
