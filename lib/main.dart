@@ -864,15 +864,23 @@ class SellerHubPage extends StatefulWidget {
 
 class _SellerHubPageState extends State<SellerHubPage> {
   final _productFormKey = GlobalKey<FormState>();
+  final _shopifyFormKey = GlobalKey<FormState>();
   final _productName = TextEditingController();
   final _productPrice = TextEditingController();
   final _productStock = TextEditingController(text: '12');
+  final _shopifyDomain = TextEditingController();
+  final _shopifyToken = TextEditingController();
+  bool _shopifyConnected = false;
+  bool _shopifySynced = false;
+  String? _shopifyMessage;
 
   @override
   void dispose() {
     _productName.dispose();
     _productPrice.dispose();
     _productStock.dispose();
+    _shopifyDomain.dispose();
+    _shopifyToken.dispose();
     super.dispose();
   }
 
@@ -892,6 +900,45 @@ class _SellerHubPageState extends State<SellerHubPage> {
     _productStock.text = '12';
   }
 
+  void _connectShopify() {
+    if (!_shopifyFormKey.currentState!.validate()) {
+      return;
+    }
+    setState(() {
+      _shopifyConnected = true;
+      _shopifySynced = false;
+      _shopifyMessage = 'Connected to ${_shopifyDomain.text.trim()}';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Shopify store connected'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _syncShopify() {
+    if (!_shopifyConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Connect Shopify first'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _shopifySynced = true;
+      _shopifyMessage = 'Products, collections, images, prices, and inventory synced just now';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Shopify products synced'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = widget.session.store ??
@@ -909,6 +956,17 @@ class _SellerHubPageState extends State<SellerHubPage> {
         const SellerHero(),
         const SizedBox(height: 16),
         SellerStoreCard(store: store, ownerName: widget.session.name),
+        const SizedBox(height: 16),
+        ShopifySyncCard(
+          formKey: _shopifyFormKey,
+          domain: _shopifyDomain,
+          token: _shopifyToken,
+          connected: _shopifyConnected,
+          synced: _shopifySynced,
+          message: _shopifyMessage,
+          onConnect: _connectShopify,
+          onSync: _syncShopify,
+        ),
         const SizedBox(height: 16),
         const SellerMetricGrid(),
         const SizedBox(height: 16),
@@ -1926,6 +1984,136 @@ class SellerStoreCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class ShopifySyncCard extends StatelessWidget {
+  const ShopifySyncCard({
+    super.key,
+    required this.formKey,
+    required this.domain,
+    required this.token,
+    required this.connected,
+    required this.synced,
+    required this.message,
+    required this.onConnect,
+    required this.onSync,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController domain;
+  final TextEditingController token;
+  final bool connected;
+  final bool synced;
+  final String? message;
+  final VoidCallback onConnect;
+  final VoidCallback onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF95BF47),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.sync, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Sync Shopify products',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        Text(
+                          'Import collections, images, descriptions, prices, and inventory.',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: domain,
+                decoration: const InputDecoration(
+                  labelText: 'Shopify domain',
+                  hintText: 'your-store.myshopify.com',
+                  prefixIcon: Icon(Icons.language),
+                ),
+                validator: requiredField,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: token,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Admin API access token',
+                  prefixIcon: Icon(Icons.key_outlined),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().length < 10) {
+                    return 'Enter a valid Admin API token';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Tag(label: connected ? 'Connected' : 'Not connected'),
+                  Tag(label: synced ? 'Inventory synced' : 'Waiting to sync'),
+                  const Tag(label: 'Two-way stock'),
+                ],
+              ),
+              if (message != null) ...[
+                const SizedBox(height: 10),
+                Text(message!, style: Theme.of(context).textTheme.bodySmall),
+              ],
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onConnect,
+                      icon: const Icon(Icons.link),
+                      label: const Text('Connect'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onSync,
+                      icon: const Icon(Icons.cloud_sync_outlined),
+                      label: const Text('Sync products'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

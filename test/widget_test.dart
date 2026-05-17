@@ -51,6 +51,22 @@ void main() {
 
     expect(find.text('Mint Market'), findsOneWidget);
     expect(find.text('Gifts - Beirut'), findsOneWidget);
+    expect(find.text('Sync Shopify products'), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Shopify domain'),
+      'mint-market.myshopify.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Admin API access token'),
+      'shpat_test_token',
+    );
+    await tester.tap(find.text('Connect'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sync products'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Inventory synced'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Product name'), 'Gift Candle');
     await tester.enterText(find.widgetWithText(TextFormField, 'Price'), '11');
