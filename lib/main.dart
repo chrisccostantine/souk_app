@@ -650,7 +650,7 @@ class HomePage extends StatelessWidget {
             sliver: SliverGrid.builder(
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: 230,
-                childAspectRatio: 0.62,
+                childAspectRatio: 0.56,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
@@ -1249,7 +1249,7 @@ class ProductCard extends StatelessWidget {
             ProductArt(product: product, isFavorite: isFavorite, onFavorite: onFavorite),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1259,14 +1259,14 @@ class ProductCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       product.shop.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         const Icon(Icons.star, size: 16, color: Color(0xFFE7A72E)),
@@ -1283,7 +1283,7 @@ class ProductCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         Expanded(
@@ -1297,6 +1297,8 @@ class ProductCard extends StatelessWidget {
                         IconButton.filled(
                           tooltip: 'Add to basket',
                           onPressed: onAdd,
+                          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                          padding: EdgeInsets.zero,
                           icon: const Icon(Icons.add_shopping_cart),
                         ),
                       ],
