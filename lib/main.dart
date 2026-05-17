@@ -161,6 +161,12 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       });
       return;
     }
+    if (!soukApiUrl.startsWith('https://')) {
+      setState(() {
+        _authError = 'SOUK_API_URL must start with https:// and point to your Railway public domain.';
+      });
+      return;
+    }
 
     setState(() {
       _authLoading = true;
@@ -176,8 +182,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       widget.onAuthenticated(_sessionFromAuthResponse(response));
     } on SoukApiException catch (error) {
       setState(() => _authError = error.message);
-    } catch (_) {
-      setState(() => _authError = 'Could not reach Souk. Check your connection and API URL.');
+    } catch (error) {
+      setState(() => _authError = 'Could not reach Souk: $error');
     } finally {
       if (mounted) {
         setState(() => _authLoading = false);
