@@ -50,7 +50,8 @@ npm run db:deploy && npm start
 - `POST /api/shops`
 - `GET /api/products`
 - `POST /api/products`
-- `POST /api/shopify/connect`
+- `POST /api/shopify/oauth/start`
+- `GET /api/shopify/oauth/callback`
 - `POST /api/shopify/sync`
 - `POST /api/shopify/webhooks/inventory-levels-update`
 - `POST /api/shopify/webhooks/products-update`
@@ -60,25 +61,40 @@ npm run db:deploy && npm start
 
 ## Shopify Sync
 
-Each seller with a Shopify store needs a Shopify Admin API access token. The token should have these scopes:
+Each seller connects Shopify through Shopify OAuth. They should not paste an Admin API token into the mobile app. Configure these Railway variables from your Shopify app:
+
+```text
+SHOPIFY_API_KEY=...
+SHOPIFY_API_SECRET=...
+SHOPIFY_API_VERSION=2026-01
+APP_URL=https://your-railway-service.up.railway.app
+SHOPIFY_INSTALL_URL=https://apps.shopify.com/your-app-handle
+```
+
+Your Shopify app should request these scopes:
 
 - `read_products`
 - `read_inventory`
 - `write_inventory`
 
-Connect a Shopify store:
+Start Shopify connection:
 
 ```http
-POST /api/shopify/connect
+POST /api/shopify/oauth/start
 Content-Type: application/json
 
 {
-  "shopId": "souk-shop-id",
-  "shopDomain": "merchant-store.myshopify.com",
-  "accessToken": "shpat_...",
-  "apiVersion": "2026-01"
+  "shopId": "souk-shop-id"
 }
 ```
+
+The response includes an `installUrl`. Open that URL so the seller logs in with Shopify, chooses their store, and approves access. Shopify then redirects to:
+
+```text
+/api/shopify/oauth/callback
+```
+
+For development stores, you can still pass `shopDomain` in the request to generate a direct OAuth URL for that store.
 
 Sync catalog, collections, images, descriptions, prices, and inventory:
 

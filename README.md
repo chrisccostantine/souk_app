@@ -12,7 +12,7 @@ Souk is a Flutter marketplace app for iOS and Android where independent shops ca
 - Seller hub with store draft creation, product inventory creation, starter dashboard metrics, and incoming order cards.
 - Railway-ready backend in `backend/` with PostgreSQL, Prisma, shops, products, orders, users, favorites, reviews, and seed data.
 - Account-first flow: customers sign up/login to shop, while store owners sign up/login through a separate store account path.
-- Seller dashboard Shopify panel for connecting a Shopify store and syncing products, collections, images, prices, descriptions, and inventory.
+- Seller dashboard Shopify panel for OAuth login, then syncing products, collections, images, prices, descriptions, and inventory.
 
 ## Run
 

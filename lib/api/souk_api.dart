@@ -51,9 +51,9 @@ class SoukApi {
     return body['product'] as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> connectShopify(Map<String, dynamic> payload) async {
-    final body = await _post('/api/shopify/connect', payload);
-    return body['connection'] as Map<String, dynamic>;
+  Future<String> startShopifyOAuth(Map<String, dynamic> payload) async {
+    final body = await _post('/api/shopify/oauth/start', payload);
+    return body['installUrl'] as String;
   }
 
   Future<Map<String, dynamic>> syncShopify(String shopId) async {

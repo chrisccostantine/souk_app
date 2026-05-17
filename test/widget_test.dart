@@ -53,15 +53,7 @@ void main() {
     expect(find.text('Gifts - Beirut'), findsOneWidget);
     expect(find.text('Sync Shopify products'), findsOneWidget);
 
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Shopify domain'),
-      'mint-market.myshopify.com',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Admin API access token'),
-      'shpat_test_token',
-    );
-    await tester.tap(find.text('Connect'));
+    await tester.tap(find.text('Connect Shopify'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sync products'));
     await tester.pumpAndSettle();

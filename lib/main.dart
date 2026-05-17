@@ -864,12 +864,9 @@ class SellerHubPage extends StatefulWidget {
 
 class _SellerHubPageState extends State<SellerHubPage> {
   final _productFormKey = GlobalKey<FormState>();
-  final _shopifyFormKey = GlobalKey<FormState>();
   final _productName = TextEditingController();
   final _productPrice = TextEditingController();
   final _productStock = TextEditingController(text: '12');
-  final _shopifyDomain = TextEditingController();
-  final _shopifyToken = TextEditingController();
   bool _shopifyConnected = false;
   bool _shopifySynced = false;
   String? _shopifyMessage;
@@ -879,8 +876,6 @@ class _SellerHubPageState extends State<SellerHubPage> {
     _productName.dispose();
     _productPrice.dispose();
     _productStock.dispose();
-    _shopifyDomain.dispose();
-    _shopifyToken.dispose();
     super.dispose();
   }
 
@@ -901,13 +896,10 @@ class _SellerHubPageState extends State<SellerHubPage> {
   }
 
   void _connectShopify() {
-    if (!_shopifyFormKey.currentState!.validate()) {
-      return;
-    }
     setState(() {
       _shopifyConnected = true;
       _shopifySynced = false;
-      _shopifyMessage = 'Connected to ${_shopifyDomain.text.trim()}';
+      _shopifyMessage = 'Shopify login approved. You can sync products now.';
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -958,9 +950,6 @@ class _SellerHubPageState extends State<SellerHubPage> {
         SellerStoreCard(store: store, ownerName: widget.session.name),
         const SizedBox(height: 16),
         ShopifySyncCard(
-          formKey: _shopifyFormKey,
-          domain: _shopifyDomain,
-          token: _shopifyToken,
           connected: _shopifyConnected,
           synced: _shopifySynced,
           message: _shopifyMessage,
@@ -1993,9 +1982,6 @@ class SellerStoreCard extends StatelessWidget {
 class ShopifySyncCard extends StatelessWidget {
   const ShopifySyncCard({
     super.key,
-    required this.formKey,
-    required this.domain,
-    required this.token,
     required this.connected,
     required this.synced,
     required this.message,
@@ -2003,9 +1989,6 @@ class ShopifySyncCard extends StatelessWidget {
     required this.onSync,
   });
 
-  final GlobalKey<FormState> formKey;
-  final TextEditingController domain;
-  final TextEditingController token;
   final bool connected;
   final bool synced;
   final String? message;
@@ -2017,9 +2000,7 @@ class ShopifySyncCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Form(
-          key: formKey,
-          child: Column(
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -2054,29 +2035,9 @@ class ShopifySyncCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 14),
-              TextFormField(
-                controller: domain,
-                decoration: const InputDecoration(
-                  labelText: 'Shopify domain',
-                  hintText: 'your-store.myshopify.com',
-                  prefixIcon: Icon(Icons.language),
-                ),
-                validator: requiredField,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: token,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Admin API access token',
-                  prefixIcon: Icon(Icons.key_outlined),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().length < 10) {
-                    return 'Enter a valid Admin API token';
-                  }
-                  return null;
-                },
+              Text(
+                'Tap connect, login with Shopify, approve access, then return here to sync.',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -2098,8 +2059,8 @@ class ShopifySyncCard extends StatelessWidget {
                   Expanded(
                     child: FilledButton.icon(
                       onPressed: onConnect,
-                      icon: const Icon(Icons.link),
-                      label: const Text('Connect'),
+                      icon: const Icon(Icons.login),
+                      label: const Text('Connect Shopify'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2113,7 +2074,6 @@ class ShopifySyncCard extends StatelessWidget {
                 ],
               ),
             ],
-          ),
         ),
       ),
     );

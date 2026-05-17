@@ -12,13 +12,13 @@ import {
   verifyShopifyWebhook,
 } from './shopify.js';
 import {
-  connectShopifySchema,
   createOrderSchema,
   createProductSchema,
   createShopSchema,
   loginSchema,
   slugify,
   signupSchema,
+  startShopifyOAuthSchema,
   syncShopifySchema,
   updateOrderStatusSchema,
   validate,
@@ -27,6 +27,8 @@ import {
 const app = express();
 const port = process.env.PORT || 8080;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
+const shopifyScopes = 'read_products,read_inventory,write_inventory';
+const oauthStates = new Map();
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -61,6 +63,29 @@ function passwordMatches(password, user) {
     return false;
   }
   return makePasswordSecret(password, user.passwordSalt).hash === user.passwordHash;
+}
+
+function ensureShopifyOAuthConfig() {
+  if (!process.env.SHOPIFY_API_KEY || !process.env.SHOPIFY_API_SECRET || !process.env.APP_URL) {
+    const error = new Error('Shopify OAuth is not configured');
+    error.status = 500;
+    throw error;
+  }
+}
+
+function verifyShopifyOAuthHmac(query, secret) {
+  const { hmac, signature, ...rest } = query;
+  const message = Object.keys(rest)
+    .sort()
+    .map((key) => `${key}=${Array.isArray(rest[key]) ? rest[key].join(',') : rest[key]}`)
+    .join('&');
+  const digest = crypto.createHmac('sha256', secret).update(message).digest('hex');
+  const digestBuffer = Buffer.from(digest, 'utf8');
+  const hmacBuffer = Buffer.from(String(hmac), 'utf8');
+  if (digestBuffer.length !== hmacBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(digestBuffer, hmacBuffer);
 }
 
 function publicUser(user) {
@@ -261,32 +286,90 @@ app.post('/api/products', async (req, res, next) => {
   }
 });
 
-app.post('/api/shopify/connect', async (req, res, next) => {
+app.post('/api/shopify/oauth/start', async (req, res, next) => {
   try {
-    const input = validate(connectShopifySchema, req.body);
-    const connection = await prisma.shopifyConnection.upsert({
-      where: { shopId: input.shopId },
+    const input = validate(startShopifyOAuthSchema, req.body);
+    ensureShopifyOAuthConfig();
+    if (!input.shopDomain && process.env.SHOPIFY_INSTALL_URL) {
+      return res.json({ installUrl: process.env.SHOPIFY_INSTALL_URL, state: null });
+    }
+    if (!input.shopDomain) {
+      const error = new Error('Shopify install URL is not configured');
+      error.status = 500;
+      throw error;
+    }
+    const shopDomain = normalizeShopDomain(input.shopDomain);
+    const state = crypto.randomBytes(18).toString('hex');
+    oauthStates.set(state, {
+      shopId: input.shopId,
+      shopDomain,
+      createdAt: Date.now(),
+    });
+    const redirectUri = `${process.env.APP_URL}/api/shopify/oauth/callback`;
+    const installUrl = new URL(`https://${shopDomain}/admin/oauth/authorize`);
+    installUrl.searchParams.set('client_id', process.env.SHOPIFY_API_KEY);
+    installUrl.searchParams.set('scope', shopifyScopes);
+    installUrl.searchParams.set('redirect_uri', redirectUri);
+    installUrl.searchParams.set('state', state);
+    res.json({ installUrl: installUrl.toString(), state });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/shopify/oauth/callback', async (req, res, next) => {
+  try {
+    ensureShopifyOAuthConfig();
+    const { shop, code, state, hmac, ...rest } = req.query;
+    if (!shop || !code || !state || !hmac) {
+      const error = new Error('Missing Shopify OAuth callback parameters');
+      error.status = 400;
+      throw error;
+    }
+    if (!verifyShopifyOAuthHmac(req.query, process.env.SHOPIFY_API_SECRET)) {
+      const error = new Error('Invalid Shopify OAuth signature');
+      error.status = 401;
+      throw error;
+    }
+    const stateData = oauthStates.get(String(state));
+    oauthStates.delete(String(state));
+    if (!stateData || Date.now() - stateData.createdAt > 10 * 60 * 1000) {
+      const error = new Error('Shopify OAuth state expired');
+      error.status = 401;
+      throw error;
+    }
+    const shopDomain = normalizeShopDomain(String(shop));
+    const tokenResponse = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.SHOPIFY_API_KEY,
+        client_secret: process.env.SHOPIFY_API_SECRET,
+        code,
+      }),
+    });
+    const tokenBody = await tokenResponse.json();
+    if (!tokenResponse.ok) {
+      const error = new Error('Shopify token exchange failed');
+      error.status = tokenResponse.status;
+      error.details = tokenBody;
+      throw error;
+    }
+    await prisma.shopifyConnection.upsert({
+      where: { shopId: stateData.shopId },
       update: {
-        shopDomain: normalizeShopDomain(input.shopDomain),
-        accessToken: input.accessToken,
-        apiVersion: input.apiVersion,
+        shopDomain,
+        accessToken: tokenBody.access_token,
+        apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
       create: {
-        shopId: input.shopId,
-        shopDomain: normalizeShopDomain(input.shopDomain),
-        accessToken: input.accessToken,
-        apiVersion: input.apiVersion,
-      },
-      select: {
-        id: true,
-        shopId: true,
-        shopDomain: true,
-        apiVersion: true,
-        defaultLocationId: true,
-        lastSyncedAt: true,
+        shopId: stateData.shopId,
+        shopDomain,
+        accessToken: tokenBody.access_token,
+        apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
     });
-    res.status(201).json({ connection });
+    res.send('Shopify connected. You can return to Souk and sync products.');
   } catch (error) {
     next(error);
   }
