@@ -290,12 +290,9 @@ app.post('/api/shopify/oauth/start', async (req, res, next) => {
   try {
     const input = validate(startShopifyOAuthSchema, req.body);
     ensureShopifyOAuthConfig();
-    if (!input.shopDomain && process.env.SHOPIFY_INSTALL_URL) {
-      return res.json({ installUrl: process.env.SHOPIFY_INSTALL_URL, state: null });
-    }
     if (!input.shopDomain) {
-      const error = new Error('Shopify install URL is not configured');
-      error.status = 500;
+      const error = new Error('Shopify store URL is required');
+      error.status = 400;
       throw error;
     }
     const shopDomain = normalizeShopDomain(input.shopDomain);

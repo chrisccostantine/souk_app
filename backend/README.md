@@ -68,7 +68,6 @@ SHOPIFY_API_KEY=...
 SHOPIFY_API_SECRET=...
 SHOPIFY_API_VERSION=2026-01
 APP_URL=https://your-railway-service.up.railway.app
-SHOPIFY_INSTALL_URL=https://apps.shopify.com/your-app-handle
 ```
 
 Your Shopify app should request these scopes:
@@ -88,13 +87,13 @@ Content-Type: application/json
 }
 ```
 
-The response includes an `installUrl`. Open that URL so the seller logs in with Shopify, chooses their store, and approves access. Shopify then redirects to:
+The response includes an `installUrl`. Open that URL so the seller logs in with Shopify and approves access. Shopify then redirects to:
 
 ```text
 /api/shopify/oauth/callback
 ```
 
-For development stores, you can still pass `shopDomain` in the request to generate a direct OAuth URL for that store.
+The mobile app asks only for the Shopify store URL, for example `merchant-store.myshopify.com`. The seller's Shopify credentials are entered only on Shopify's login page.
 
 Sync catalog, collections, images, descriptions, prices, and inventory:
 

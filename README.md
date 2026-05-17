@@ -29,6 +29,8 @@ flutter run --dart-define=SOUK_API_URL=https://your-railway-service.up.railway.a
 
 `SOUK_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
 
+For Shopify, store owners enter only their Shopify store URL in the seller dashboard. Their Shopify credentials are entered on Shopify's login page.
+
 If `flutter` hangs on this machine, fix the local Flutter SDK first. The app code itself lives in `lib/main.dart` and does not depend on remote packages beyond the default Flutter SDK setup.
 
 ## Backend

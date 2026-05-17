@@ -950,6 +950,7 @@ class SellerHubPage extends StatefulWidget {
 
 class _SellerHubPageState extends State<SellerHubPage> {
   final _productFormKey = GlobalKey<FormState>();
+  final _shopifyStore = TextEditingController();
   final _productName = TextEditingController();
   final _productPrice = TextEditingController();
   final _productStock = TextEditingController(text: '12');
@@ -960,6 +961,7 @@ class _SellerHubPageState extends State<SellerHubPage> {
 
   @override
   void dispose() {
+    _shopifyStore.dispose();
     _productName.dispose();
     _productPrice.dispose();
     _productStock.dispose();
@@ -1004,10 +1006,22 @@ class _SellerHubPageState extends State<SellerHubPage> {
       );
       return;
     }
+    if (_shopifyStore.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter your Shopify store URL first'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     try {
       final api = SoukApi(baseUrl: soukApiUrl);
-      final installUrl = await api.startShopifyOAuth({'shopId': shopId});
+      final installUrl = await api.startShopifyOAuth({
+        'shopId': shopId,
+        'shopDomain': _shopifyStore.text.trim(),
+      });
       final launched = await launchUrl(
         Uri.parse(installUrl),
         mode: LaunchMode.externalApplication,
@@ -1096,6 +1110,7 @@ class _SellerHubPageState extends State<SellerHubPage> {
         SellerStoreCard(store: store, ownerName: widget.session.name),
         const SizedBox(height: 16),
         ShopifySyncCard(
+          shopifyStore: _shopifyStore,
           connected: _shopifyConnected,
           pending: _shopifyPending,
           synced: _shopifySynced,
@@ -2129,6 +2144,7 @@ class SellerStoreCard extends StatelessWidget {
 class ShopifySyncCard extends StatelessWidget {
   const ShopifySyncCard({
     super.key,
+    required this.shopifyStore,
     required this.connected,
     required this.pending,
     required this.synced,
@@ -2137,6 +2153,7 @@ class ShopifySyncCard extends StatelessWidget {
     required this.onSync,
   });
 
+  final TextEditingController shopifyStore;
   final bool connected;
   final bool pending;
   final bool synced;
@@ -2185,8 +2202,18 @@ class ShopifySyncCard extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                'Tap connect, login with Shopify, approve access, then return here to sync.',
+                'Enter the store URL, then login with Shopify and approve access.',
                 style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: shopifyStore,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Shopify store URL',
+                  hintText: 'your-store.myshopify.com',
+                  prefixIcon: Icon(Icons.storefront_outlined),
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(

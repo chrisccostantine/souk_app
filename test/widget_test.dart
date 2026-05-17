@@ -48,12 +48,12 @@ void main() {
     expect(find.text('Mint Market'), findsOneWidget);
     expect(find.text('Gifts - Beirut'), findsOneWidget);
     expect(find.text('Sync Shopify products'), findsOneWidget);
+    expect(find.text('Shopify store URL'), findsOneWidget);
 
     await tester.tap(find.text('Connect Shopify'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Shopify connection is not configured'), findsOneWidget);
-    await tester.tap(find.text('OK'));
+    expect(find.text('Enter your Shopify store URL first'), findsOneWidget);
     await tester.pumpAndSettle();
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Product name'), 'Gift Candle');
