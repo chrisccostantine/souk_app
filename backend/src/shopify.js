@@ -32,6 +32,7 @@ export class ShopifyClient {
     this.shopDomain = normalizeShopDomain(shopDomain);
     this.accessToken = accessToken;
     this.apiVersion = apiVersion;
+    this.nextRequestAt = 0;
   }
 
   async get(path, query = {}) {
@@ -41,17 +42,16 @@ export class ShopifyClient {
         url.searchParams.set(key, value);
       }
     }
-    const response = await fetch(url, {
+    return this.#request(url, {
       headers: {
         'X-Shopify-Access-Token': this.accessToken,
         'Content-Type': 'application/json',
       },
     });
-    return this.#decode(response);
   }
 
   async post(path, body) {
-    const response = await fetch(`https://${this.shopDomain}/admin/api/${this.apiVersion}${path}`, {
+    return this.#request(`https://${this.shopDomain}/admin/api/${this.apiVersion}${path}`, {
       method: 'POST',
       headers: {
         'X-Shopify-Access-Token': this.accessToken,
@@ -59,7 +59,26 @@ export class ShopifyClient {
       },
       body: JSON.stringify(body),
     });
+  }
+
+  async #request(url, options, attempt = 0) {
+    await this.#throttle();
+    const response = await fetch(url, options);
+    if (response.status === 429 && attempt < 4) {
+      const retryAfter = Number(response.headers.get('retry-after'));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500;
+      await delay(waitMs);
+      return this.#request(url, options, attempt + 1);
+    }
     return this.#decode(response);
+  }
+
+  async #throttle() {
+    const waitMs = Math.max(this.nextRequestAt - Date.now(), 0);
+    if (waitMs > 0) {
+      await delay(waitMs);
+    }
+    this.nextRequestAt = Date.now() + 650;
   }
 
   async #decode(response) {
@@ -77,12 +96,10 @@ export class ShopifyClient {
 
 export async function fetchShopifyCatalog(connection) {
   const client = new ShopifyClient(connection);
-  const [{ products }, customCollections, smartCollections, locations] = await Promise.all([
-    client.get('/products.json', { limit: 250 }),
-    client.get('/custom_collections.json', { limit: 250 }),
-    client.get('/smart_collections.json', { limit: 250 }),
-    client.get('/locations.json', { limit: 250 }),
-  ]);
+  const { products } = await client.get('/products.json', { limit: 250 });
+  const customCollections = await client.get('/custom_collections.json', { limit: 250 });
+  const smartCollections = await client.get('/smart_collections.json', { limit: 250 });
+  const locations = await client.get('/locations.json', { limit: 250 });
 
   const collections = [
     ...(customCollections.custom_collections ?? []).map((collection) => ({
@@ -132,5 +149,11 @@ export async function adjustShopifyInventory({ connection, inventoryItemId, loca
     location_id: Number(locationId),
     inventory_item_id: Number(inventoryItemId),
     available_adjustment: -Math.abs(quantity),
+  });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
 }
