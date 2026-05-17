@@ -48,6 +48,10 @@ class SoukApi {
     return body['shop'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> fetchShopInventory(String shopId) async {
+    return _get('/api/shops/$shopId/inventory');
+  }
+
   Future<Map<String, dynamic>> createProduct(Map<String, dynamic> payload) async {
     final body = await _post('/api/products', payload);
     return body['product'] as Map<String, dynamic>;

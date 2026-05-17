@@ -48,6 +48,7 @@ npm run db:deploy && npm start
 - `POST /api/auth/login`
 - `GET /api/shops`
 - `POST /api/shops`
+- `GET /api/shops/:id/inventory`
 - `GET /api/products`
 - `POST /api/products`
 - `POST /api/shopify/oauth/start`

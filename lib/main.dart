@@ -963,12 +963,17 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
   double _shopifySyncProgress = 0;
   String? _shopifyMessage;
   Timer? _shopifySyncTimer;
+  List<SellerInventoryProduct> _syncedProducts = [];
+  List<SellerInventoryCollection> _syncedCollections = [];
+  bool _inventoryLoading = false;
+  String? _inventoryMessage;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _refreshShopifyStatus();
+    _loadSellerInventory();
   }
 
   @override
@@ -1148,6 +1153,7 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
         _shopifyMessage =
             'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
       });
+      await _loadSellerInventory();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Shopify products synced'),
@@ -1207,6 +1213,42 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
     });
   }
 
+  Future<void> _loadSellerInventory() async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      return;
+    }
+    setState(() {
+      _inventoryLoading = true;
+      _inventoryMessage = null;
+    });
+    try {
+      final data = await SoukApi(baseUrl: soukApiUrl).fetchShopInventory(shopId);
+      final products = (data['products'] as List<dynamic>? ?? [])
+          .map((item) => SellerInventoryProduct.fromJson(item as Map<String, dynamic>))
+          .toList();
+      final collections = (data['collections'] as List<dynamic>? ?? [])
+          .map((item) => SellerInventoryCollection.fromJson(item as Map<String, dynamic>))
+          .toList();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _syncedProducts = products;
+        _syncedCollections = collections;
+        _inventoryLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _inventoryLoading = false;
+        _inventoryMessage = 'Could not load synced inventory.';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = widget.session.store ??
@@ -1216,6 +1258,7 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
           city: 'Beirut',
           hasDelivery: true,
         );
+    final productCount = _syncedProducts.length + widget.products.length;
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
@@ -1237,7 +1280,40 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
           onSync: _syncShopify,
         ),
         const SizedBox(height: 16),
-        const SellerMetricGrid(),
+        SellerMetricGrid(productCount: productCount, collectionCount: _syncedCollections.length),
+        const SizedBox(height: 16),
+        SectionTitle(title: 'Collections', action: '${_syncedCollections.length} synced'),
+        const SizedBox(height: 10),
+        if (_inventoryLoading)
+          const LinearProgressIndicator(minHeight: 6)
+        else if (_syncedCollections.isEmpty)
+          const EmptyState(
+            icon: Icons.category_outlined,
+            title: 'No synced collections yet',
+            message: 'Sync Shopify products to import collections into Souk.',
+          )
+        else
+          CollectionChipWrap(collections: _syncedCollections),
+        const SizedBox(height: 16),
+        SectionTitle(title: 'Inventory', action: '$productCount products'),
+        const SizedBox(height: 10),
+        if (_inventoryMessage != null)
+          EmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: 'Inventory unavailable',
+            message: _inventoryMessage!,
+          )
+        else if (_syncedProducts.isEmpty && widget.products.isEmpty)
+          const EmptyState(
+            icon: Icons.inventory_2_outlined,
+            title: 'No products yet',
+            message: 'Sync Shopify or add products manually before publishing your store.',
+          )
+        else
+          ...[
+            for (final product in _syncedProducts) SellerInventoryTile(product: product),
+            for (final product in widget.products) SellerProductTile(product: product),
+          ],
         const SizedBox(height: 16),
         ProductFormCard(
           formKey: _productFormKey,
@@ -1246,17 +1322,6 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
           stock: _productStock,
           onSubmit: _submitProduct,
         ),
-        const SizedBox(height: 16),
-        SectionTitle(title: 'Inventory', action: '${widget.products.length} products'),
-        const SizedBox(height: 10),
-        if (widget.products.isEmpty)
-          const EmptyState(
-            icon: Icons.inventory_2_outlined,
-            title: 'No seller products yet',
-            message: 'Add products with price and stock before publishing your store.',
-          )
-        else
-          for (final product in widget.products) SellerProductTile(product: product),
         const SizedBox(height: 16),
         const SectionTitle(title: 'Incoming orders', action: 'Manage'),
         const SizedBox(height: 10),
@@ -2401,15 +2466,22 @@ class ShopifySyncCard extends StatelessWidget {
 }
 
 class SellerMetricGrid extends StatelessWidget {
-  const SellerMetricGrid({super.key});
+  const SellerMetricGrid({
+    super.key,
+    required this.productCount,
+    required this.collectionCount,
+  });
+
+  final int productCount;
+  final int collectionCount;
 
   @override
   Widget build(BuildContext context) {
-    const metrics = [
-      SellerMetric('Orders', '24', Icons.receipt_long),
-      SellerMetric('Products', '86', Icons.inventory_2),
-      SellerMetric('Payout', r'$1.2k', Icons.account_balance_wallet),
-      SellerMetric('Rating', '4.8', Icons.star),
+    final metrics = [
+      const SellerMetric('Orders', '24', Icons.receipt_long),
+      SellerMetric('Products', productCount.toString(), Icons.inventory_2),
+      SellerMetric('Collections', collectionCount.toString(), Icons.category),
+      const SellerMetric('Rating', '4.8', Icons.star),
     ];
     return GridView.builder(
       shrinkWrap: true,
@@ -2445,6 +2517,29 @@ class SellerMetricGrid extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class CollectionChipWrap extends StatelessWidget {
+  const CollectionChipWrap({super.key, required this.collections});
+
+  final List<SellerInventoryCollection> collections;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final collection in collections.take(24))
+          InputChip(
+            avatar: const Icon(Icons.category_outlined, size: 16),
+            label: Text('${collection.title} (${collection.productCount})'),
+            onPressed: () {},
+          ),
+        if (collections.length > 24) Tag(label: '+${collections.length - 24} more'),
+      ],
     );
   }
 }
@@ -2531,6 +2626,72 @@ class SellerProductTile extends StatelessWidget {
         title: Text(product.name, style: const TextStyle(fontWeight: FontWeight.w900)),
         subtitle: Text('${product.stock} in stock'),
         trailing: Text(money(product.price)),
+      ),
+    );
+  }
+}
+
+class SellerInventoryTile extends StatelessWidget {
+  const SellerInventoryTile({super.key, required this.product});
+
+  final SellerInventoryProduct product;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: product.imageUrl == null
+                  ? Container(
+                      width: 58,
+                      height: 58,
+                      color: const Color(0xFFE7F0EA),
+                      child: const Icon(Icons.inventory_2),
+                    )
+                  : Image.network(
+                      product.imageUrl!,
+                      width: 58,
+                      height: 58,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return Container(
+                          width: 58,
+                          height: 58,
+                          color: const Color(0xFFE7F0EA),
+                          child: const Icon(Icons.image_not_supported_outlined),
+                        );
+                      },
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(product.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 4),
+                  Text('${product.stock} in stock - ${product.category}', style: Theme.of(context).textTheme.bodySmall),
+                  if (product.collections.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final collection in product.collections.take(3)) Tag(label: collection),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(money(product.price), style: const TextStyle(fontWeight: FontWeight.w900)),
+          ],
+        ),
       ),
     );
   }
@@ -2731,6 +2892,65 @@ class SellerProduct {
   final int stock;
 }
 
+class SellerInventoryProduct {
+  const SellerInventoryProduct({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.price,
+    required this.stock,
+    required this.collections,
+    this.imageUrl,
+  });
+
+  factory SellerInventoryProduct.fromJson(Map<String, dynamic> json) {
+    final productCollections = json['collections'] as List<dynamic>? ?? [];
+    return SellerInventoryProduct(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? 'Product',
+      category: json['category'] as String? ?? 'Shopify',
+      price: parseDouble(json['price']),
+      stock: parseInt(json['stock']),
+      imageUrl: json['imageUrl'] as String?,
+      collections: productCollections
+          .map((item) => item as Map<String, dynamic>)
+          .map((item) => item['collection'] as Map<String, dynamic>?)
+          .whereType<Map<String, dynamic>>()
+          .map((collection) => collection['title'] as String? ?? 'Collection')
+          .toList(),
+    );
+  }
+
+  final String id;
+  final String name;
+  final String category;
+  final double price;
+  final int stock;
+  final String? imageUrl;
+  final List<String> collections;
+}
+
+class SellerInventoryCollection {
+  const SellerInventoryCollection({
+    required this.id,
+    required this.title,
+    required this.productCount,
+  });
+
+  factory SellerInventoryCollection.fromJson(Map<String, dynamic> json) {
+    final count = json['_count'] as Map<String, dynamic>? ?? {};
+    return SellerInventoryCollection(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? 'Collection',
+      productCount: parseInt(count['products']),
+    );
+  }
+
+  final String id;
+  final String title;
+  final int productCount;
+}
+
 class SellerOrder {
   const SellerOrder(this.customer, this.summary, this.status);
 
@@ -2756,6 +2976,20 @@ class QuickAction {
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';
+
+double parseDouble(Object? value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+int parseInt(Object? value) {
+  if (value is num) {
+    return value.toInt();
+  }
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
 
 String? requiredField(String? value) {
   if (value == null || value.trim().isEmpty) {

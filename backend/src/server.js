@@ -309,6 +309,36 @@ app.post('/api/shops', async (req, res, next) => {
   }
 });
 
+app.get('/api/shops/:id/inventory', async (req, res, next) => {
+  try {
+    const shopId = String(req.params.id);
+    const [products, collections] = await Promise.all([
+      prisma.product.findMany({
+        where: { shopId },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          collections: {
+            include: { collection: true },
+          },
+        },
+      }),
+      prisma.collection.findMany({
+        where: { shopId },
+        orderBy: { title: 'asc' },
+        include: {
+          _count: {
+            select: { products: true },
+          },
+        },
+      }),
+    ]);
+
+    res.json({ products, collections });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/products', async (req, res, next) => {
   try {
     const { category, q, shopId } = req.query;
