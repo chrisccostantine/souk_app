@@ -75,6 +75,7 @@ Your Shopify app should request these scopes:
 - `read_products`
 - `read_inventory`
 - `write_inventory`
+- `read_locations`
 
 Start Shopify connection:
 

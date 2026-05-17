@@ -27,7 +27,8 @@ import {
 const app = express();
 const port = process.env.PORT || 8080;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
-const shopifyScopes = 'read_products,read_inventory,write_inventory';
+const requiredShopifyScopes = ['read_products', 'read_inventory', 'write_inventory', 'read_locations'];
+const shopifyScopes = requiredShopifyScopes.join(',');
 const oauthStates = new Map();
 
 app.use(helmet());
@@ -102,6 +103,19 @@ function shopifyTokenData(tokenBody) {
   };
 }
 
+function hasRequiredShopifyScopes(scopes) {
+  if (!scopes) {
+    return false;
+  }
+  const approvedScopes = new Set(
+    scopes
+      .split(',')
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+  );
+  return requiredShopifyScopes.every((scope) => approvedScopes.has(scope));
+}
+
 function shopifyTokenRequestBody(values) {
   const body = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
@@ -135,6 +149,11 @@ async function refreshShopifyConnection(connection) {
   ensureShopifyOAuthConfig();
   if (!connection.refreshToken) {
     const error = new Error('Reconnect Shopify to upgrade this store to expiring offline tokens');
+    error.status = 409;
+    throw error;
+  }
+  if (!hasRequiredShopifyScopes(connection.scopes)) {
+    const error = new Error('Reconnect Shopify after adding the read_locations scope');
     error.status = 409;
     throw error;
   }
@@ -466,11 +485,14 @@ app.get('/api/shopify/status', async (req, res, next) => {
       select: {
         shopDomain: true,
         refreshToken: true,
+        scopes: true,
         lastSyncedAt: true,
         updatedAt: true,
       },
     });
-    const needsReconnect = Boolean(connection && !connection.refreshToken);
+    const needsReconnect = Boolean(
+      connection && (!connection.refreshToken || !hasRequiredShopifyScopes(connection.scopes)),
+    );
     res.json({
       connected: Boolean(connection) && !needsReconnect,
       needsReconnect,
