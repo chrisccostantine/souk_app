@@ -6,7 +6,6 @@ import 'api/souk_api.dart';
 void main() => runApp(const SoukApp());
 
 const soukApiUrl = String.fromEnvironment('SOUK_API_URL');
-const shopifyConnectUrl = String.fromEnvironment('SHOPIFY_CONNECT_URL');
 
 class SoukApp extends StatelessWidget {
   const SoukApp({super.key});
@@ -229,6 +228,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       store: shop == null
           ? null
           : ShopDraft(
+              id: shop['id']?.toString(),
               name: shop['name']?.toString() ?? 'My Souk Store',
               category: shop['category']?.toString() ?? 'Store',
               city: shop['city']?.toString() ?? 'Beirut',
@@ -983,14 +983,15 @@ class _SellerHubPageState extends State<SellerHubPage> {
   }
 
   Future<void> _connectShopify() async {
-    if (shopifyConnectUrl.isEmpty) {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
       await showDialog<void>(
         context: context,
         builder: (context) {
           return AlertDialog(
             title: const Text('Shopify connection is not configured'),
             content: const Text(
-              'Run the app with SHOPIFY_CONNECT_URL set to your Railway OAuth start URL or Shopify app install URL.',
+              'Login with a real store account and run the app with SOUK_API_URL set to your Railway API URL.',
             ),
             actions: [
               TextButton(
@@ -1004,17 +1005,37 @@ class _SellerHubPageState extends State<SellerHubPage> {
       return;
     }
 
-    final launched = await launchUrl(
-      Uri.parse(shopifyConnectUrl),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!mounted) {
-      return;
-    }
-    if (!launched) {
+    try {
+      final api = SoukApi(baseUrl: soukApiUrl);
+      final installUrl = await api.startShopifyOAuth({'shopId': shopId});
+      final launched = await launchUrl(
+        Uri.parse(installUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (!launched) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open Shopify'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+    } on SoukApiException catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not open Shopify'),
+        SnackBar(
+          content: Text(error.message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not start Shopify connection: $error'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -2518,12 +2539,14 @@ class CheckoutInfo {
 
 class ShopDraft {
   const ShopDraft({
+    this.id,
     required this.name,
     required this.category,
     required this.city,
     required this.hasDelivery,
   });
 
+  final String? id;
   final String name;
   final String category;
   final String city;

@@ -28,6 +28,7 @@ void main() {
       email: 'maya@store.com',
       role: AccountRole.seller,
       store: ShopDraft(
+        id: 'test-shop-id',
         name: 'Mint Market',
         category: 'Gifts',
         city: 'Beirut',
