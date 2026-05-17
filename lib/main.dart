@@ -868,6 +868,7 @@ class _SellerHubPageState extends State<SellerHubPage> {
   final _productPrice = TextEditingController();
   final _productStock = TextEditingController(text: '12');
   bool _shopifyConnected = false;
+  bool _shopifyPending = false;
   bool _shopifySynced = false;
   String? _shopifyMessage;
 
@@ -897,13 +898,13 @@ class _SellerHubPageState extends State<SellerHubPage> {
 
   void _connectShopify() {
     setState(() {
-      _shopifyConnected = true;
+      _shopifyPending = true;
       _shopifySynced = false;
-      _shopifyMessage = 'Shopify login approved. You can sync products now.';
+      _shopifyMessage = 'Opening Shopify login. Approve access there, then return to Souk.';
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Shopify store connected'),
+        content: Text('Continue in Shopify to finish connection'),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -951,6 +952,7 @@ class _SellerHubPageState extends State<SellerHubPage> {
         const SizedBox(height: 16),
         ShopifySyncCard(
           connected: _shopifyConnected,
+          pending: _shopifyPending,
           synced: _shopifySynced,
           message: _shopifyMessage,
           onConnect: _connectShopify,
@@ -1983,6 +1985,7 @@ class ShopifySyncCard extends StatelessWidget {
   const ShopifySyncCard({
     super.key,
     required this.connected,
+    required this.pending,
     required this.synced,
     required this.message,
     required this.onConnect,
@@ -1990,6 +1993,7 @@ class ShopifySyncCard extends StatelessWidget {
   });
 
   final bool connected;
+  final bool pending;
   final bool synced;
   final String? message;
   final VoidCallback onConnect;
@@ -2045,6 +2049,7 @@ class ShopifySyncCard extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   Tag(label: connected ? 'Connected' : 'Not connected'),
+                  if (pending && !connected) const Tag(label: 'Login pending'),
                   Tag(label: synced ? 'Inventory synced' : 'Waiting to sync'),
                   const Tag(label: 'Two-way stock'),
                 ],

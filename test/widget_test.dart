@@ -55,10 +55,14 @@ void main() {
 
     await tester.tap(find.text('Connect Shopify'));
     await tester.pumpAndSettle();
+
+    expect(find.text('Login pending'), findsOneWidget);
+    expect(find.text('Not connected'), findsOneWidget);
+
     await tester.tap(find.text('Sync products'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Inventory synced'), findsOneWidget);
+    expect(find.text('Waiting to sync'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Product name'), 'Gift Candle');
     await tester.enterText(find.widgetWithText(TextFormField, 'Price'), '11');
