@@ -88,6 +88,77 @@ function verifyShopifyOAuthHmac(query, secret) {
   return crypto.timingSafeEqual(digestBuffer, hmacBuffer);
 }
 
+function tokenExpiresAt(seconds) {
+  return seconds ? new Date(Date.now() + Number(seconds) * 1000) : null;
+}
+
+function shopifyTokenData(tokenBody) {
+  return {
+    accessToken: tokenBody.access_token,
+    refreshToken: tokenBody.refresh_token ?? null,
+    accessTokenExpiresAt: tokenExpiresAt(tokenBody.expires_in),
+    refreshTokenExpiresAt: tokenExpiresAt(tokenBody.refresh_token_expires_in),
+    scopes: tokenBody.scope ?? null,
+  };
+}
+
+function shopifyTokenRequestBody(values) {
+  const body = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== null) {
+      body.set(key, String(value));
+    }
+  }
+  return body;
+}
+
+async function exchangeShopifyToken(shopDomain, values) {
+  const tokenResponse = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: shopifyTokenRequestBody(values),
+  });
+  const tokenBody = await tokenResponse.json();
+  if (!tokenResponse.ok) {
+    const error = new Error('Shopify token exchange failed');
+    error.status = tokenResponse.status;
+    error.details = tokenBody;
+    throw error;
+  }
+  return tokenBody;
+}
+
+async function refreshShopifyConnection(connection) {
+  ensureShopifyOAuthConfig();
+  if (!connection.refreshToken) {
+    const error = new Error('Reconnect Shopify to upgrade this store to expiring offline tokens');
+    error.status = 409;
+    throw error;
+  }
+
+  const shouldRefresh =
+    connection.accessTokenExpiresAt &&
+    connection.accessTokenExpiresAt.getTime() <= Date.now() + 60 * 1000;
+  if (!shouldRefresh) {
+    return connection;
+  }
+
+  const tokenBody = await exchangeShopifyToken(connection.shopDomain, {
+    client_id: process.env.SHOPIFY_API_KEY,
+    client_secret: process.env.SHOPIFY_API_SECRET,
+    grant_type: 'refresh_token',
+    refresh_token: connection.refreshToken,
+  });
+
+  return prisma.shopifyConnection.update({
+    where: { id: connection.id },
+    data: shopifyTokenData(tokenBody),
+  });
+}
+
 function publicUser(user) {
   return {
     id: user.id,
@@ -336,33 +407,24 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
       throw error;
     }
     const shopDomain = normalizeShopDomain(String(shop));
-    const tokenResponse = await fetch(`https://${shopDomain}/admin/oauth/access_token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: process.env.SHOPIFY_API_KEY,
-        client_secret: process.env.SHOPIFY_API_SECRET,
-        code,
-      }),
+    const tokenBody = await exchangeShopifyToken(shopDomain, {
+      client_id: process.env.SHOPIFY_API_KEY,
+      client_secret: process.env.SHOPIFY_API_SECRET,
+      code,
+      expiring: 1,
     });
-    const tokenBody = await tokenResponse.json();
-    if (!tokenResponse.ok) {
-      const error = new Error('Shopify token exchange failed');
-      error.status = tokenResponse.status;
-      error.details = tokenBody;
-      throw error;
-    }
+    const tokenData = shopifyTokenData(tokenBody);
     await prisma.shopifyConnection.upsert({
       where: { shopId: stateData.shopId },
       update: {
         shopDomain,
-        accessToken: tokenBody.access_token,
+        ...tokenData,
         apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
       create: {
         shopId: stateData.shopId,
         shopDomain,
-        accessToken: tokenBody.access_token,
+        ...tokenData,
         apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
     });
@@ -403,12 +465,15 @@ app.get('/api/shopify/status', async (req, res, next) => {
       where: { shopId: String(shopId) },
       select: {
         shopDomain: true,
+        refreshToken: true,
         lastSyncedAt: true,
         updatedAt: true,
       },
     });
+    const needsReconnect = Boolean(connection && !connection.refreshToken);
     res.json({
-      connected: Boolean(connection),
+      connected: Boolean(connection) && !needsReconnect,
+      needsReconnect,
       shopDomain: connection?.shopDomain ?? null,
       lastSyncedAt: connection?.lastSyncedAt ?? null,
       connectedAt: connection?.updatedAt ?? null,
@@ -430,8 +495,9 @@ app.post('/api/shopify/sync', async (req, res, next) => {
       throw error;
     }
 
-    const catalog = await fetchShopifyCatalog(connection);
-    const result = await upsertShopifyCatalog(input.shopId, connection, catalog);
+    const freshConnection = await refreshShopifyConnection(connection);
+    const catalog = await fetchShopifyCatalog(freshConnection);
+    const result = await upsertShopifyCatalog(input.shopId, freshConnection, catalog);
     res.json(result);
   } catch (error) {
     next(error);
@@ -745,6 +811,13 @@ async function syncSoukOrderToShopifyInventory(shopId, orderItems) {
     return { updated: [], failed: [] };
   }
 
+  let freshConnection;
+  try {
+    freshConnection = await refreshShopifyConnection(connection);
+  } catch (error) {
+    return { updated: [], failed: [{ shopId, reason: error.message }] };
+  }
+
   const updated = [];
   const failed = [];
   for (const item of orderItems) {
@@ -752,14 +825,14 @@ async function syncSoukOrderToShopifyInventory(shopId, orderItems) {
     if (!product.shopifyInventoryItemId) {
       continue;
     }
-    const locationId = product.shopifyLocationId || connection.defaultLocationId;
+    const locationId = product.shopifyLocationId || freshConnection.defaultLocationId;
     if (!locationId) {
       failed.push({ productId: product.id, reason: 'Missing Shopify location id' });
       continue;
     }
     try {
       const result = await adjustShopifyInventory({
-        connection,
+        connection: freshConnection,
         inventoryItemId: product.shopifyInventoryItemId,
         locationId,
         quantity: item.quantity,

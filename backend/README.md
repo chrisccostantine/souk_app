@@ -103,6 +103,8 @@ souk://shopify-connected
 
 The mobile app also checks `/api/shopify/status` whenever it returns from the browser, so it can mark the store as connected even if the browser cannot auto-open the app.
 
+Shopify now requires expiring offline access tokens for Admin API calls. If an older connection shows a non-expiring token error, reconnect the Shopify store once so Souk can store the refresh token.
+
 Sync catalog, collections, images, descriptions, prices, and inventory:
 
 ```http

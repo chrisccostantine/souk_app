@@ -1095,11 +1095,15 @@ class _SellerHubPageState extends State<SellerHubPage> with WidgetsBindingObserv
         return;
       }
       final connected = status['connected'] == true;
+      final needsReconnect = status['needsReconnect'] == true;
       setState(() {
         _shopifyConnected = connected;
         if (connected) {
           _shopifyPending = false;
           _shopifyMessage = 'Shopify connected. You can sync products now.';
+        } else if (needsReconnect) {
+          _shopifyPending = false;
+          _shopifyMessage = 'Reconnect Shopify once to refresh access.';
         }
       });
     } catch (_) {

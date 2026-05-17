@@ -154,6 +154,10 @@ model ShopifyConnection {
   shopId      String   @unique
   shopDomain  String
   accessToken String
+  refreshToken String?
+  accessTokenExpiresAt DateTime?
+  refreshTokenExpiresAt DateTime?
+  scopes      String?
   apiVersion  String   @default("2026-01")
   defaultLocationId String?
   lastSyncedAt DateTime?
