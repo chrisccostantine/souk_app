@@ -24,8 +24,12 @@ flutter run
 To make the seller **Connect Shopify** button open Shopify, run with your Shopify install/OAuth URL:
 
 ```bash
-flutter run --dart-define=SHOPIFY_CONNECT_URL=https://apps.shopify.com/your-app-handle
+flutter run \
+  --dart-define=SOUK_API_URL=https://your-railway-service.up.railway.app \
+  --dart-define=SHOPIFY_CONNECT_URL=https://apps.shopify.com/your-app-handle
 ```
+
+`SOUK_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
 
 If `flutter` hangs on this machine, fix the local Flutter SDK first. The app code itself lives in `lib/main.dart` and does not depend on remote packages beyond the default Flutter SDK setup.
 

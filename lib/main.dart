@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'api/souk_api.dart';
+
 void main() => runApp(const SoukApp());
 
+const soukApiUrl = String.fromEnvironment('SOUK_API_URL');
 const shopifyConnectUrl = String.fromEnvironment('SHOPIFY_CONNECT_URL');
 
 class SoukApp extends StatelessWidget {
@@ -133,6 +136,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
   final _storeCity = TextEditingController();
   bool _signup = true;
   AccountRole _role = AccountRole.customer;
+  bool _authLoading = false;
+  String? _authError;
 
   @override
   void dispose() {
@@ -145,28 +150,84 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    final name = _signup ? _name.text.trim() : _email.text.trim().split('@').first;
-    final store = _role == AccountRole.seller
-        ? ShopDraft(
-            name: _signup ? _storeName.text.trim() : 'My Souk Store',
-            category: _signup ? _storeCategory.text.trim() : 'Store',
-            city: _signup ? _storeCity.text.trim() : 'Beirut',
-            hasDelivery: true,
-          )
-        : null;
+    if (soukApiUrl.isEmpty) {
+      setState(() {
+        _authError = 'Backend is not configured. Run with SOUK_API_URL set to your Railway API URL.';
+      });
+      return;
+    }
 
-    widget.onAuthenticated(
-      AppSession(
-        name: name,
-        email: _email.text.trim(),
-        role: _role,
-        store: store,
-      ),
+    setState(() {
+      _authLoading = true;
+      _authError = null;
+    });
+
+    try {
+      final api = SoukApi(baseUrl: soukApiUrl);
+      final response = _signup ? await api.signup(_signupPayload()) : await api.login(_loginPayload());
+      if (!mounted) {
+        return;
+      }
+      widget.onAuthenticated(_sessionFromAuthResponse(response));
+    } on SoukApiException catch (error) {
+      setState(() => _authError = error.message);
+    } catch (_) {
+      setState(() => _authError = 'Could not reach Souk. Check your connection and API URL.');
+    } finally {
+      if (mounted) {
+        setState(() => _authLoading = false);
+      }
+    }
+  }
+
+  Map<String, dynamic> _signupPayload() {
+    final Map<String, dynamic> payload = {
+      'role': _role == AccountRole.seller ? 'SELLER' : 'CUSTOMER',
+      'name': _name.text.trim(),
+      'email': _email.text.trim(),
+      'password': _password.text,
+    };
+    if (_role == AccountRole.seller) {
+      payload['store'] = {
+        'name': _storeName.text.trim(),
+        'category': _storeCategory.text.trim(),
+        'city': _storeCity.text.trim(),
+        'story': '${_storeName.text.trim()} is selling on Souk.',
+        'minimumOrder': 0,
+        'deliveryLabel': 'Delivery available',
+      };
+    }
+    return payload;
+  }
+
+  Map<String, dynamic> _loginPayload() {
+    return {
+      'role': _role == AccountRole.seller ? 'SELLER' : 'CUSTOMER',
+      'email': _email.text.trim(),
+      'password': _password.text,
+    };
+  }
+
+  AppSession _sessionFromAuthResponse(Map<String, dynamic> response) {
+    final user = response['user'] as Map<String, dynamic>;
+    final shop = response['shop'] as Map<String, dynamic>?;
+    return AppSession(
+      name: user['name']?.toString() ?? _email.text.trim(),
+      email: user['email']?.toString() ?? _email.text.trim(),
+      role: user['role'] == 'SELLER' ? AccountRole.seller : AccountRole.customer,
+      store: shop == null
+          ? null
+          : ShopDraft(
+              name: shop['name']?.toString() ?? 'My Souk Store',
+              category: shop['category']?.toString() ?? 'Store',
+              city: shop['city']?.toString() ?? 'Beirut',
+              hasDelivery: true,
+            ),
     );
   }
 
@@ -312,13 +373,29 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           validator: requiredField,
                         ),
                       ],
+                      if (_authError != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _authError!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: _submit,
-                          icon: Icon(isSeller ? Icons.storefront : Icons.shopping_bag),
-                          label: Text(_signup ? 'Create account' : 'Login'),
+                          onPressed: _authLoading ? null : _submit,
+                          icon: _authLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Icon(isSeller ? Icons.storefront : Icons.shopping_bag),
+                          label: Text(_authLoading ? 'Please wait' : (_signup ? 'Create account' : 'Login')),
                         ),
                       ),
                     ],

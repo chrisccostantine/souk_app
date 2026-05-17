@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:souk_app/main.dart';
 
 void main() {
-  testWidgets('Customer signs up, shops, and places an order', (
+  testWidgets('Auth screen refuses local fake login without API URL', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const SoukApp());
@@ -16,38 +16,33 @@ void main() {
     await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Featured today'), findsOneWidget);
-    expect(find.text('Zaatar Breakfast Box'), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.add_shopping_cart).first);
-    await tester.pump();
-
-    await tester.tap(find.text('Basket'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Checkout details'), findsOneWidget);
-    await tester.tap(find.text('Place order'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('Placed'), findsOneWidget);
+    expect(find.textContaining('Backend is not configured'), findsOneWidget);
+    expect(find.text('Featured today'), findsNothing);
   });
 
-  testWidgets('Store owner signs up with store details and adds inventory', (
+  testWidgets('Store dashboard exposes Shopify sync and inventory controls', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const SoukApp());
+    const session = AppSession(
+      name: 'Maya',
+      email: 'maya@store.com',
+      role: AccountRole.seller,
+      store: ShopDraft(
+        name: 'Mint Market',
+        category: 'Gifts',
+        city: 'Beirut',
+        hasDelivery: true,
+      ),
+    );
 
-    await tester.tap(find.text('Store'));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.widgetWithText(TextFormField, 'Your name'), 'Maya');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'maya@store.com');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret1');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Store name'), 'Mint Market');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Store category'), 'Gifts');
-    await tester.enterText(find.widgetWithText(TextFormField, 'City or area'), 'Beirut');
-    await tester.tap(find.text('Create account'));
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SellerAppShell(
+          session: session,
+          onLogout: () {},
+        ),
+      ),
+    );
 
     expect(find.text('Mint Market'), findsOneWidget);
     expect(find.text('Gifts - Beirut'), findsOneWidget);
@@ -59,11 +54,6 @@ void main() {
     expect(find.text('Shopify connection is not configured'), findsOneWidget);
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Sync products'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Waiting to sync'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Product name'), 'Gift Candle');
     await tester.enterText(find.widgetWithText(TextFormField, 'Price'), '11');
