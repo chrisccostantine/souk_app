@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 class SoukApi {
-  SoukApi({required this.baseUrl, HttpClient? client}) : _client = client ?? HttpClient();
+  SoukApi({required String baseUrl, HttpClient? client})
+      : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), ''),
+        _client = client ?? HttpClient();
 
   final String baseUrl;
   final HttpClient _client;
@@ -81,9 +83,18 @@ class SoukApi {
 
   Future<Map<String, dynamic>> _decode(HttpClientResponse response) async {
     final text = await response.transform(utf8.decoder).join();
-    final body = jsonDecode(text) as Map<String, dynamic>;
+    final Map<String, dynamic> body;
+    try {
+      body = text.isEmpty ? <String, dynamic>{} : jsonDecode(text) as Map<String, dynamic>;
+    } catch (_) {
+      throw SoukApiException(
+        response.statusCode,
+        'HTTP ${response.statusCode}: ${text.isEmpty ? response.reasonPhrase : text}',
+      );
+    }
     if (response.statusCode >= 400) {
-      throw SoukApiException(response.statusCode, body['error']?.toString() ?? 'API request failed');
+      final message = body['error'] ?? body['message'] ?? body['details'] ?? response.reasonPhrase;
+      throw SoukApiException(response.statusCode, 'HTTP ${response.statusCode}: $message');
     }
     return body;
   }
