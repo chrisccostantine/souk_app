@@ -114,11 +114,25 @@ export async function fetchShopifyCatalog(connection) {
 
   const collects = [];
   for (const collection of collections) {
-    const result = await client.get('/collects.json', {
+    if (collection.collectionType === 'CUSTOM') {
+      const result = await client.get('/collects.json', {
+        collection_id: collection.id,
+        limit: 250,
+      });
+      collects.push(...(result.collects ?? []));
+      continue;
+    }
+
+    const result = await client.get('/products.json', {
       collection_id: collection.id,
       limit: 250,
     });
-    collects.push(...(result.collects ?? []));
+    collects.push(
+      ...(result.products ?? []).map((product) => ({
+        collection_id: collection.id,
+        product_id: product.id,
+      })),
+    );
   }
 
   const inventoryItemIds = products
