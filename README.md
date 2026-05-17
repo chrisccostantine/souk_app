@@ -10,6 +10,7 @@ Souk is a Flutter marketplace app for iOS and Android where independent shops ca
 - Orders and favorites screen for purchase tracking and saved products.
 - Basket with quantity controls, checkout details, delivery/pickup choice, payment choice, notes, and order placement.
 - Seller hub with store draft creation, product inventory creation, starter dashboard metrics, and incoming order cards.
+- Railway-ready backend in `backend/` with PostgreSQL, Prisma, shops, products, orders, users, favorites, reviews, and seed data.
 
 ## Run
 
@@ -19,3 +20,16 @@ flutter run
 ```
 
 If `flutter` hangs on this machine, fix the local Flutter SDK first. The app code itself lives in `lib/main.dart` and does not depend on remote packages beyond the default Flutter SDK setup.
+
+## Backend
+
+```bash
+cd backend
+npm install
+cp .env.example .env
+npm run db:migrate
+npm run db:seed
+npm run dev
+```
+
+Deploy the `backend/` service to Railway with a PostgreSQL database attached. Railway should provide `DATABASE_URL`; the included `railway.json` runs migrations before starting the API.

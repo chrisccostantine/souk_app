@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  SELLER
+  ADMIN
+}
+
+enum ShopStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PACKING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum FulfillmentMethod {
+  DELIVERY
+  PICKUP
+}
+
+enum PaymentMethod {
+  CASH_ON_DELIVERY
+  CARD_ON_DELIVERY
+  WALLET
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  phone        String?
+  role         UserRole   @default(CUSTOMER)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  shops        Shop[]
+  orders       Order[]
+  addresses    Address[]
+  reviews      Review[]
+  favorites    Favorite[]
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  label     String
+  city      String
+  line1     String
+  line2     String?
+  latitude  Float?
+  longitude Float?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Shop {
+  id            String     @id @default(cuid())
+  ownerId       String
+  name          String
+  slug          String     @unique
+  category      String
+  city          String
+  story         String
+  status        ShopStatus @default(DRAFT)
+  rating        Float      @default(0)
+  orderCount    Int        @default(0)
+  minimumOrder  Decimal    @default(0)
+  deliveryLabel String     @default("Delivery available")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  products      Product[]
+  orders        Order[]
+  reviews       Review[]
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  shopId      String
+  name        String
+  slug        String
+  category    String
+  description String
+  price       Decimal
+  stock       Int         @default(0)
+  active      Boolean     @default(true)
+  rating      Float       @default(0)
+  imageUrl    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+  favorites   Favorite[]
+
+  @@unique([shopId, slug])
+}
+
+model Order {
+  id                String            @id @default(cuid())
+  customerId        String
+  shopId            String
+  status            OrderStatus       @default(PLACED)
+  fulfillmentMethod FulfillmentMethod @default(DELIVERY)
+  paymentMethod     PaymentMethod     @default(CASH_ON_DELIVERY)
+  subtotal          Decimal
+  deliveryFee       Decimal           @default(0)
+  total             Decimal
+  deliveryAddress   String?
+  note              String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  customer          User              @relation(fields: [customerId], references: [id])
+  shop              Shop              @relation(fields: [shopId], references: [id])
+  items             OrderItem[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  unitPrice Decimal
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  shopId    String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}

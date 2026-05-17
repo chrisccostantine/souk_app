@@ -1,0 +1,83 @@
+import 'dart:convert';
+import 'dart:io';
+
+class SoukApi {
+  SoukApi({required this.baseUrl, HttpClient? client}) : _client = client ?? HttpClient();
+
+  final String baseUrl;
+  final HttpClient _client;
+
+  Uri _uri(String path, [Map<String, String?> query = const {}]) {
+    return Uri.parse('$baseUrl$path').replace(
+      queryParameters: {
+        for (final entry in query.entries)
+          if (entry.value != null && entry.value!.isNotEmpty) entry.key: entry.value!,
+      },
+    );
+  }
+
+  Future<List<dynamic>> fetchShops() async {
+    final body = await _get('/api/shops');
+    return body['shops'] as List<dynamic>;
+  }
+
+  Future<List<dynamic>> fetchProducts({String? query, String? category, String? shopId}) async {
+    final body = await _get(
+      '/api/products',
+      {
+        'q': query,
+        'category': category,
+        'shopId': shopId,
+      },
+    );
+    return body['products'] as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createShop(Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops', payload);
+    return body['shop'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createProduct(Map<String, dynamic> payload) async {
+    final body = await _post('/api/products', payload);
+    return body['product'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
+    final body = await _post('/api/orders', payload);
+    return body['order'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> _get(String path, [Map<String, String?> query = const {}]) async {
+    final request = await _client.getUrl(_uri(path, query));
+    final response = await request.close();
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> payload) async {
+    final request = await _client.postUrl(_uri(path));
+    request.headers.contentType = ContentType.json;
+    request.write(jsonEncode(payload));
+    final response = await request.close();
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> _decode(HttpClientResponse response) async {
+    final text = await response.transform(utf8.decoder).join();
+    final body = jsonDecode(text) as Map<String, dynamic>;
+    if (response.statusCode >= 400) {
+      throw SoukApiException(response.statusCode, body['error']?.toString() ?? 'API request failed');
+    }
+    return body;
+  }
+}
+
+class SoukApiException implements Exception {
+  const SoukApiException(this.statusCode, this.message);
+
+  final int statusCode;
+  final String message;
+
+  @override
+  String toString() => 'SoukApiException($statusCode): $message';
+}
