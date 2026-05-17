@@ -99,21 +99,8 @@ function shopifyTokenData(tokenBody) {
     refreshToken: tokenBody.refresh_token ?? null,
     accessTokenExpiresAt: tokenExpiresAt(tokenBody.expires_in),
     refreshTokenExpiresAt: tokenExpiresAt(tokenBody.refresh_token_expires_in),
-    scopes: tokenBody.scope ?? null,
+    scopes: tokenBody.scope ?? tokenBody.associated_user_scope ?? null,
   };
-}
-
-function hasRequiredShopifyScopes(scopes) {
-  if (!scopes) {
-    return false;
-  }
-  const approvedScopes = new Set(
-    scopes
-      .split(',')
-      .map((scope) => scope.trim())
-      .filter(Boolean),
-  );
-  return requiredShopifyScopes.every((scope) => approvedScopes.has(scope));
 }
 
 function shopifyTokenRequestBody(values) {
@@ -149,11 +136,6 @@ async function refreshShopifyConnection(connection) {
   ensureShopifyOAuthConfig();
   if (!connection.refreshToken) {
     const error = new Error('Reconnect Shopify to upgrade this store to expiring offline tokens');
-    error.status = 409;
-    throw error;
-  }
-  if (!hasRequiredShopifyScopes(connection.scopes)) {
-    const error = new Error('Reconnect Shopify after adding the read_locations scope');
     error.status = 409;
     throw error;
   }
@@ -490,9 +472,7 @@ app.get('/api/shopify/status', async (req, res, next) => {
         updatedAt: true,
       },
     });
-    const needsReconnect = Boolean(
-      connection && (!connection.refreshToken || !hasRequiredShopifyScopes(connection.scopes)),
-    );
+    const needsReconnect = Boolean(connection && !connection.refreshToken);
     res.json({
       connected: Boolean(connection) && !needsReconnect,
       needsReconnect,
