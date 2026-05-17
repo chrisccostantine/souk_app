@@ -1,0 +1,17 @@
+{
+  "name": "souk",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "backend"
+  ],
+  "scripts": {
+    "start": "npm --prefix backend run db:deploy && npm --prefix backend start",
+    "build": "npm --prefix backend run db:generate",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:seed": "npm --prefix backend run db:seed"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
