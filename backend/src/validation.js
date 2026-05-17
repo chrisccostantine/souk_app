@@ -71,6 +71,17 @@ export const updateOrderStatusSchema = z.object({
   ]),
 });
 
+export const connectShopifySchema = z.object({
+  shopId: z.string().min(1),
+  shopDomain: z.string().min(4),
+  accessToken: z.string().min(10),
+  apiVersion: z.string().min(4).default('2026-01'),
+});
+
+export const syncShopifySchema = z.object({
+  shopId: z.string().min(1),
+});
+
 export function validate(schema, input) {
   const result = schema.safeParse(input);
   if (!result.success) {

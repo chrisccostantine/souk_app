@@ -90,6 +90,8 @@ model Shop {
   products      Product[]
   orders        Order[]
   reviews       Review[]
+  collections   Collection[]
+  shopifyConnection ShopifyConnection?
 }
 
 model Product {
@@ -104,13 +106,60 @@ model Product {
   active      Boolean     @default(true)
   rating      Float       @default(0)
   imageUrl    String?
+  shopifyProductId String?
+  shopifyVariantId String?
+  shopifyInventoryItemId String?
+  shopifyLocationId String?
+  syncedFrom  String?
+  lastSyncedAt DateTime?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   shop        Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
   orderItems  OrderItem[]
   favorites   Favorite[]
+  collections ProductCollection[]
 
   @@unique([shopId, slug])
+  @@index([shopifyInventoryItemId])
+}
+
+model Collection {
+  id                String              @id @default(cuid())
+  shopId            String
+  title             String
+  slug              String
+  description       String?
+  imageUrl          String?
+  shopifyCollectionId String?
+  collectionType    String              @default("MANUAL")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  shop              Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  products          ProductCollection[]
+
+  @@unique([shopId, slug])
+}
+
+model ProductCollection {
+  productId    String
+  collectionId String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+}
+
+model ShopifyConnection {
+  id          String   @id @default(cuid())
+  shopId      String   @unique
+  shopDomain  String
+  accessToken String
+  apiVersion  String   @default("2026-01")
+  defaultLocationId String?
+  lastSyncedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
 }
 
 model Order {

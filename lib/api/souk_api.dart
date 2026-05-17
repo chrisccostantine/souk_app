@@ -51,6 +51,15 @@ class SoukApi {
     return body['product'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> connectShopify(Map<String, dynamic> payload) async {
+    final body = await _post('/api/shopify/connect', payload);
+    return body['connection'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> syncShopify(String shopId) async {
+    return _post('/api/shopify/sync', {'shopId': shopId});
+  }
+
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
     final body = await _post('/api/orders', payload);
     return body['order'] as Map<String, dynamic>;

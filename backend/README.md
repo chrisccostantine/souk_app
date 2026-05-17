@@ -50,6 +50,54 @@ npm run db:deploy && npm start
 - `POST /api/shops`
 - `GET /api/products`
 - `POST /api/products`
+- `POST /api/shopify/connect`
+- `POST /api/shopify/sync`
+- `POST /api/shopify/webhooks/inventory-levels-update`
+- `POST /api/shopify/webhooks/products-update`
 - `GET /api/orders`
 - `POST /api/orders`
 - `PATCH /api/orders/:id/status`
+
+## Shopify Sync
+
+Each seller with a Shopify store needs a Shopify Admin API access token. The token should have these scopes:
+
+- `read_products`
+- `read_inventory`
+- `write_inventory`
+
+Connect a Shopify store:
+
+```http
+POST /api/shopify/connect
+Content-Type: application/json
+
+{
+  "shopId": "souk-shop-id",
+  "shopDomain": "merchant-store.myshopify.com",
+  "accessToken": "shpat_...",
+  "apiVersion": "2026-01"
+}
+```
+
+Sync catalog, collections, images, descriptions, prices, and inventory:
+
+```http
+POST /api/shopify/sync
+Content-Type: application/json
+
+{
+  "shopId": "souk-shop-id"
+}
+```
+
+For two-way inventory:
+
+- Souk orders call Shopify inventory adjustment for synced products.
+- Shopify inventory webhooks update Souk product stock.
+- Add `SHOPIFY_WEBHOOK_SECRET` in Railway if webhook signature verification is enabled.
+
+Recommended Shopify webhook topics:
+
+- `inventory_levels/update` -> `/api/shopify/webhooks/inventory-levels-update`
+- `products/update` -> `/api/shopify/webhooks/products-update`
