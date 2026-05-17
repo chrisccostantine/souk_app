@@ -57,13 +57,284 @@ class SoukApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const MarketplaceShell(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+enum AccountRole { customer, seller }
+
+class AppSession {
+  const AppSession({
+    required this.name,
+    required this.email,
+    required this.role,
+    this.store,
+  });
+
+  final String name;
+  final String email;
+  final AccountRole role;
+  final ShopDraft? store;
+}
+
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  AppSession? _session;
+
+  @override
+  Widget build(BuildContext context) {
+    final session = _session;
+    if (session == null) {
+      return AccountEntryPage(
+        onAuthenticated: (nextSession) => setState(() => _session = nextSession),
+      );
+    }
+
+    if (session.role == AccountRole.seller) {
+      return SellerAppShell(
+        session: session,
+        onLogout: () => setState(() => _session = null),
+      );
+    }
+
+    return MarketplaceShell(
+      session: session,
+      onLogout: () => setState(() => _session = null),
+    );
+  }
+}
+
+class AccountEntryPage extends StatefulWidget {
+  const AccountEntryPage({super.key, required this.onAuthenticated});
+
+  final ValueChanged<AppSession> onAuthenticated;
+
+  @override
+  State<AccountEntryPage> createState() => _AccountEntryPageState();
+}
+
+class _AccountEntryPageState extends State<AccountEntryPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _storeName = TextEditingController();
+  final _storeCategory = TextEditingController();
+  final _storeCity = TextEditingController();
+  bool _signup = true;
+  AccountRole _role = AccountRole.customer;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
+    _storeName.dispose();
+    _storeCategory.dispose();
+    _storeCity.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final name = _signup ? _name.text.trim() : _email.text.trim().split('@').first;
+    final store = _role == AccountRole.seller
+        ? ShopDraft(
+            name: _signup ? _storeName.text.trim() : 'My Souk Store',
+            category: _signup ? _storeCategory.text.trim() : 'Store',
+            city: _signup ? _storeCity.text.trim() : 'Beirut',
+            hasDelivery: true,
+          )
+        : null;
+
+    widget.onAuthenticated(
+      AppSession(
+        name: name,
+        email: _email.text.trim(),
+        role: _role,
+        store: store,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSeller = _role == AccountRole.seller;
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          children: [
+            const HeaderBar(),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF244335),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Welcome to Souk',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Customers shop with an account. Stores enter through a seller account and manage their dashboard from there.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.white.withValues(alpha: 0.78),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SegmentedButton<AccountRole>(
+                        segments: const [
+                          ButtonSegment(
+                            value: AccountRole.customer,
+                            icon: Icon(Icons.person_outline),
+                            label: Text('Customer'),
+                          ),
+                          ButtonSegment(
+                            value: AccountRole.seller,
+                            icon: Icon(Icons.storefront_outlined),
+                            label: Text('Store'),
+                          ),
+                        ],
+                        selected: {_role},
+                        onSelectionChanged: (value) => setState(() => _role = value.first),
+                      ),
+                      const SizedBox(height: 12),
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(value: true, label: Text('Sign up')),
+                          ButtonSegment(value: false, label: Text('Login')),
+                        ],
+                        selected: {_signup},
+                        onSelectionChanged: (value) => setState(() => _signup = value.first),
+                      ),
+                      const SizedBox(height: 14),
+                      if (_signup) ...[
+                        TextFormField(
+                          controller: _name,
+                          decoration: const InputDecoration(
+                            labelText: 'Your name',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                          ),
+                          validator: requiredField,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      TextFormField(
+                        controller: _email,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email_outlined),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: requiredField,
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: _password,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.length < 6) {
+                            return 'Use at least 6 characters';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (_signup && isSeller) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          'Store setup',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _storeName,
+                          decoration: const InputDecoration(
+                            labelText: 'Store name',
+                            prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                          ),
+                          validator: requiredField,
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _storeCategory,
+                          decoration: const InputDecoration(
+                            labelText: 'Store category',
+                            prefixIcon: Icon(Icons.category_outlined),
+                          ),
+                          validator: requiredField,
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _storeCity,
+                          decoration: const InputDecoration(
+                            labelText: 'City or area',
+                            prefixIcon: Icon(Icons.location_on_outlined),
+                          ),
+                          validator: requiredField,
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: _submit,
+                          icon: Icon(isSeller ? Icons.storefront : Icons.shopping_bag),
+                          label: Text(_signup ? 'Create account' : 'Login'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class MarketplaceShell extends StatefulWidget {
-  const MarketplaceShell({super.key});
+  const MarketplaceShell({super.key, required this.session, required this.onLogout});
+
+  final AppSession session;
+  final VoidCallback onLogout;
 
   @override
   State<MarketplaceShell> createState() => _MarketplaceShellState();
@@ -76,8 +347,6 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   final List<CartLine> _cart = [];
   final Set<String> _favoriteIds = {'silk-scarf'};
   final List<Order> _orders = List.of(seedOrders);
-  final List<ShopDraft> _stores = [];
-  final List<SellerProduct> _sellerProducts = [];
 
   int get _cartCount => _cart.fold(0, (sum, line) => sum + line.quantity);
 
@@ -175,19 +444,6 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     _showSnack('Order ${order.id} placed');
   }
 
-  void _createStore(ShopDraft store) {
-    setState(() {
-      _stores.insert(0, store);
-      _tabIndex = 4;
-    });
-    _showSnack('${store.name} store draft created');
-  }
-
-  void _createSellerProduct(SellerProduct product) {
-    setState(() => _sellerProducts.insert(0, product));
-    _showSnack('${product.name} added to inventory');
-  }
-
   @override
   Widget build(BuildContext context) {
     final products = sampleProducts.where((product) {
@@ -202,6 +458,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
 
     final pages = [
       HomePage(
+        session: widget.session,
+        onLogout: widget.onLogout,
         query: _query,
         category: _category,
         products: products,
@@ -213,23 +471,26 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onToggleFavorite: _toggleFavorite,
       ),
       StoresPage(
+        session: widget.session,
+        onLogout: widget.onLogout,
         favoriteIds: _favoriteIds,
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
       ),
-      ActivityPage(orders: _orders, favoriteIds: _favoriteIds),
+      ActivityPage(
+        session: widget.session,
+        onLogout: widget.onLogout,
+        orders: _orders,
+        favoriteIds: _favoriteIds,
+      ),
       CartPage(
+        session: widget.session,
+        onLogout: widget.onLogout,
         cart: _cart,
         subtotal: _subtotal,
         onQuantityChanged: _updateQuantity,
         onCheckout: _placeOrder,
-      ),
-      SellerHubPage(
-        stores: _stores,
-        products: _sellerProducts,
-        onCreateStore: _createStore,
-        onCreateProduct: _createSellerProduct,
       ),
     ];
 
@@ -267,12 +528,49 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             ),
             label: 'Basket',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.dashboard_customize_outlined),
-            selectedIcon: Icon(Icons.dashboard_customize),
-            label: 'Sell',
-          ),
         ],
+      ),
+    );
+  }
+}
+
+class SellerAppShell extends StatefulWidget {
+  const SellerAppShell({
+    super.key,
+    required this.session,
+    required this.onLogout,
+  });
+
+  final AppSession session;
+  final VoidCallback onLogout;
+
+  @override
+  State<SellerAppShell> createState() => _SellerAppShellState();
+}
+
+class _SellerAppShellState extends State<SellerAppShell> {
+  final List<SellerProduct> _products = [];
+
+  void _createProduct(SellerProduct product) {
+    setState(() => _products.insert(0, product));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${product.name} added to inventory'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: SellerHubPage(
+          session: widget.session,
+          onLogout: widget.onLogout,
+          products: _products,
+          onCreateProduct: _createProduct,
+        ),
       ),
     );
   }
@@ -281,6 +579,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
 class HomePage extends StatelessWidget {
   const HomePage({
     super.key,
+    required this.session,
+    required this.onLogout,
     required this.query,
     required this.category,
     required this.products,
@@ -292,6 +592,8 @@ class HomePage extends StatelessWidget {
     required this.onToggleFavorite,
   });
 
+  final AppSession session;
+  final VoidCallback onLogout;
   final String query;
   final String category;
   final List<Product> products;
@@ -312,7 +614,7 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const HeaderBar(),
+                HeaderBar(session: session, onLogout: onLogout),
                 const SizedBox(height: 18),
                 const MarketplaceHero(),
                 const SizedBox(height: 14),
@@ -373,12 +675,16 @@ class HomePage extends StatelessWidget {
 class StoresPage extends StatelessWidget {
   const StoresPage({
     super.key,
+    required this.session,
+    required this.onLogout,
     required this.favoriteIds,
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
   });
 
+  final AppSession session;
+  final VoidCallback onLogout;
   final Set<String> favoriteIds;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
@@ -389,7 +695,7 @@ class StoresPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        const HeaderBar(),
+        HeaderBar(session: session, onLogout: onLogout),
         const SizedBox(height: 18),
         const SectionTitle(title: 'Local shops', action: 'Verified sellers'),
         const SizedBox(height: 12),
@@ -409,8 +715,16 @@ class StoresPage extends StatelessWidget {
 }
 
 class ActivityPage extends StatelessWidget {
-  const ActivityPage({super.key, required this.orders, required this.favoriteIds});
+  const ActivityPage({
+    super.key,
+    required this.session,
+    required this.onLogout,
+    required this.orders,
+    required this.favoriteIds,
+  });
 
+  final AppSession session;
+  final VoidCallback onLogout;
   final List<Order> orders;
   final Set<String> favoriteIds;
 
@@ -420,7 +734,7 @@ class ActivityPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        const HeaderBar(),
+        HeaderBar(session: session, onLogout: onLogout),
         const SizedBox(height: 18),
         const SectionTitle(title: 'Orders', action: 'Track purchases'),
         const SizedBox(height: 12),
@@ -447,12 +761,16 @@ class ActivityPage extends StatelessWidget {
 class CartPage extends StatefulWidget {
   const CartPage({
     super.key,
+    required this.session,
+    required this.onLogout,
     required this.cart,
     required this.subtotal,
     required this.onQuantityChanged,
     required this.onCheckout,
   });
 
+  final AppSession session;
+  final VoidCallback onLogout;
   final List<CartLine> cart;
   final double subtotal;
   final void Function(Product product, int quantity) onQuantityChanged;
@@ -482,7 +800,7 @@ class _CartPageState extends State<CartPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        const HeaderBar(),
+        HeaderBar(session: widget.session, onLogout: widget.onLogout),
         const SizedBox(height: 18),
         const SectionTitle(title: 'Basket', action: 'Direct checkout'),
         const SizedBox(height: 12),
@@ -529,15 +847,15 @@ class _CartPageState extends State<CartPage> {
 class SellerHubPage extends StatefulWidget {
   const SellerHubPage({
     super.key,
-    required this.stores,
+    required this.session,
+    required this.onLogout,
     required this.products,
-    required this.onCreateStore,
     required this.onCreateProduct,
   });
 
-  final List<ShopDraft> stores;
+  final AppSession session;
+  final VoidCallback onLogout;
   final List<SellerProduct> products;
-  final ValueChanged<ShopDraft> onCreateStore;
   final ValueChanged<SellerProduct> onCreateProduct;
 
   @override
@@ -545,43 +863,17 @@ class SellerHubPage extends StatefulWidget {
 }
 
 class _SellerHubPageState extends State<SellerHubPage> {
-  final _storeFormKey = GlobalKey<FormState>();
   final _productFormKey = GlobalKey<FormState>();
-  final _storeName = TextEditingController();
-  final _storeCategory = TextEditingController();
-  final _storeCity = TextEditingController();
   final _productName = TextEditingController();
   final _productPrice = TextEditingController();
   final _productStock = TextEditingController(text: '12');
-  bool _delivery = true;
 
   @override
   void dispose() {
-    _storeName.dispose();
-    _storeCategory.dispose();
-    _storeCity.dispose();
     _productName.dispose();
     _productPrice.dispose();
     _productStock.dispose();
     super.dispose();
-  }
-
-  void _submitStore() {
-    if (!_storeFormKey.currentState!.validate()) {
-      return;
-    }
-    widget.onCreateStore(
-      ShopDraft(
-        name: _storeName.text.trim(),
-        category: _storeCategory.text.trim(),
-        city: _storeCity.text.trim(),
-        hasDelivery: _delivery,
-      ),
-    );
-    _storeName.clear();
-    _storeCategory.clear();
-    _storeCity.clear();
-    setState(() => _delivery = true);
   }
 
   void _submitProduct() {
@@ -602,25 +894,24 @@ class _SellerHubPageState extends State<SellerHubPage> {
 
   @override
   Widget build(BuildContext context) {
+    final store = widget.session.store ??
+        const ShopDraft(
+          name: 'My Souk Store',
+          category: 'Store',
+          city: 'Beirut',
+          hasDelivery: true,
+        );
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        const HeaderBar(),
+        HeaderBar(session: widget.session, onLogout: widget.onLogout),
         const SizedBox(height: 18),
         const SellerHero(),
         const SizedBox(height: 16),
+        SellerStoreCard(store: store, ownerName: widget.session.name),
+        const SizedBox(height: 16),
         const SellerMetricGrid(),
         const SizedBox(height: 16),
-        StoreFormCard(
-          formKey: _storeFormKey,
-          name: _storeName,
-          category: _storeCategory,
-          city: _storeCity,
-          delivery: _delivery,
-          onDeliveryChanged: (value) => setState(() => _delivery = value),
-          onSubmit: _submitStore,
-        ),
-        const SizedBox(height: 12),
         ProductFormCard(
           formKey: _productFormKey,
           name: _productName,
@@ -628,17 +919,6 @@ class _SellerHubPageState extends State<SellerHubPage> {
           stock: _productStock,
           onSubmit: _submitProduct,
         ),
-        const SizedBox(height: 16),
-        SectionTitle(title: 'Store drafts', action: '${widget.stores.length} drafts'),
-        const SizedBox(height: 10),
-        if (widget.stores.isEmpty)
-          const EmptyState(
-            icon: Icons.add_business,
-            title: 'No store drafts yet',
-            message: 'Create your first shop profile, then add products and delivery rules.',
-          )
-        else
-          for (final store in widget.stores) DraftStoreTile(draft: store),
         const SizedBox(height: 16),
         SectionTitle(title: 'Inventory', action: '${widget.products.length} products'),
         const SizedBox(height: 10),
@@ -660,7 +940,10 @@ class _SellerHubPageState extends State<SellerHubPage> {
 }
 
 class HeaderBar extends StatelessWidget {
-  const HeaderBar({super.key});
+  const HeaderBar({super.key, this.session, this.onLogout});
+
+  final AppSession? session;
+  final VoidCallback? onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -687,19 +970,23 @@ class HeaderBar extends StatelessWidget {
                     ),
               ),
               Text(
-                'Shops, makers, and quick checkout',
+                session == null ? 'Shops, makers, and quick checkout' : '${session!.name} - ${_roleLabel(session!.role)}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
               ),
             ],
           ),
         ),
         IconButton.filledTonal(
-          tooltip: 'Notifications',
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none),
+          tooltip: session == null ? 'Notifications' : 'Logout',
+          onPressed: onLogout,
+          icon: Icon(session == null ? Icons.notifications_none : Icons.logout),
         ),
       ],
     );
+  }
+
+  String _roleLabel(AccountRole role) {
+    return role == AccountRole.seller ? 'Store account' : 'Customer account';
   }
 }
 
@@ -1596,6 +1883,53 @@ class FavoriteTile extends StatelessWidget {
   }
 }
 
+class SellerStoreCard extends StatelessWidget {
+  const SellerStoreCard({super.key, required this.store, required this.ownerName});
+
+  final ShopDraft store;
+  final String ownerName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: const Icon(Icons.storefront, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(store.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                  const SizedBox(height: 4),
+                  Text('${store.category} - ${store.city}'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      Tag(label: 'Owner: $ownerName'),
+                      Tag(label: store.hasDelivery ? 'Delivery enabled' : 'Pickup only'),
+                      const Tag(label: 'Draft store'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SellerMetricGrid extends StatelessWidget {
   const SellerMetricGrid({super.key});
 
@@ -1641,74 +1975,6 @@ class SellerMetricGrid extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class StoreFormCard extends StatelessWidget {
-  const StoreFormCard({
-    super.key,
-    required this.formKey,
-    required this.name,
-    required this.category,
-    required this.city,
-    required this.delivery,
-    required this.onDeliveryChanged,
-    required this.onSubmit,
-  });
-
-  final GlobalKey<FormState> formKey;
-  final TextEditingController name;
-  final TextEditingController category;
-  final TextEditingController city;
-  final bool delivery;
-  final ValueChanged<bool> onDeliveryChanged;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Create a store', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Store name', prefixIcon: Icon(Icons.store_mall_directory_outlined)),
-                validator: requiredField,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: category,
-                decoration: const InputDecoration(labelText: 'Main category', prefixIcon: Icon(Icons.category_outlined)),
-                validator: requiredField,
-              ),
-              const SizedBox(height: 10),
-              TextFormField(
-                controller: city,
-                decoration: const InputDecoration(labelText: 'City or area', prefixIcon: Icon(Icons.location_on_outlined)),
-                validator: requiredField,
-              ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Offer delivery'),
-                value: delivery,
-                onChanged: onDeliveryChanged,
-              ),
-              FilledButton.icon(
-                onPressed: onSubmit,
-                icon: const Icon(Icons.add_business),
-                label: const Text('Launch store draft'),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1777,27 +2043,6 @@ class ProductFormCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class DraftStoreTile extends StatelessWidget {
-  const DraftStoreTile({super.key, required this.draft});
-
-  final ShopDraft draft;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          child: const Icon(Icons.storefront, color: Colors.white),
-        ),
-        title: Text(draft.name, style: const TextStyle(fontWeight: FontWeight.w900)),
-        subtitle: Text('${draft.category} - ${draft.city}'),
-        trailing: Icon(draft.hasDelivery ? Icons.local_shipping : Icons.store),
       ),
     );
   }

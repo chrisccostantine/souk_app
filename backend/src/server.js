@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -8,7 +9,9 @@ import {
   createOrderSchema,
   createProductSchema,
   createShopSchema,
+  loginSchema,
   slugify,
+  signupSchema,
   updateOrderStatusSchema,
   validate,
 } from './validation.js';
@@ -26,6 +29,118 @@ app.get('/health', async (_req, res, next) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ ok: true, service: 'souk-backend' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+function makePasswordSecret(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return {
+    salt,
+    hash: crypto.scryptSync(password, salt, 64).toString('hex'),
+  };
+}
+
+function passwordMatches(password, user) {
+  if (!user.passwordHash || !user.passwordSalt) {
+    return false;
+  }
+  return makePasswordSecret(password, user.passwordSalt).hash === user.passwordHash;
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+  };
+}
+
+app.post('/api/auth/signup', async (req, res, next) => {
+  try {
+    const input = validate(signupSchema, req.body);
+
+    if (input.role === 'SELLER' && !input.store) {
+      const error = new Error('Store details are required for seller signup');
+      error.status = 400;
+      throw error;
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) {
+      const error = new Error('An account with this email already exists');
+      error.status = 409;
+      throw error;
+    }
+
+    const passwordSecret = makePasswordSecret(input.password);
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          role: input.role,
+          passwordHash: passwordSecret.hash,
+          passwordSalt: passwordSecret.salt,
+        },
+      });
+
+      let shop = null;
+      if (input.role === 'SELLER') {
+        shop = await tx.shop.create({
+          data: {
+            ownerId: user.id,
+            name: input.store.name,
+            slug: `${slugify(input.store.name)}-${Date.now().toString(36)}`,
+            category: input.store.category,
+            city: input.store.city,
+            story: input.store.story,
+            minimumOrder: input.store.minimumOrder,
+            deliveryLabel: input.store.deliveryLabel,
+            status: 'DRAFT',
+          },
+        });
+      }
+
+      return { user, shop };
+    });
+
+    res.status(201).json({
+      user: publicUser(result.user),
+      shop: result.shop,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/login', async (req, res, next) => {
+  try {
+    const input = validate(loginSchema, req.body);
+    const user = await prisma.user.findUnique({
+      where: { email: input.email },
+      include: { shops: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+
+    if (!user || !passwordMatches(input.password, user)) {
+      const error = new Error('Invalid email or password');
+      error.status = 401;
+      throw error;
+    }
+
+    if (input.role && user.role !== input.role) {
+      const error = new Error(`This account is registered as ${user.role}`);
+      error.status = 403;
+      throw error;
+    }
+
+    res.json({
+      user: publicUser(user),
+      shop: user.shops[0] ?? null,
+    });
   } catch (error) {
     next(error);
   }

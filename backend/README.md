@@ -44,6 +44,8 @@ npm run db:deploy && npm start
 ## Useful Endpoints
 
 - `GET /health`
+- `POST /api/auth/signup`
+- `POST /api/auth/login`
 - `GET /api/shops`
 - `POST /api/shops`
 - `GET /api/products`

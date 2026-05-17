@@ -3,10 +3,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:souk_app/main.dart';
 
 void main() {
-  testWidgets('Souk app adds an item and places an order', (
+  testWidgets('Customer signs up, shops, and places an order', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const SoukApp());
+
+    expect(find.text('Welcome to Souk'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Your name'), 'Chris');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'chris@example.com');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret1');
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Featured today'), findsOneWidget);
     expect(find.text('Zaatar Breakfast Box'), findsOneWidget);
@@ -18,27 +26,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Checkout details'), findsOneWidget);
-    expect(find.text('Place order'), findsOneWidget);
-
     await tester.tap(find.text('Place order'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Orders'), findsWidgets);
     expect(find.textContaining('Placed'), findsOneWidget);
   });
 
-  testWidgets('Seller can create a store draft and product', (
+  testWidgets('Store owner signs up with store details and adds inventory', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const SoukApp());
 
-    await tester.tap(find.text('Sell'));
+    await tester.tap(find.text('Store'));
     await tester.pumpAndSettle();
 
+    await tester.enterText(find.widgetWithText(TextFormField, 'Your name'), 'Maya');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'maya@store.com');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'secret1');
     await tester.enterText(find.widgetWithText(TextFormField, 'Store name'), 'Mint Market');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Main category'), 'Gifts');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Store category'), 'Gifts');
     await tester.enterText(find.widgetWithText(TextFormField, 'City or area'), 'Beirut');
-    await tester.tap(find.text('Launch store draft'));
+    await tester.tap(find.text('Create account'));
     await tester.pumpAndSettle();
 
     expect(find.text('Mint Market'), findsOneWidget);

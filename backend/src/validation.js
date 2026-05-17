@@ -11,6 +11,28 @@ export const createShopSchema = z.object({
   deliveryLabel: z.string().min(2).default('Delivery available'),
 });
 
+export const signupSchema = z.object({
+  role: z.enum(['CUSTOMER', 'SELLER']),
+  name: z.string().min(2),
+  email: z.string().email(),
+  password: z.string().min(6),
+  phone: z.string().optional(),
+  store: z.object({
+    name: z.string().min(2),
+    category: z.string().min(2),
+    city: z.string().min(2),
+    story: z.string().min(10),
+    minimumOrder: z.coerce.number().min(0).default(0),
+    deliveryLabel: z.string().min(2).default('Delivery available'),
+  }).optional(),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+  role: z.enum(['CUSTOMER', 'SELLER']).optional(),
+});
+
 export const createProductSchema = z.object({
   shopId: z.string().min(1),
   name: z.string().min(2),

@@ -1,6 +1,14 @@
 import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
+
+function makePasswordSecret(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return {
+    salt,
+    hash: crypto.scryptSync(password, salt, 64).toString('hex'),
+  };
+}
 
 const shops = [
   {
@@ -105,11 +113,18 @@ async function main() {
   for (const shopData of shops) {
     const owner = await prisma.user.upsert({
       where: { email: shopData.owner.email },
-      update: { name: shopData.owner.name, role: 'SELLER' },
+      update: {
+        name: shopData.owner.name,
+        role: 'SELLER',
+        passwordHash: makePasswordSecret('secret1', shopData.owner.email).hash,
+        passwordSalt: shopData.owner.email,
+      },
       create: {
         name: shopData.owner.name,
         email: shopData.owner.email,
         role: 'SELLER',
+        passwordHash: makePasswordSecret('secret1', shopData.owner.email).hash,
+        passwordSalt: shopData.owner.email,
       },
     });
 
