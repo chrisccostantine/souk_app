@@ -27,7 +27,14 @@ The API runs on `http://localhost:8080` by default.
 1. Create a Railway project.
 2. Add a PostgreSQL database.
 3. Add this `backend` folder as a Railway service.
-4. Set `DATABASE_URL` from the Railway PostgreSQL plugin.
+4. In the backend service, open **Variables** and add a reference variable:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+If your PostgreSQL service has a different name, replace `Postgres` with that exact service name.
+
 5. Deploy. Railway will run:
 
 ```bash

@@ -32,4 +32,4 @@ npm run db:seed
 npm run dev
 ```
 
-Deploy the `backend/` service to Railway with a PostgreSQL database attached. Railway should provide `DATABASE_URL`; the included `railway.json` runs migrations before starting the API.
+Deploy the backend to Railway with a PostgreSQL database attached. In the backend service variables, add `DATABASE_URL=${{Postgres.DATABASE_URL}}`, replacing `Postgres` if your database service has another name. The included `railway.json` runs migrations before starting the API.
