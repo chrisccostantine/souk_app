@@ -172,7 +172,6 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     }
 
     if (!_signup &&
-        _role == AccountRole.admin &&
         _email.text.trim().toLowerCase() == 'scalora.socialmedia.agency@gmail.com' &&
         _password.text == '12345678') {
       widget.onAuthenticated(
@@ -326,17 +325,12 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           ButtonSegment(
                             value: AccountRole.customer,
                             icon: Icon(Icons.person_outline),
-                            label: Text('Customer'),
+                            label: Text('Shopper'),
                           ),
                           ButtonSegment(
                             value: AccountRole.seller,
                             icon: Icon(Icons.storefront_outlined),
                             label: Text('Store'),
-                          ),
-                          ButtonSegment(
-                            value: AccountRole.admin,
-                            icon: Icon(Icons.admin_panel_settings_outlined),
-                            label: Text('Admin'),
                           ),
                         ],
                         selected: {_role},
@@ -389,13 +383,6 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           return null;
                         },
                       ),
-                      if (_signup && _role == AccountRole.admin) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          'Admin accounts are private. Use login.',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ],
                       if (_signup && isSeller) ...[
                         const SizedBox(height: 16),
                         Text(
