@@ -48,6 +48,33 @@ class SoukApi {
     return body['shop'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> updateShopProfile(String shopId, Map<String, dynamic> payload) async {
+    final body = await _patch('/api/shops/$shopId/profile', payload);
+    return body['shop'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> fetchShopGrowth(String shopId) async {
+    return _get('/api/shops/$shopId/growth');
+  }
+
+  Future<Map<String, dynamic>> followShop(String shopId, Map<String, dynamic> payload) async {
+    return _post('/api/shops/$shopId/follow', payload);
+  }
+
+  Future<Map<String, dynamic>> trackShopAnalytics(String shopId, Map<String, dynamic> payload) async {
+    return _post('/api/shops/$shopId/analytics', payload);
+  }
+
+  Future<Map<String, dynamic>> createCampaign(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/campaigns', payload);
+    return body['campaign'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createPlacement(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/placements', payload);
+    return body['placement'] as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> fetchShopInventory(String shopId) async {
     return _get('/api/shops/$shopId/inventory');
   }

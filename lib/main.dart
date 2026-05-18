@@ -456,6 +456,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   int _tabIndex = 0;
   String _query = '';
   String _category = 'All';
+  MarketplaceFilters _filters = const MarketplaceFilters();
   final List<CartLine> _cart = [];
   final Set<String> _favoriteIds = {};
   final List<Order> _orders = [];
@@ -469,6 +470,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
 
   double get _subtotal =>
       _cart.fold(0, (sum, line) => sum + (line.product.price * line.quantity));
+
+  int get _cartShopCount => _cart.map((line) => line.product.shop.id).toSet().length;
 
   @override
   void initState() {
@@ -607,47 +610,64 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     if (_cart.isEmpty) {
       return;
     }
-    final shopIds = _cart.map((line) => line.product.shop.id).toSet();
-    if (shopIds.length > 1) {
-      _showSnack('Checkout one store at a time');
-      return;
-    }
     if (soukApiUrl.isEmpty) {
       _showSnack('SOUK_API_URL is required for checkout');
       return;
     }
     try {
-      final body = await SoukApi(baseUrl: soukApiUrl).createOrder({
-        'customerName': widget.session.name,
-        'customerEmail': widget.session.email,
-        'shopId': shopIds.first,
-        'items': [
-          for (final line in _cart)
-            {'productId': line.product.id, 'quantity': line.quantity},
-        ],
-        'fulfillmentMethod': info.deliveryMethod == 'Pickup' ? 'PICKUP' : 'DELIVERY',
-        'paymentMethod': 'CASH_ON_DELIVERY',
-        'deliveryAddress': info.address,
-        'note': info.note,
-      });
-      final orderJson = body['order'] as Map<String, dynamic>? ?? body;
-      final total = parseDouble(orderJson['total']);
-      final id = orderJson['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString();
-      final order = Order(
-        id: '#${id.substring(0, id.length > 8 ? 8 : id.length)}',
-        shopName: _cart.first.product.shop.name,
-        total: total == 0 ? _subtotal + 3.5 : total,
-        status: orderJson['status'] as String? ?? 'PLACED',
-        eta: info.deliveryMethod == 'Pickup' ? 'Ready in 2 hours' : 'Today, 6-8 PM',
-        itemCount: _cartCount,
-      );
+      final groupedLines = <String, List<CartLine>>{};
+      for (final line in _cart) {
+        groupedLines.putIfAbsent(line.product.shop.id, () => []).add(line);
+      }
+      final placedOrders = <Order>[];
+      final api = SoukApi(baseUrl: soukApiUrl);
+
+      for (final entry in groupedLines.entries) {
+        final lines = entry.value;
+        final body = await api.createOrder({
+          'customerName': widget.session.name,
+          'customerEmail': widget.session.email,
+          'shopId': entry.key,
+          'items': [
+            for (final line in lines)
+              {'productId': line.product.id, 'quantity': line.quantity},
+          ],
+          'fulfillmentMethod': info.deliveryMethod == 'Pickup' ? 'PICKUP' : 'DELIVERY',
+          'paymentMethod': paymentMethodCode(info.paymentMethod),
+          'deliveryAddress': info.address,
+          'note': info.note,
+        });
+        final orderJson = body['order'] as Map<String, dynamic>? ?? body;
+        final total = parseDouble(orderJson['total']);
+        final id = orderJson['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString();
+        placedOrders.add(
+          Order(
+            id: '#${id.substring(0, id.length > 8 ? 8 : id.length)}',
+            shopName: lines.first.product.shop.name,
+            total: total == 0
+                ? lines.fold<double>(
+                      0,
+                      (sum, line) => sum + line.product.price * line.quantity,
+                    ) +
+                    (info.deliveryMethod == 'Pickup' ? 0 : 3.5)
+                : total,
+            status: orderJson['status'] as String? ?? 'PLACED',
+            eta: info.deliveryMethod == 'Pickup' ? 'Ready in 2 hours' : 'Today, 6-8 PM',
+            itemCount: lines.fold(0, (sum, line) => sum + line.quantity),
+          ),
+        );
+      }
       setState(() {
-        _orders.insert(0, order);
+        _orders.insertAll(0, placedOrders);
         _cart.clear();
         _tabIndex = 2;
       });
       _loadCatalog();
-      _showSnack('Order ${order.id} placed');
+      _showSnack(
+        placedOrders.length == 1
+            ? 'Order ${placedOrders.first.id} placed'
+            : '${placedOrders.length} store orders placed',
+      );
     } on SoukApiException catch (error) {
       _showSnack(error.message);
     } catch (_) {
@@ -665,9 +685,11 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           q.isEmpty ||
           product.name.toLowerCase().contains(q) ||
           product.shop.name.toLowerCase().contains(q) ||
-          product.category.toLowerCase().contains(q);
-      return inCategory && inSearch;
-    }).toList();
+          product.category.toLowerCase().contains(q) ||
+          product.collectionNames.any((name) => name.toLowerCase().contains(q));
+      return inCategory && inSearch && _filters.matches(product);
+    }).toList()
+      ..sort(_filters.compare);
 
     final pages = [
       HomePage(
@@ -688,6 +710,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onViewAllFeatured: () => setState(() => _showAllFeatured = !_showAllFeatured),
         onQueryChanged: (value) => setState(() => _query = value),
         onCategoryChanged: (value) => setState(() => _category = value),
+        filters: _filters,
+        filterOptions: MarketplaceFilterOptions.fromProducts(_products),
+        onFiltersChanged: (value) => setState(() => _filters = value),
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
@@ -714,6 +739,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onLogout: widget.onLogout,
         cart: _cart,
         subtotal: _subtotal,
+        shopCount: _cartShopCount,
         onQuantityChanged: _updateQuantity,
         onCheckout: _placeOrder,
       ),
@@ -803,6 +829,9 @@ class HomePage extends StatelessWidget {
     required this.onViewAllFeatured,
     required this.onQueryChanged,
     required this.onCategoryChanged,
+    required this.filters,
+    required this.filterOptions,
+    required this.onFiltersChanged,
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
@@ -821,13 +850,17 @@ class HomePage extends StatelessWidget {
   final VoidCallback onViewAllFeatured;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onCategoryChanged;
+  final MarketplaceFilters filters;
+  final MarketplaceFilterOptions filterOptions;
+  final ValueChanged<MarketplaceFilters> onFiltersChanged;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
 
   @override
   Widget build(BuildContext context) {
-    final compactFeatured = query.trim().isEmpty && category == 'All' && !showAllFeatured;
+    final compactFeatured =
+        query.trim().isEmpty && category == 'All' && !filters.hasActiveFilters && !showAllFeatured;
     final chosenFeatured = products.where((product) => product.featured).toList();
     final featuredProducts = compactFeatured
         ? (chosenFeatured.isEmpty ? products : chosenFeatured).take(7).toList()
@@ -844,7 +877,13 @@ class HomePage extends StatelessWidget {
                 const SizedBox(height: 18),
                 const MarketplaceHero(),
                 const SizedBox(height: 14),
-                SearchField(value: query, onChanged: onQueryChanged),
+                SearchField(
+                  value: query,
+                  filters: filters,
+                  options: filterOptions,
+                  onChanged: onQueryChanged,
+                  onFiltersChanged: onFiltersChanged,
+                ),
                 const SizedBox(height: 12),
                 CategoryRail(
                   selected: category,
@@ -859,6 +898,10 @@ class HomePage extends StatelessWidget {
                     QuickAction('Fresh', Icons.flash_on, Color(0xFF1F7A4D)),
                   ],
                 ),
+                const SizedBox(height: 16),
+                MarketplaceDiscoveryPanel(products: products),
+                const SizedBox(height: 16),
+                const ShopperGrowthPanel(),
                 const SizedBox(height: 16),
                 SectionTitle(
                   title: 'Featured today',
@@ -1063,6 +1106,7 @@ class CartPage extends StatefulWidget {
     required this.onLogout,
     required this.cart,
     required this.subtotal,
+    required this.shopCount,
     required this.onQuantityChanged,
     required this.onCheckout,
   });
@@ -1071,6 +1115,7 @@ class CartPage extends StatefulWidget {
   final VoidCallback onLogout;
   final List<CartLine> cart;
   final double subtotal;
+  final int shopCount;
   final void Function(Product product, int quantity) onQuantityChanged;
   final ValueChanged<CheckoutInfo> onCheckout;
 
@@ -1094,13 +1139,19 @@ class _CartPageState extends State<CartPage> {
   @override
   Widget build(BuildContext context) {
     const delivery = 3.5;
-    final total = widget.cart.isEmpty ? 0.0 : widget.subtotal + delivery;
+    final deliveryTotal = _method == 'Pickup' || widget.cart.isEmpty
+        ? 0.0
+        : delivery * widget.shopCount;
+    final total = widget.cart.isEmpty ? 0.0 : widget.subtotal + deliveryTotal;
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
         HeaderBar(session: widget.session, onLogout: widget.onLogout),
         const SizedBox(height: 18),
-        const SectionTitle(title: 'Basket', action: 'Direct checkout'),
+        SectionTitle(
+          title: 'Basket',
+          action: widget.shopCount > 1 ? '${widget.shopCount} stores' : 'Direct checkout',
+        ),
         const SizedBox(height: 12),
         if (widget.cart.isEmpty)
           const EmptyState(
@@ -1129,7 +1180,7 @@ class _CartPageState extends State<CartPage> {
           const SizedBox(height: 12),
           CheckoutSummary(
             subtotal: widget.subtotal,
-            delivery: delivery,
+            delivery: deliveryTotal,
             total: total,
             onCheckout: () => widget.onCheckout(
               CheckoutInfo(
@@ -1561,6 +1612,8 @@ class _SellerHubPageState extends State<SellerHubPage>
         const SizedBox(height: 16),
         SellerStoreCard(store: store, ownerName: widget.session.name),
         const SizedBox(height: 16),
+        StoreOnboardingPanel(store: store),
+        const SizedBox(height: 16),
         ShopifySyncCard(
           shopifyStore: _shopifyStore,
           connected: _shopifyConnected,
@@ -1576,6 +1629,12 @@ class _SellerHubPageState extends State<SellerHubPage>
         SellerMetricGrid(
           productCount: productCount,
           collectionCount: _syncedCollections.length,
+        ),
+        const SizedBox(height: 16),
+        SellerFeatureSuite(
+          productCount: productCount,
+          orderCount: _sellerOrders.length,
+          synced: _shopifySynced,
         ),
         const SizedBox(height: 16),
         SectionTitle(
@@ -1825,10 +1884,20 @@ class HeroPill extends StatelessWidget {
 }
 
 class SearchField extends StatelessWidget {
-  const SearchField({super.key, required this.value, required this.onChanged});
+  const SearchField({
+    super.key,
+    required this.value,
+    required this.filters,
+    required this.options,
+    required this.onChanged,
+    required this.onFiltersChanged,
+  });
 
   final String value;
+  final MarketplaceFilters filters;
+  final MarketplaceFilterOptions options;
   final ValueChanged<String> onChanged;
+  final ValueChanged<MarketplaceFilters> onFiltersChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1840,9 +1909,264 @@ class SearchField extends StatelessWidget {
         prefixIcon: const Icon(Icons.search),
         suffixIcon: IconButton(
           tooltip: 'Filters',
-          onPressed: () {},
-          icon: const Icon(Icons.tune),
+          onPressed: () async {
+            final nextFilters = await showModalBottomSheet<MarketplaceFilters>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (context) => MarketplaceFilterSheet(
+                initialFilters: filters,
+                options: options,
+              ),
+            );
+            if (nextFilters != null) {
+              onFiltersChanged(nextFilters);
+            }
+          },
+          icon: Badge(
+            isLabelVisible: filters.hasActiveFilters,
+            smallSize: 8,
+            child: const Icon(Icons.tune),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class MarketplaceFilterSheet extends StatefulWidget {
+  const MarketplaceFilterSheet({
+    super.key,
+    required this.initialFilters,
+    required this.options,
+  });
+
+  final MarketplaceFilters initialFilters;
+  final MarketplaceFilterOptions options;
+
+  @override
+  State<MarketplaceFilterSheet> createState() => _MarketplaceFilterSheetState();
+}
+
+class _MarketplaceFilterSheetState extends State<MarketplaceFilterSheet> {
+  late MarketplaceFilters _filters;
+
+  @override
+  void initState() {
+    super.initState();
+    _filters = widget.initialFilters;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 18,
+          right: 18,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 18,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Filters',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _filters = const MarketplaceFilters()),
+                    child: const Text('Reset'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<ProductSort>(
+                initialValue: _filters.sort,
+                decoration: const InputDecoration(
+                  labelText: 'Sort',
+                  prefixIcon: Icon(Icons.sort),
+                ),
+                items: const [
+                  DropdownMenuItem(value: ProductSort.featured, child: Text('Featured first')),
+                  DropdownMenuItem(value: ProductSort.newest, child: Text('Newest')),
+                  DropdownMenuItem(value: ProductSort.priceLow, child: Text('Price: low to high')),
+                  DropdownMenuItem(value: ProductSort.priceHigh, child: Text('Price: high to low')),
+                  DropdownMenuItem(value: ProductSort.rating, child: Text('Highest rated')),
+                ],
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _filters = _filters.copyWith(sort: value));
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String?>(
+                initialValue: _filters.city,
+                decoration: const InputDecoration(
+                  labelText: 'Location',
+                  prefixIcon: Icon(Icons.place_outlined),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(
+                    value: null,
+                    child: Text('All locations'),
+                  ),
+                  for (final city in widget.options.cities)
+                    DropdownMenuItem<String?>(value: city, child: Text(city)),
+                ],
+                onChanged: (value) => setState(
+                  () => _filters = _filters.copyWith(
+                    city: value,
+                    clearCity: value == null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: _filters.minPrice?.toStringAsFixed(0),
+                      decoration: const InputDecoration(
+                        labelText: 'Min price',
+                        prefixIcon: Icon(Icons.attach_money),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        final parsed = double.tryParse(value);
+                        setState(
+                          () => _filters = _filters.copyWith(
+                            minPrice: parsed,
+                            clearMinPrice: value.trim().isEmpty,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: _filters.maxPrice?.toStringAsFixed(0),
+                      decoration: const InputDecoration(
+                        labelText: 'Max price',
+                        prefixIcon: Icon(Icons.price_change_outlined),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        final parsed = double.tryParse(value);
+                        setState(
+                          () => _filters = _filters.copyWith(
+                            maxPrice: parsed,
+                            clearMaxPrice: value.trim().isEmpty,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('In stock only'),
+                value: _filters.inStockOnly,
+                onChanged: (value) => setState(
+                  () => _filters = _filters.copyWith(inStockOnly: value),
+                ),
+              ),
+              FilterWrap(
+                title: 'Sizes',
+                values: widget.options.sizes,
+                selected: _filters.size,
+                onSelected: (value) => setState(
+                  () => _filters = _filters.copyWith(
+                    size: value,
+                    clearSize: value == null,
+                  ),
+                ),
+              ),
+              FilterWrap(
+                title: 'Colors',
+                values: widget.options.colors,
+                selected: _filters.color,
+                onSelected: (value) => setState(
+                  () => _filters = _filters.copyWith(
+                    color: value,
+                    clearColor: value == null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.pop(context, _filters),
+                  icon: const Icon(Icons.check),
+                  label: const Text('Apply filters'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FilterWrap extends StatelessWidget {
+  const FilterWrap({
+    super.key,
+    required this.title,
+    required this.values,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String title;
+  final List<String> values;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (values.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilterChip(
+                selected: selected == null,
+                showCheckmark: false,
+                label: const Text('All'),
+                onSelected: (_) => onSelected(null),
+              ),
+              for (final value in values)
+                FilterChip(
+                  selected: selected == value,
+                  showCheckmark: false,
+                  label: Text(value),
+                  onSelected: (_) => onSelected(value),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1916,6 +2240,121 @@ class QuickActions extends StatelessWidget {
           if (item != items.last) const SizedBox(width: 8),
         ],
       ],
+    );
+  }
+}
+
+class MarketplaceDiscoveryPanel extends StatelessWidget {
+  const MarketplaceDiscoveryPanel({super.key, required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = [
+      DiscoveryItem('Trending', Icons.trending_up, '${products.where((product) => product.featured).length} featured'),
+      DiscoveryItem('New arrivals', Icons.new_releases_outlined, '${products.length} live'),
+      DiscoveryItem('Best sellers', Icons.workspace_premium_outlined, 'High intent'),
+      DiscoveryItem('Local brands', Icons.location_city_outlined, '${products.map((product) => product.shop.id).toSet().length} stores'),
+      const DiscoveryItem('Sneakers', Icons.directions_run, 'Size filters'),
+      const DiscoveryItem('Jewelry', Icons.diamond_outlined, 'Gift ready'),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionTitle(title: 'Discover', action: 'Social marketplace'),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 98,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: sections.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) => SizedBox(
+              width: 142,
+              child: DiscoveryCard(item: sections[index]),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ShopperGrowthPanel extends StatelessWidget {
+  const ShopperGrowthPanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Rewards and social shopping',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            const Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FeaturePill(icon: Icons.favorite_border, label: 'Likes'),
+                FeaturePill(icon: Icons.bookmark_border, label: 'Save products'),
+                FeaturePill(icon: Icons.storefront_outlined, label: 'Follow stores'),
+                FeaturePill(icon: Icons.reviews_outlined, label: 'Verified reviews'),
+                FeaturePill(icon: Icons.card_giftcard, label: 'Loyalty points'),
+                FeaturePill(icon: Icons.notifications_active_outlined, label: 'Drop alerts'),
+                FeaturePill(icon: Icons.video_collection_outlined, label: 'Stories and reels'),
+                FeaturePill(icon: Icons.verified_outlined, label: 'Trust badges'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class DiscoveryCard extends StatelessWidget {
+  const DiscoveryCard({super.key, required this.item});
+
+  final DiscoveryItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(item.icon, color: Theme.of(context).colorScheme.primary),
+            const Spacer(),
+            Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)),
+            Text(item.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class FeaturePill extends StatelessWidget {
+  const FeaturePill({super.key, required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Icon(icon, size: 17),
+      label: Text(label),
+      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -2363,6 +2802,32 @@ class ProductDetailSheet extends StatefulWidget {
   State<ProductDetailSheet> createState() => _ProductDetailSheetState();
 }
 
+class TrustAndReviewStrip extends StatelessWidget {
+  const TrustAndReviewStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: const Color(0xFFF8F4EC),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.verified_user_outlined, color: Color(0xFF1F7A4D)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Verified purchase reviews, return policy, and dealer badges help shoppers buy with confidence.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductDetailSheetState extends State<ProductDetailSheet> {
   ProductVariant? _selectedVariant;
 
@@ -2371,6 +2836,14 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
     super.initState();
     _selectedVariant = firstWhereOrNull(widget.product.variants, (variant) => variant.stock > 0) ??
         (widget.product.variants.isEmpty ? null : widget.product.variants.first);
+  }
+
+  Future<void> _openWhatsApp() async {
+    final message = Uri.encodeComponent(
+      'Hi ${widget.product.shop.name}, I am interested in ${widget.product.name} on Souk.',
+    );
+    final url = Uri.parse('https://wa.me/?text=$message');
+    await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -2440,8 +2913,32 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                 Tag(label: '${widget.product.rating.toStringAsFixed(1)} rating'),
                 Tag(label: '${widget.product.stock} in stock'),
                 Tag(label: widget.product.shop.delivery),
+                const Tag(label: 'Verified store'),
+                const Tag(label: 'Authenticity badge'),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _openWhatsApp,
+                    icon: const Icon(Icons.chat_outlined),
+                    label: const Text('WhatsApp'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {},
+                    icon: const Icon(Icons.ios_share),
+                    label: const Text('Share'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const TrustAndReviewStrip(),
             if (widget.product.variants.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Variants', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
@@ -2868,6 +3365,218 @@ class SellerStoreCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class StoreOnboardingPanel extends StatelessWidget {
+  const StoreOnboardingPanel({super.key, required this.store});
+
+  final ShopDraft store;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      OnboardingItem('Logo and banner', Icons.image_outlined, 'Upload brand visuals'),
+      OnboardingItem('Theme colors', Icons.palette_outlined, 'Choose storefront colors'),
+      OnboardingItem('Social links', Icons.link, 'Instagram, TikTok, website'),
+      OnboardingItem('Shipping policy', Icons.local_shipping_outlined, store.hasDelivery ? 'Delivery active' : 'Pickup setup'),
+      OnboardingItem('Return policy', Icons.assignment_return_outlined, 'Set clear rules'),
+      OnboardingItem('WhatsApp contact', Icons.chat_outlined, 'Support and order chat'),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Store onboarding',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Build a mini storefront inside Souk without building a separate app.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+            ),
+            const SizedBox(height: 12),
+            for (final item in items) SetupRow(item: item),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SellerFeatureSuite extends StatelessWidget {
+  const SellerFeatureSuite({
+    super.key,
+    required this.productCount,
+    required this.orderCount,
+    required this.synced,
+  });
+
+  final int productCount;
+  final int orderCount;
+  final bool synced;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SellerDashboardPanel(
+          title: 'Analytics',
+          icon: Icons.analytics_outlined,
+          accent: const Color(0xFF357C83),
+          children: [
+            MiniMetric('Views', '${productCount * 37 + 120}'),
+            MiniMetric('Clicks', '${productCount * 9 + 42}'),
+            MiniMetric('Add-to-cart', '${productCount * 3 + 8}'),
+            MiniMetric('Revenue', money(orderCount * 48.5)),
+            const MiniMetric('Conversion', '3.8%'),
+            const MiniMetric('Top audience', 'Beirut'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const SellerDashboardPanel(
+          title: 'AI commerce tools',
+          icon: Icons.auto_awesome,
+          accent: Color(0xFFE7A72E),
+          children: [
+            FeaturePill(icon: Icons.description_outlined, label: 'Product descriptions'),
+            FeaturePill(icon: Icons.support_agent, label: 'Store assistant'),
+            FeaturePill(icon: Icons.recommend_outlined, label: 'Recommendations'),
+            FeaturePill(icon: Icons.campaign_outlined, label: 'Ad captions'),
+            FeaturePill(icon: Icons.style_outlined, label: 'AI stylist'),
+            FeaturePill(icon: Icons.view_in_ar_outlined, label: 'AR try-on ready'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SellerDashboardPanel(
+          title: 'Growth and monetization',
+          icon: Icons.rocket_launch_outlined,
+          accent: const Color(0xFFC8673A),
+          children: [
+            FeaturePill(icon: synced ? Icons.check_circle : Icons.sync, label: synced ? 'Shopify live' : 'Shopify sync'),
+            const FeaturePill(icon: Icons.star_border, label: 'Featured placement'),
+            const FeaturePill(icon: Icons.ads_click, label: 'Sponsored products'),
+            const FeaturePill(icon: Icons.workspace_premium_outlined, label: 'Subscriptions'),
+            const FeaturePill(icon: Icons.verified_user_outlined, label: 'Store verification'),
+            const FeaturePill(icon: Icons.loyalty_outlined, label: 'Coupons and VIP tiers'),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const SellerDashboardPanel(
+          title: 'Operations',
+          icon: Icons.tune_outlined,
+          accent: Color(0xFF1F7A4D),
+          children: [
+            FeaturePill(icon: Icons.notifications_active_outlined, label: 'Push campaigns'),
+            FeaturePill(icon: Icons.delivery_dining, label: 'Delivery regions'),
+            FeaturePill(icon: Icons.map_outlined, label: 'Live tracking ready'),
+            FeaturePill(icon: Icons.chat_outlined, label: 'WhatsApp sales'),
+            FeaturePill(icon: Icons.admin_panel_settings_outlined, label: 'Admin controls'),
+            FeaturePill(icon: Icons.report_gmailerrorred_outlined, label: 'Reports and disputes'),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class SellerDashboardPanel extends StatelessWidget {
+  const SellerDashboardPanel({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.accent,
+    required this.children,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color accent;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: accent.withValues(alpha: 0.16),
+                  child: Icon(icon, color: accent),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, runSpacing: 8, children: children),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SetupRow extends StatelessWidget {
+  const SetupRow({super.key, required this.item});
+
+  final OnboardingItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(item.icon, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                Text(item.subtitle, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+          ),
+          const Icon(Icons.check_circle, color: Color(0xFF1F7A4D)),
+        ],
+      ),
+    );
+  }
+}
+
+class MiniMetric extends StatelessWidget {
+  const MiniMetric(this.label, this.value, {super.key});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 98,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+        ],
       ),
     );
   }
@@ -3441,6 +4150,21 @@ class Product {
   final List<String> collectionNames;
   final bool featured;
 
+  Set<String> get optionTokens {
+    final tokens = <String>{};
+    for (final variant in variants) {
+      for (final value in variant.searchableOptions) {
+        tokens.addAll(
+          value
+              .toLowerCase()
+              .split(RegExp(r'[^a-z0-9]+'))
+              .where((token) => token.isNotEmpty),
+        );
+      }
+    }
+    return tokens;
+  }
+
   String get formattedPrice => money(price);
 }
 
@@ -3460,6 +4184,9 @@ class ProductVariant {
     required this.title,
     required this.price,
     required this.stock,
+    this.option1,
+    this.option2,
+    this.option3,
     this.sku,
   });
 
@@ -3468,6 +4195,9 @@ class ProductVariant {
       title: json['title'] as String? ?? 'Variant',
       price: parseDouble(json['price']),
       stock: parseInt(json['stock']),
+      option1: json['option1'] as String?,
+      option2: json['option2'] as String?,
+      option3: json['option3'] as String?,
       sku: json['sku'] as String?,
     );
   }
@@ -3475,7 +4205,188 @@ class ProductVariant {
   final String title;
   final double price;
   final int stock;
+  final String? option1;
+  final String? option2;
+  final String? option3;
   final String? sku;
+
+  Iterable<String> get searchableOptions sync* {
+    for (final value in [title, option1, option2, option3]) {
+      final normalized = value?.trim();
+      if (normalized != null && normalized.isNotEmpty && normalized.toLowerCase() != 'default title') {
+        yield normalized;
+      }
+    }
+  }
+}
+
+enum ProductSort { featured, newest, priceLow, priceHigh, rating }
+
+class MarketplaceFilters {
+  const MarketplaceFilters({
+    this.size,
+    this.color,
+    this.city,
+    this.minPrice,
+    this.maxPrice,
+    this.inStockOnly = false,
+    this.sort = ProductSort.featured,
+  });
+
+  final String? size;
+  final String? color;
+  final String? city;
+  final double? minPrice;
+  final double? maxPrice;
+  final bool inStockOnly;
+  final ProductSort sort;
+
+  bool get hasActiveFilters =>
+      size != null ||
+      color != null ||
+      city != null ||
+      minPrice != null ||
+      maxPrice != null ||
+      inStockOnly ||
+      sort != ProductSort.featured;
+
+  MarketplaceFilters copyWith({
+    String? size,
+    String? color,
+    String? city,
+    double? minPrice,
+    double? maxPrice,
+    bool? inStockOnly,
+    ProductSort? sort,
+    bool clearSize = false,
+    bool clearColor = false,
+    bool clearCity = false,
+    bool clearMinPrice = false,
+    bool clearMaxPrice = false,
+  }) {
+    return MarketplaceFilters(
+      size: clearSize ? null : size ?? this.size,
+      color: clearColor ? null : color ?? this.color,
+      city: clearCity ? null : city ?? this.city,
+      minPrice: clearMinPrice ? null : minPrice ?? this.minPrice,
+      maxPrice: clearMaxPrice ? null : maxPrice ?? this.maxPrice,
+      inStockOnly: inStockOnly ?? this.inStockOnly,
+      sort: sort ?? this.sort,
+    );
+  }
+
+  bool matches(Product product) {
+    if (city != null && product.shop.location != city) {
+      return false;
+    }
+    if (minPrice != null && product.price < minPrice!) {
+      return false;
+    }
+    if (maxPrice != null && product.price > maxPrice!) {
+      return false;
+    }
+    if (inStockOnly && product.stock <= 0 && !product.variants.any((variant) => variant.stock > 0)) {
+      return false;
+    }
+    if (size != null && !product.optionTokens.any((token) => token == size!.toLowerCase())) {
+      return false;
+    }
+    if (color != null && !product.optionTokens.any((token) => token == color!.toLowerCase())) {
+      return false;
+    }
+    return true;
+  }
+
+  int compare(Product a, Product b) {
+    switch (sort) {
+      case ProductSort.newest:
+        return 0;
+      case ProductSort.priceLow:
+        return a.price.compareTo(b.price);
+      case ProductSort.priceHigh:
+        return b.price.compareTo(a.price);
+      case ProductSort.rating:
+        return b.rating.compareTo(a.rating);
+      case ProductSort.featured:
+        if (a.featured != b.featured) {
+          return a.featured ? -1 : 1;
+        }
+        return b.rating.compareTo(a.rating);
+    }
+  }
+}
+
+class MarketplaceFilterOptions {
+  const MarketplaceFilterOptions({
+    required this.sizes,
+    required this.colors,
+    required this.cities,
+  });
+
+  factory MarketplaceFilterOptions.fromProducts(List<Product> products) {
+    const knownSizes = {
+      'xs',
+      's',
+      'm',
+      'l',
+      'xl',
+      'xxl',
+      '36',
+      '37',
+      '38',
+      '39',
+      '40',
+      '41',
+      '42',
+      '43',
+      '44',
+      '45',
+    };
+    const knownColors = {
+      'black',
+      'white',
+      'red',
+      'blue',
+      'green',
+      'yellow',
+      'pink',
+      'purple',
+      'brown',
+      'grey',
+      'gray',
+      'silver',
+      'gold',
+      'beige',
+      'navy',
+    };
+
+    final sizes = <String>{};
+    final colors = <String>{};
+    final cities = <String>{};
+    for (final product in products) {
+      if (product.shop.location.isNotEmpty) {
+        cities.add(product.shop.location);
+      }
+      for (final token in product.optionTokens) {
+        if (knownSizes.contains(token)) {
+          sizes.add(formatFilterLabel(token));
+        }
+        if (knownColors.contains(token)) {
+          colors.add(formatFilterLabel(token));
+        }
+      }
+    }
+
+    return MarketplaceFilterOptions(
+      sizes: sizes.toList()..sort(sortSizes),
+      colors: colors.toList()..sort(),
+      cities: cities.toList()..sort(),
+    );
+  }
+
+  final List<String> sizes;
+  final List<String> colors;
+  final List<String> cities;
 }
 
 class Order {
@@ -3664,7 +4575,48 @@ class QuickAction {
   final Color color;
 }
 
+class DiscoveryItem {
+  const DiscoveryItem(this.title, this.icon, this.subtitle);
+
+  final String title;
+  final IconData icon;
+  final String subtitle;
+}
+
+class OnboardingItem {
+  const OnboardingItem(this.title, this.icon, this.subtitle);
+
+  final String title;
+  final IconData icon;
+  final String subtitle;
+}
+
 String money(double value) => '\$${value.toStringAsFixed(2)}';
+
+String paymentMethodCode(String label) {
+  return switch (label) {
+    'Card on delivery' => 'CARD_ON_DELIVERY',
+    'Wallet later' => 'WALLET',
+    _ => 'CASH_ON_DELIVERY',
+  };
+}
+
+String formatFilterLabel(String value) {
+  if (value.length <= 3) {
+    return value.toUpperCase();
+  }
+  return '${value[0].toUpperCase()}${value.substring(1)}';
+}
+
+int sortSizes(String a, String b) {
+  const order = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+  final aIndex = order.indexOf(a);
+  final bIndex = order.indexOf(b);
+  if (aIndex != -1 || bIndex != -1) {
+    return (aIndex == -1 ? 999 : aIndex).compareTo(bIndex == -1 ? 999 : bIndex);
+  }
+  return a.compareTo(b);
+}
 
 double parseDouble(Object? value) {
   if (value is num) {

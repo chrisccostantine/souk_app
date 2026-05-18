@@ -12,15 +12,20 @@ import {
   verifyShopifyWebhook,
 } from './shopify.js';
 import {
+  analyticsEventSchema,
+  createCampaignSchema,
   createOrderSchema,
+  createPlacementSchema,
   createProductSchema,
   createShopSchema,
+  followStoreSchema,
   loginSchema,
   slugify,
   signupSchema,
   startShopifyOAuthSchema,
   syncShopifySchema,
   updateOrderStatusSchema,
+  updateShopProfileSchema,
   validate,
 } from './validation.js';
 
@@ -305,6 +310,140 @@ app.post('/api/shops', async (req, res, next) => {
     });
 
     res.status(201).json({ shop });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/shops/:id/profile', async (req, res, next) => {
+  try {
+    const input = validate(updateShopProfileSchema, req.body);
+    const shop = await prisma.shop.update({
+      where: { id: String(req.params.id) },
+      data: input,
+    });
+    res.json({ shop });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/shops/:id/growth', async (req, res, next) => {
+  try {
+    const shopId = String(req.params.id);
+    const [analytics, followers, loyaltyAccounts, campaigns, placements] = await Promise.all([
+      prisma.storeAnalyticsDaily.findMany({
+        where: { shopId },
+        orderBy: { day: 'desc' },
+        take: 30,
+      }),
+      prisma.storeFollow.count({ where: { shopId } }),
+      prisma.loyaltyAccount.count({ where: { shopId } }),
+      prisma.notificationCampaign.findMany({
+        where: { shopId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.sponsoredPlacement.findMany({
+        where: { shopId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+    ]);
+    res.json({ analytics, followers, loyaltyAccounts, campaigns, placements });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/follow', async (req, res, next) => {
+  try {
+    const input = validate(followStoreSchema, req.body);
+    const shopId = String(req.params.id);
+    const user = await prisma.user.upsert({
+      where: { email: input.email },
+      update: { name: input.name },
+      create: { email: input.email, name: input.name, role: 'CUSTOMER' },
+    });
+    const [follow, loyalty] = await prisma.$transaction([
+      prisma.storeFollow.upsert({
+        where: { userId_shopId: { userId: user.id, shopId } },
+        update: {},
+        create: { userId: user.id, shopId },
+      }),
+      prisma.loyaltyAccount.upsert({
+        where: { userId_shopId: { userId: user.id, shopId } },
+        update: {},
+        create: {
+          userId: user.id,
+          shopId,
+          points: 25,
+          referralCode: `${user.id.slice(-5).toUpperCase()}${shopId.slice(-3).toUpperCase()}`,
+        },
+      }),
+    ]);
+    res.status(201).json({ follow, loyalty });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/analytics', async (req, res, next) => {
+  try {
+    const input = validate(analyticsEventSchema, req.body);
+    const shopId = String(req.params.id);
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    const increments = {
+      view: { views: { increment: 1 } },
+      click: { clicks: { increment: 1 } },
+      addToCart: { addToCarts: { increment: 1 } },
+      order: { orders: { increment: 1 }, revenue: { increment: input.revenue ?? 0 } },
+    }[input.event];
+    const analytics = await prisma.storeAnalyticsDaily.upsert({
+      where: { shopId_day: { shopId, day } },
+      update: {
+        ...increments,
+        topCity: input.topCity,
+        bestProductId: input.bestProductId,
+      },
+      create: {
+        shopId,
+        day,
+        views: input.event === 'view' ? 1 : 0,
+        clicks: input.event === 'click' ? 1 : 0,
+        addToCarts: input.event === 'addToCart' ? 1 : 0,
+        orders: input.event === 'order' ? 1 : 0,
+        revenue: input.event === 'order' ? input.revenue ?? 0 : 0,
+        topCity: input.topCity,
+        bestProductId: input.bestProductId,
+      },
+    });
+    res.status(201).json({ analytics });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/campaigns', async (req, res, next) => {
+  try {
+    const input = validate(createCampaignSchema, req.body);
+    const campaign = await prisma.notificationCampaign.create({
+      data: { ...input, shopId: String(req.params.id) },
+    });
+    res.status(201).json({ campaign });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/placements', async (req, res, next) => {
+  try {
+    const input = validate(createPlacementSchema, req.body);
+    const placement = await prisma.sponsoredPlacement.create({
+      data: { ...input, shopId: String(req.params.id) },
+    });
+    res.status(201).json({ placement });
   } catch (error) {
     next(error);
   }

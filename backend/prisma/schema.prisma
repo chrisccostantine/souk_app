@@ -41,6 +41,26 @@ enum PaymentMethod {
   WALLET
 }
 
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+enum PlacementStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum CampaignChannel {
+  PUSH
+  WHATSAPP
+  EMAIL
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String
@@ -56,6 +76,8 @@ model User {
   addresses    Address[]
   reviews      Review[]
   favorites    Favorite[]
+  storeFollows  StoreFollow[]
+  loyaltyAccounts LoyaltyAccount[]
 }
 
 model Address {
@@ -84,12 +106,31 @@ model Shop {
   orderCount    Int        @default(0)
   minimumOrder  Decimal    @default(0)
   deliveryLabel String     @default("Delivery available")
+  logoUrl       String?
+  bannerUrl     String?
+  primaryColor  String?
+  accentColor   String?
+  instagramUrl  String?
+  tiktokUrl     String?
+  websiteUrl    String?
+  whatsappPhone String?
+  contactEmail  String?
+  shippingPolicy String?
+  returnPolicy   String?
+  verified      Boolean    @default(false)
+  verificationNote String?
+  subscriptionPlan SubscriptionPlan @default(FREE)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
   owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   products      Product[]
   orders        Order[]
   reviews       Review[]
+  followers     StoreFollow[]
+  loyaltyAccounts LoyaltyAccount[]
+  notificationCampaigns NotificationCampaign[]
+  sponsoredPlacements SponsoredPlacement[]
+  analyticsDaily StoreAnalyticsDaily[]
   collections   Collection[]
   shopifyConnection ShopifyConnection?
 }
@@ -121,6 +162,7 @@ model Product {
   collections ProductCollection[]
   images      ProductImage[]
   variants    ProductVariant[]
+  sponsoredPlacements SponsoredPlacement[]
 
   @@unique([shopId, slug])
   @@index([shopifyInventoryItemId])
@@ -251,4 +293,78 @@ model Favorite {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+}
+
+model StoreFollow {
+  id        String   @id @default(cuid())
+  userId    String
+  shopId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+  @@index([shopId])
+}
+
+model LoyaltyAccount {
+  id        String   @id @default(cuid())
+  userId    String
+  shopId    String
+  points    Int      @default(0)
+  tier      String   @default("Member")
+  referralCode String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+}
+
+model NotificationCampaign {
+  id        String          @id @default(cuid())
+  shopId    String
+  channel   CampaignChannel @default(PUSH)
+  title     String
+  message   String
+  audience  String          @default("followers")
+  scheduledAt DateTime?
+  sentAt    DateTime?
+  createdAt DateTime        @default(now())
+  shop      Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model SponsoredPlacement {
+  id        String          @id @default(cuid())
+  shopId    String
+  productId String?
+  title     String
+  placement String          @default("home")
+  budget    Decimal         @default(0)
+  status    PlacementStatus @default(DRAFT)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime        @default(now())
+  shop      Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([status, placement])
+}
+
+model StoreAnalyticsDaily {
+  id        String   @id @default(cuid())
+  shopId    String
+  day       DateTime
+  views     Int      @default(0)
+  clicks    Int      @default(0)
+  addToCarts Int     @default(0)
+  orders    Int      @default(0)
+  revenue   Decimal  @default(0)
+  bestProductId String?
+  topCity   String?
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, day])
 }

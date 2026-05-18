@@ -11,6 +11,53 @@ export const createShopSchema = z.object({
   deliveryLabel: z.string().min(2).default('Delivery available'),
 });
 
+export const updateShopProfileSchema = z.object({
+  logoUrl: z.string().url().optional().nullable(),
+  bannerUrl: z.string().url().optional().nullable(),
+  primaryColor: z.string().min(4).max(16).optional().nullable(),
+  accentColor: z.string().min(4).max(16).optional().nullable(),
+  instagramUrl: z.string().url().optional().nullable(),
+  tiktokUrl: z.string().url().optional().nullable(),
+  websiteUrl: z.string().url().optional().nullable(),
+  whatsappPhone: z.string().min(6).optional().nullable(),
+  contactEmail: z.string().email().optional().nullable(),
+  shippingPolicy: z.string().min(2).optional().nullable(),
+  returnPolicy: z.string().min(2).optional().nullable(),
+  deliveryLabel: z.string().min(2).optional(),
+  minimumOrder: z.coerce.number().min(0).optional(),
+  subscriptionPlan: z.enum(['FREE', 'BASIC', 'PRO', 'ENTERPRISE']).optional(),
+});
+
+export const followStoreSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(2).default('Souk customer'),
+});
+
+export const analyticsEventSchema = z.object({
+  event: z.enum(['view', 'click', 'addToCart', 'order']),
+  revenue: z.coerce.number().min(0).optional(),
+  topCity: z.string().optional(),
+  bestProductId: z.string().optional(),
+});
+
+export const createCampaignSchema = z.object({
+  channel: z.enum(['PUSH', 'WHATSAPP', 'EMAIL']).default('PUSH'),
+  title: z.string().min(2),
+  message: z.string().min(2),
+  audience: z.string().min(2).default('followers'),
+  scheduledAt: z.coerce.date().optional(),
+});
+
+export const createPlacementSchema = z.object({
+  productId: z.string().optional(),
+  title: z.string().min(2),
+  placement: z.string().min(2).default('home'),
+  budget: z.coerce.number().min(0).default(0),
+  status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ENDED']).default('DRAFT'),
+  startsAt: z.coerce.date().optional(),
+  endsAt: z.coerce.date().optional(),
+});
+
 export const signupSchema = z.object({
   role: z.enum(['CUSTOMER', 'SELLER']),
   name: z.string().min(2),
