@@ -145,7 +145,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
   final _storeName = TextEditingController();
   final _storeCategory = TextEditingController();
   final _storeCity = TextEditingController();
-  bool _signup = true;
+  bool _signup = false;
   AccountRole _role = AccountRole.customer;
   bool _authLoading = false;
   String? _authError;
@@ -320,32 +320,40 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SegmentedButton<AccountRole>(
-                        segments: const [
-                          ButtonSegment(
-                            value: AccountRole.customer,
-                            icon: Icon(Icons.person_outline),
-                            label: Text('Shopper'),
-                          ),
-                          ButtonSegment(
-                            value: AccountRole.seller,
-                            icon: Icon(Icons.storefront_outlined),
-                            label: Text('Store'),
-                          ),
-                        ],
-                        selected: {_role},
-                        onSelectionChanged: (value) =>
-                            setState(() => _role = value.first),
+                      Text(
+                        _signup
+                            ? (_role == AccountRole.seller ? 'Register your store' : 'Create shopper account')
+                            : (_role == AccountRole.seller ? 'Store login' : 'Shopper login'),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                       ),
-                      const SizedBox(height: 12),
-                      SegmentedButton<bool>(
-                        segments: const [
-                          ButtonSegment(value: true, label: Text('Sign up')),
-                          ButtonSegment(value: false, label: Text('Login')),
+                      const SizedBox(height: 4),
+                      Text(
+                        _signup
+                            ? 'Fill in the details once, then continue to your account.'
+                            : 'Choose where you want to enter Souk.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ChoiceCardButton(
+                              icon: Icons.person_outline,
+                              label: 'Shopper',
+                              selected: _role == AccountRole.customer,
+                              onTap: () => setState(() => _role = AccountRole.customer),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ChoiceCardButton(
+                              icon: Icons.storefront_outlined,
+                              label: 'Store',
+                              selected: _role == AccountRole.seller,
+                              onTap: () => setState(() => _role = AccountRole.seller),
+                            ),
+                          ),
                         ],
-                        selected: {_signup},
-                        onSelectionChanged: (value) =>
-                            setState(() => _signup = value.first),
                       ),
                       const SizedBox(height: 14),
                       if (_signup) ...[
@@ -452,6 +460,26 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                             _authLoading
                                 ? 'Please wait'
                                 : (_signup ? 'Create account' : 'Login'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: _authLoading
+                              ? null
+                              : () => setState(() {
+                                    _signup = !_signup;
+                                    _authError = null;
+                                  }),
+                          icon: Icon(_signup ? Icons.login : Icons.person_add_alt),
+                          label: Text(
+                            _signup
+                                ? 'Already have an account? Login'
+                                : (_role == AccountRole.seller
+                                    ? 'Register a store'
+                                    : 'Register as shopper'),
                           ),
                         ),
                       ),
@@ -2285,6 +2313,60 @@ class HeaderBar extends StatelessWidget {
         : role == AccountRole.admin
         ? 'Admin account'
         : 'Customer account';
+  }
+}
+
+class ChoiceCardButton extends StatelessWidget {
+  const ChoiceCardButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Container(
+        height: 76,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.12) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? color : Colors.black.withValues(alpha: 0.12),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: selected ? color : Colors.black54),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? color : Colors.black87,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
