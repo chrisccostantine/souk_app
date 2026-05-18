@@ -1159,6 +1159,7 @@ class _SellerHubPageState extends State<SellerHubPage>
   double _shopifySyncProgress = 0;
   String? _shopifyMessage;
   Timer? _shopifySyncTimer;
+  String? _shopifySyncJobId;
   List<SellerInventoryProduct> _syncedProducts = [];
   List<SellerInventoryCollection> _syncedCollections = [];
   String? _selectedCollectionId;
@@ -1328,21 +1329,15 @@ class _SellerHubPageState extends State<SellerHubPage>
       if (!mounted) {
         return;
       }
-      _shopifySyncTimer?.cancel();
+      final jobId = result['jobId'] as String?;
+      if (jobId == null) {
+        throw const SoukApiException(500, 'Sync job was not created');
+      }
       setState(() {
-        _shopifySyncing = false;
-        _shopifySyncProgress = 1;
-        _shopifySynced = true;
-        _shopifyMessage =
-            'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
+        _shopifySyncJobId = jobId;
+        _shopifyMessage = result['message'] as String? ?? 'Shopify sync started';
       });
-      await _loadSellerInventory();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Shopify products synced'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _pollShopifySyncJob(jobId);
     } on SoukApiException catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1369,20 +1364,58 @@ class _SellerHubPageState extends State<SellerHubPage>
     setState(() {
       _shopifySyncing = true;
       _shopifySynced = false;
-      _shopifySyncProgress = 0.05;
-      _shopifyMessage = 'Starting Shopify sync... 5%';
+      _shopifySyncProgress = 0.02;
+      _shopifyMessage = 'Starting Shopify sync... 2%';
     });
-    _shopifySyncTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) {
-        return;
+  }
+
+  void _pollShopifySyncJob(String jobId) {
+    _shopifySyncTimer?.cancel();
+    _shopifySyncTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      try {
+        final job = await SoukApi(baseUrl: soukApiUrl).fetchShopifySyncJob(jobId);
+        if (!mounted || _shopifySyncJobId != jobId) {
+          return;
+        }
+        final progress = (parseDouble(job['progress']) / 100).clamp(0.02, 1.0);
+        final status = job['status'] as String? ?? 'running';
+        final message = job['message'] as String? ?? 'Syncing Shopify catalog';
+        setState(() {
+          _shopifySyncProgress = progress;
+          _shopifyMessage = '$message... ${(progress * 100).round()}%';
+        });
+        if (status == 'completed') {
+          _shopifySyncTimer?.cancel();
+          final result = job['result'] as Map<String, dynamic>? ?? const {};
+          setState(() {
+            _shopifySyncing = false;
+            _shopifySyncProgress = 1;
+            _shopifySynced = true;
+            _shopifySyncJobId = null;
+            _shopifyMessage =
+                'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
+          });
+          await _loadSellerInventory();
+          if (!mounted) {
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Shopify products synced'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else if (status == 'failed') {
+          _shopifySyncTimer?.cancel();
+          _stopShopifySyncProgress(message);
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _shopifyMessage = 'Still syncing Shopify. Waiting for status...';
+          });
+        }
       }
-      setState(() {
-        _shopifySyncProgress = (_shopifySyncProgress + 0.07).clamp(0.05, 0.9);
-        final percent = (_shopifySyncProgress * 100).round();
-        _shopifyMessage = percent >= 90
-            ? 'Shopify is still processing products and collections... 90%'
-            : 'Syncing Shopify products... $percent%';
-      });
     });
   }
 
@@ -1394,6 +1427,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     setState(() {
       _shopifySyncing = false;
       _shopifySyncProgress = 0;
+      _shopifySyncJobId = null;
       _shopifyMessage = message;
     });
   }

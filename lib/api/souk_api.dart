@@ -70,6 +70,10 @@ class SoukApi {
     return _post('/api/shopify/sync', {'shopId': shopId});
   }
 
+  Future<Map<String, dynamic>> fetchShopifySyncJob(String jobId) async {
+    return _get('/api/shopify/sync/$jobId');
+  }
+
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
     final body = await _post('/api/orders', payload);
     return body['order'] as Map<String, dynamic>;

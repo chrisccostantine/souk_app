@@ -30,6 +30,7 @@ const corsOrigin = process.env.CORS_ORIGIN || '*';
 const requiredShopifyScopes = ['read_products', 'read_inventory', 'write_inventory', 'read_locations'];
 const shopifyScopes = requiredShopifyScopes.join(',');
 const oauthStates = new Map();
+const shopifySyncJobs = new Map();
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -524,22 +525,38 @@ app.get('/api/shopify/status', async (req, res, next) => {
 app.post('/api/shopify/sync', async (req, res, next) => {
   try {
     const input = validate(syncShopifySchema, req.body);
-    const connection = await prisma.shopifyConnection.findUnique({
-      where: { shopId: input.shopId },
-    });
-    if (!connection) {
-      const error = new Error('Shopify is not connected for this shop');
-      error.status = 404;
-      throw error;
+    const existingJob = [...shopifySyncJobs.values()].find(
+      (job) => job.shopId === input.shopId && (job.status === 'queued' || job.status === 'running'),
+    );
+    if (existingJob) {
+      return res.status(202).json({ jobId: existingJob.id, status: existingJob.status });
     }
 
-    const freshConnection = await refreshShopifyConnection(connection);
-    const catalog = await fetchShopifyCatalog(freshConnection);
-    const result = await upsertShopifyCatalog(input.shopId, freshConnection, catalog);
-    res.json(result);
+    const job = {
+      id: crypto.randomUUID(),
+      shopId: input.shopId,
+      status: 'queued',
+      progress: 2,
+      message: 'Queued Shopify sync',
+      result: null,
+      error: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    shopifySyncJobs.set(job.id, job);
+    runShopifySyncJob(job.id);
+    res.status(202).json({ jobId: job.id, status: job.status, progress: job.progress, message: job.message });
   } catch (error) {
     next(error);
   }
+});
+
+app.get('/api/shopify/sync/:jobId', (req, res) => {
+  const job = shopifySyncJobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Sync job not found' });
+  }
+  res.json(job);
 });
 
 app.get('/api/orders', async (req, res, next) => {
@@ -713,14 +730,81 @@ app.post('/api/shopify/webhooks/products-update', async (req, res, next) => {
   }
 });
 
-async function upsertShopifyCatalog(shopId, connection, catalog) {
+function updateShopifySyncJob(jobId, patch) {
+  const job = shopifySyncJobs.get(jobId);
+  if (!job) {
+    return null;
+  }
+  Object.assign(job, patch, { updatedAt: new Date() });
+  return job;
+}
+
+async function runShopifySyncJob(jobId) {
+  const job = shopifySyncJobs.get(jobId);
+  if (!job) {
+    return;
+  }
+  try {
+    updateShopifySyncJob(jobId, {
+      status: 'running',
+      progress: 8,
+      message: 'Checking Shopify connection',
+    });
+    const connection = await prisma.shopifyConnection.findUnique({
+      where: { shopId: job.shopId },
+    });
+    if (!connection) {
+      const error = new Error('Shopify is not connected for this shop');
+      error.status = 404;
+      throw error;
+    }
+
+    const freshConnection = await refreshShopifyConnection(connection);
+    updateShopifySyncJob(jobId, {
+      progress: 18,
+      message: 'Downloading products, collections, variants, and images from Shopify',
+    });
+    const catalog = await fetchShopifyCatalog(freshConnection, (progress) => {
+      updateShopifySyncJob(jobId, progress);
+    });
+    updateShopifySyncJob(jobId, {
+      progress: 72,
+      message: 'Saving Shopify catalog into Souk',
+    });
+    const result = await upsertShopifyCatalog(job.shopId, freshConnection, catalog, (progress) => {
+      updateShopifySyncJob(jobId, progress);
+    });
+    updateShopifySyncJob(jobId, {
+      status: 'completed',
+      progress: 100,
+      message: `Synced ${result.products} products and ${result.collections} collections`,
+      result,
+    });
+  } catch (error) {
+    updateShopifySyncJob(jobId, {
+      status: 'failed',
+      progress: 100,
+      message: error.message || 'Shopify sync failed',
+      error: error.details ?? null,
+    });
+  }
+}
+
+async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = () => {}) {
   const now = new Date();
   const inventoryByItemId = new Map(
     catalog.inventoryLevels.map((level) => [String(level.inventory_item_id), level]),
   );
   const productByShopifyId = new Map();
 
-  for (const collection of catalog.collections) {
+  for (let index = 0; index < catalog.collections.length; index += 1) {
+    const collection = catalog.collections[index];
+    if (index % 25 === 0) {
+      onProgress({
+        progress: Math.min(78, 72 + Math.round((index / Math.max(catalog.collections.length, 1)) * 6)),
+        message: `Saving collections ${index + 1}/${catalog.collections.length}`,
+      });
+    }
     await prisma.collection.upsert({
       where: {
         shopId_slug: {
@@ -747,7 +831,14 @@ async function upsertShopifyCatalog(shopId, connection, catalog) {
     });
   }
 
-  for (const shopifyProduct of catalog.products) {
+  for (let index = 0; index < catalog.products.length; index += 1) {
+    const shopifyProduct = catalog.products[index];
+    if (index % 25 === 0) {
+      onProgress({
+        progress: Math.min(94, 78 + Math.round((index / Math.max(catalog.products.length, 1)) * 16)),
+        message: `Saving products ${index + 1}/${catalog.products.length}`,
+      });
+    }
     const variant = shopifyProduct.variants?.[0];
     if (!variant) {
       continue;

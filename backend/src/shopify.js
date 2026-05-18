@@ -131,11 +131,15 @@ export class ShopifyClient {
   }
 }
 
-export async function fetchShopifyCatalog(connection) {
+export async function fetchShopifyCatalog(connection, onProgress = () => {}) {
   const client = new ShopifyClient(connection);
+  onProgress({ progress: 22, message: 'Downloading Shopify products' });
   const products = await client.getAll('/products.json', { limit: 250 }, 'products');
+  onProgress({ progress: 32, message: `Downloaded ${products.length} products` });
   const customCollections = await client.getAll('/custom_collections.json', { limit: 250 }, 'custom_collections');
+  onProgress({ progress: 40, message: `Downloaded ${customCollections.length} custom collections` });
   const smartCollections = await client.getAll('/smart_collections.json', { limit: 250 }, 'smart_collections');
+  onProgress({ progress: 48, message: `Downloaded ${smartCollections.length} smart collections` });
   const locationsResult = await client.get('/locations.json', { limit: 250 });
 
   const collections = [
@@ -150,7 +154,12 @@ export async function fetchShopifyCatalog(connection) {
   ];
 
   const collects = [];
-  for (const collection of collections) {
+  for (let index = 0; index < collections.length; index += 1) {
+    const collection = collections[index];
+    onProgress({
+      progress: Math.min(64, 50 + Math.round((index / Math.max(collections.length, 1)) * 14)),
+      message: `Linking collection products ${index + 1}/${collections.length}`,
+    });
     if (collection.collectionType === 'CUSTOM') {
       const collectionCollects = await client.getAll('/collects.json', {
         collection_id: collection.id,
@@ -178,6 +187,10 @@ export async function fetchShopifyCatalog(connection) {
     .filter(Boolean);
   const inventoryLevels = [];
   for (let index = 0; index < inventoryItemIds.length; index += 50) {
+    onProgress({
+      progress: Math.min(70, 64 + Math.round((index / Math.max(inventoryItemIds.length, 1)) * 6)),
+      message: `Reading inventory ${Math.min(index + 50, inventoryItemIds.length)}/${inventoryItemIds.length}`,
+    });
     const ids = inventoryItemIds.slice(index, index + 50).join(',');
     if (ids) {
       const result = await client.get('/inventory_levels.json', { inventory_item_ids: ids });
