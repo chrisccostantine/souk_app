@@ -331,7 +331,11 @@ app.patch('/api/shops/:id/profile', async (req, res, next) => {
 app.get('/api/shops/:id/growth', async (req, res, next) => {
   try {
     const shopId = String(req.params.id);
-    const [analytics, followers, loyaltyAccounts, campaigns, placements] = await Promise.all([
+    const [shop, analytics, followers, loyaltyAccounts, campaigns, placements] = await Promise.all([
+      prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { rating: true, orderCount: true },
+      }),
       prisma.storeAnalyticsDaily.findMany({
         where: { shopId },
         orderBy: { day: 'desc' },
@@ -350,7 +354,15 @@ app.get('/api/shops/:id/growth', async (req, res, next) => {
         take: 10,
       }),
     ]);
-    res.json({ analytics, followers, loyaltyAccounts, campaigns, placements });
+    res.json({
+      analytics,
+      followers,
+      loyaltyAccounts,
+      campaigns,
+      placements,
+      rating: shop?.rating ?? 0,
+      orderCount: shop?.orderCount ?? 0,
+    });
   } catch (error) {
     next(error);
   }
@@ -819,6 +831,27 @@ app.post('/api/orders', async (req, res, next) => {
     });
 
     const shopifyUpdates = await syncSoukOrderToShopifyInventory(input.shopId, order.items);
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    await prisma.$transaction([
+      prisma.shop.update({
+        where: { id: input.shopId },
+        data: { orderCount: { increment: 1 } },
+      }),
+      prisma.storeAnalyticsDaily.upsert({
+        where: { shopId_day: { shopId: input.shopId, day } },
+        update: {
+          orders: { increment: 1 },
+          revenue: { increment: total },
+        },
+        create: {
+          shopId: input.shopId,
+          day,
+          orders: 1,
+          revenue: total,
+        },
+      }),
+    ]);
     res.status(201).json({ order });
     if (shopifyUpdates.failed.length > 0) {
       console.warn('Some Shopify inventory updates failed', shopifyUpdates.failed);

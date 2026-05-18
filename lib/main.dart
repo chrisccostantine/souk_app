@@ -556,6 +556,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         );
       }
     });
+    _trackShopEvent(product, 'addToCart');
     _showSnack('${product.name} added to basket');
   }
 
@@ -584,7 +585,26 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     });
   }
 
+  Future<void> _followShop(Shop shop) async {
+    if (soukApiUrl.isEmpty || shop.id.isEmpty) {
+      _showSnack('SOUK_API_URL is required to follow stores');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).followShop(shop.id, {
+        'email': widget.session.email,
+        'name': widget.session.name,
+      });
+      _showSnack('Following ${shop.name}');
+    } on SoukApiException catch (error) {
+      _showSnack(error.message);
+    } catch (_) {
+      _showSnack('Could not follow store');
+    }
+  }
+
   void _openProduct(Product product) {
+    _trackShopEvent(product, 'view');
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -604,6 +624,17 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         );
       },
     );
+  }
+
+  void _trackShopEvent(Product product, String event) {
+    if (soukApiUrl.isEmpty || product.shop.id.isEmpty) {
+      return;
+    }
+    SoukApi(baseUrl: soukApiUrl).trackShopAnalytics(product.shop.id, {
+      'event': event,
+      'bestProductId': product.id,
+      'topCity': product.shop.location,
+    }).catchError((_) => <String, dynamic>{});
   }
 
   Future<void> _placeOrder(CheckoutInfo info) async {
@@ -716,6 +747,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
+        onFollowStore: _followShop,
       ),
       StoresPage(
         session: widget.session,
@@ -1008,6 +1040,7 @@ class StoresPage extends StatelessWidget {
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
+    required this.onFollowStore,
   });
 
   final AppSession session;
@@ -1018,6 +1051,7 @@ class StoresPage extends StatelessWidget {
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
+  final ValueChanged<Shop> onFollowStore;
 
   @override
   Widget build(BuildContext context) {
@@ -1043,6 +1077,7 @@ class StoresPage extends StatelessWidget {
             onOpenProduct: onOpenProduct,
             onAddToCart: onAddToCart,
             onToggleFavorite: onToggleFavorite,
+            onFollow: () => onFollowStore(shop),
           ),
           const SizedBox(height: 12),
         ],
@@ -1225,6 +1260,7 @@ class _SellerHubPageState extends State<SellerHubPage>
   String? _shopifySyncJobId;
   List<SellerInventoryProduct> _syncedProducts = [];
   List<SellerInventoryCollection> _syncedCollections = [];
+  SellerGrowthStats _growthStats = const SellerGrowthStats();
   String? _selectedCollectionId;
   String _collectionQuery = '';
   bool _inventoryLoading = false;
@@ -1237,6 +1273,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     _refreshShopifyStatus();
     _loadSellerInventory();
     _loadSellerOrders();
+    _loadSellerGrowth();
   }
 
   @override
@@ -1459,6 +1496,7 @@ class _SellerHubPageState extends State<SellerHubPage>
                 'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
           });
           await _loadSellerInventory();
+          await _loadSellerGrowth();
           if (!mounted) {
             return;
           }
@@ -1559,9 +1597,87 @@ class _SellerHubPageState extends State<SellerHubPage>
             .map((item) => SellerOrder.fromJson(item as Map<String, dynamic>))
             .toList();
       });
+      await _loadSellerGrowth();
     } catch (_) {
       // Orders can stay empty until the backend has customer checkout activity.
     }
+  }
+
+  Future<void> _loadSellerGrowth() async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      return;
+    }
+    try {
+      final data = await SoukApi(baseUrl: soukApiUrl).fetchShopGrowth(shopId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _growthStats = SellerGrowthStats.fromJson(data);
+      });
+    } catch (_) {
+      // Growth data is optional until the new backend migration is deployed.
+    }
+  }
+
+  Future<void> _saveStoreProfile(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before saving store settings.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).updateShopProfile(shopId, payload);
+      _showSellerSnack('Store profile saved');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not save store profile');
+    }
+  }
+
+  Future<void> _createCampaign(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before creating campaigns.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).createCampaign(shopId, payload);
+      await _loadSellerGrowth();
+      _showSellerSnack('Campaign created');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not create campaign');
+    }
+  }
+
+  Future<void> _createPlacement(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before creating placements.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).createPlacement(shopId, payload);
+      await _loadSellerGrowth();
+      _showSellerSnack('Featured placement created');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not create placement');
+    }
+  }
+
+  void _showSellerSnack(String message) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   Future<void> _toggleFeaturedProduct(SellerInventoryProduct product) async {
@@ -1589,6 +1705,12 @@ class _SellerHubPageState extends State<SellerHubPage>
           hasDelivery: true,
         );
     final productCount = _syncedProducts.length;
+    final orderRevenue = _sellerOrders.fold<double>(
+      0,
+      (sum, order) => sum + order.total,
+    );
+    final dashboardRevenue = _growthStats.revenue == 0 ? orderRevenue : _growthStats.revenue;
+    final dashboardGrowthStats = _growthStats.copyWith(revenue: dashboardRevenue);
     final visibleSyncedProducts = _selectedCollectionId == null
         ? _syncedProducts.take(80).toList()
         : _syncedProducts
@@ -1612,7 +1734,7 @@ class _SellerHubPageState extends State<SellerHubPage>
         const SizedBox(height: 16),
         SellerStoreCard(store: store, ownerName: widget.session.name),
         const SizedBox(height: 16),
-        StoreOnboardingPanel(store: store),
+        StoreOnboardingPanel(store: store, onSave: _saveStoreProfile),
         const SizedBox(height: 16),
         ShopifySyncCard(
           shopifyStore: _shopifyStore,
@@ -1629,12 +1751,19 @@ class _SellerHubPageState extends State<SellerHubPage>
         SellerMetricGrid(
           productCount: productCount,
           collectionCount: _syncedCollections.length,
+          orderCount: _sellerOrders.length,
+          revenue: dashboardRevenue,
+          rating: _growthStats.rating,
         ),
         const SizedBox(height: 16),
         SellerFeatureSuite(
           productCount: productCount,
           orderCount: _sellerOrders.length,
+          growthStats: dashboardGrowthStats,
           synced: _shopifySynced,
+          products: _syncedProducts,
+          onCreateCampaign: _createCampaign,
+          onCreatePlacement: _createPlacement,
         ),
         const SizedBox(height: 16),
         SectionTitle(
@@ -2612,6 +2741,7 @@ class ShopCard extends StatelessWidget {
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
+    required this.onFollow,
   });
 
   final Shop shop;
@@ -2620,6 +2750,7 @@ class ShopCard extends StatelessWidget {
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
+  final VoidCallback onFollow;
 
   @override
   Widget build(BuildContext context) {
@@ -2656,6 +2787,12 @@ class ShopCard extends StatelessWidget {
                 Chip(
                   avatar: const Icon(Icons.star, size: 16),
                   label: Text(shop.rating.toStringAsFixed(1)),
+                ),
+                const SizedBox(width: 6),
+                IconButton.filledTonal(
+                  tooltip: 'Follow store',
+                  onPressed: onFollow,
+                  icon: const Icon(Icons.add_alert_outlined),
                 ),
               ],
             ),
@@ -3370,10 +3507,57 @@ class SellerStoreCard extends StatelessWidget {
   }
 }
 
-class StoreOnboardingPanel extends StatelessWidget {
-  const StoreOnboardingPanel({super.key, required this.store});
+class StoreOnboardingPanel extends StatefulWidget {
+  const StoreOnboardingPanel({
+    super.key,
+    required this.store,
+    required this.onSave,
+  });
 
   final ShopDraft store;
+  final ValueChanged<Map<String, dynamic>> onSave;
+
+  @override
+  State<StoreOnboardingPanel> createState() => _StoreOnboardingPanelState();
+}
+
+class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
+  final _logoUrl = TextEditingController();
+  final _bannerUrl = TextEditingController();
+  final _primaryColor = TextEditingController(text: '#1F7A4D');
+  final _accentColor = TextEditingController(text: '#E7A72E');
+  final _instagramUrl = TextEditingController();
+  final _whatsappPhone = TextEditingController();
+  final _shippingPolicy = TextEditingController(text: 'Delivery available in selected regions.');
+  final _returnPolicy = TextEditingController(text: 'Returns accepted according to store policy.');
+  String _plan = 'FREE';
+
+  @override
+  void dispose() {
+    _logoUrl.dispose();
+    _bannerUrl.dispose();
+    _primaryColor.dispose();
+    _accentColor.dispose();
+    _instagramUrl.dispose();
+    _whatsappPhone.dispose();
+    _shippingPolicy.dispose();
+    _returnPolicy.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    widget.onSave({
+      'logoUrl': nullableText(_logoUrl.text),
+      'bannerUrl': nullableText(_bannerUrl.text),
+      'primaryColor': nullableText(_primaryColor.text),
+      'accentColor': nullableText(_accentColor.text),
+      'instagramUrl': nullableText(_instagramUrl.text),
+      'whatsappPhone': nullableText(_whatsappPhone.text),
+      'shippingPolicy': nullableText(_shippingPolicy.text),
+      'returnPolicy': nullableText(_returnPolicy.text),
+      'subscriptionPlan': _plan,
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3381,7 +3565,7 @@ class StoreOnboardingPanel extends StatelessWidget {
       OnboardingItem('Logo and banner', Icons.image_outlined, 'Upload brand visuals'),
       OnboardingItem('Theme colors', Icons.palette_outlined, 'Choose storefront colors'),
       OnboardingItem('Social links', Icons.link, 'Instagram, TikTok, website'),
-      OnboardingItem('Shipping policy', Icons.local_shipping_outlined, store.hasDelivery ? 'Delivery active' : 'Pickup setup'),
+      OnboardingItem('Shipping policy', Icons.local_shipping_outlined, widget.store.hasDelivery ? 'Delivery active' : 'Pickup setup'),
       OnboardingItem('Return policy', Icons.assignment_return_outlined, 'Set clear rules'),
       OnboardingItem('WhatsApp contact', Icons.chat_outlined, 'Support and order chat'),
     ];
@@ -3403,6 +3587,114 @@ class StoreOnboardingPanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             for (final item in items) SetupRow(item: item),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _logoUrl,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Logo URL',
+                prefixIcon: Icon(Icons.image_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _bannerUrl,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Banner URL',
+                prefixIcon: Icon(Icons.panorama_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _primaryColor,
+                    decoration: const InputDecoration(
+                      labelText: 'Primary color',
+                      prefixIcon: Icon(Icons.palette_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _accentColor,
+                    decoration: const InputDecoration(
+                      labelText: 'Accent color',
+                      prefixIcon: Icon(Icons.color_lens_outlined),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _instagramUrl,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Instagram URL',
+                prefixIcon: Icon(Icons.alternate_email),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _whatsappPhone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'WhatsApp phone',
+                prefixIcon: Icon(Icons.chat_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _shippingPolicy,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Shipping policy',
+                prefixIcon: Icon(Icons.local_shipping_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _returnPolicy,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Return policy',
+                prefixIcon: Icon(Icons.assignment_return_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: _plan,
+              decoration: const InputDecoration(
+                labelText: 'Subscription plan',
+                prefixIcon: Icon(Icons.workspace_premium_outlined),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'FREE', child: Text('Free')),
+                DropdownMenuItem(value: 'BASIC', child: Text('Basic')),
+                DropdownMenuItem(value: 'PRO', child: Text('Pro')),
+                DropdownMenuItem(value: 'ENTERPRISE', child: Text('Enterprise')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _plan = value);
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save store settings'),
+              ),
+            ),
           ],
         ),
       ),
@@ -3415,15 +3707,26 @@ class SellerFeatureSuite extends StatelessWidget {
     super.key,
     required this.productCount,
     required this.orderCount,
+    required this.growthStats,
     required this.synced,
+    required this.products,
+    required this.onCreateCampaign,
+    required this.onCreatePlacement,
   });
 
   final int productCount;
   final int orderCount;
+  final SellerGrowthStats growthStats;
   final bool synced;
+  final List<SellerInventoryProduct> products;
+  final ValueChanged<Map<String, dynamic>> onCreateCampaign;
+  final ValueChanged<Map<String, dynamic>> onCreatePlacement;
 
   @override
   Widget build(BuildContext context) {
+    final conversion = growthStats.views == 0
+        ? '0.0%'
+        : '${((growthStats.orders / growthStats.views) * 100).toStringAsFixed(1)}%';
     return Column(
       children: [
         SellerDashboardPanel(
@@ -3431,12 +3734,14 @@ class SellerFeatureSuite extends StatelessWidget {
           icon: Icons.analytics_outlined,
           accent: const Color(0xFF357C83),
           children: [
-            MiniMetric('Views', '${productCount * 37 + 120}'),
-            MiniMetric('Clicks', '${productCount * 9 + 42}'),
-            MiniMetric('Add-to-cart', '${productCount * 3 + 8}'),
-            MiniMetric('Revenue', money(orderCount * 48.5)),
-            const MiniMetric('Conversion', '3.8%'),
-            const MiniMetric('Top audience', 'Beirut'),
+            MiniMetric('Views', growthStats.views.toString()),
+            MiniMetric('Clicks', growthStats.clicks.toString()),
+            MiniMetric('Add-to-cart', growthStats.addToCarts.toString()),
+            MiniMetric('Orders', orderCount.toString()),
+            MiniMetric('Revenue', money(growthStats.revenue)),
+            MiniMetric('Conversion', conversion),
+            MiniMetric('Followers', growthStats.followers.toString()),
+            MiniMetric('Top audience', growthStats.topCity.isEmpty ? 'No data' : growthStats.topCity),
           ],
         ),
         const SizedBox(height: 12),
@@ -3460,11 +3765,29 @@ class SellerFeatureSuite extends StatelessWidget {
           accent: const Color(0xFFC8673A),
           children: [
             FeaturePill(icon: synced ? Icons.check_circle : Icons.sync, label: synced ? 'Shopify live' : 'Shopify sync'),
-            const FeaturePill(icon: Icons.star_border, label: 'Featured placement'),
-            const FeaturePill(icon: Icons.ads_click, label: 'Sponsored products'),
+            FeaturePill(icon: Icons.star_border, label: '${growthStats.placements} placements'),
+            FeaturePill(icon: Icons.ads_click, label: '${growthStats.campaigns} campaigns'),
             const FeaturePill(icon: Icons.workspace_premium_outlined, label: 'Subscriptions'),
             const FeaturePill(icon: Icons.verified_user_outlined, label: 'Store verification'),
             const FeaturePill(icon: Icons.loyalty_outlined, label: 'Coupons and VIP tiers'),
+          ],
+          actions: [
+            OutlinedButton.icon(
+              onPressed: () => showCampaignDialog(context, onCreateCampaign),
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('New campaign'),
+            ),
+            OutlinedButton.icon(
+              onPressed: products.isEmpty
+                  ? null
+                  : () => showPlacementDialog(
+                        context,
+                        products,
+                        onCreatePlacement,
+                      ),
+              icon: const Icon(Icons.star_border),
+              label: const Text('Buy placement'),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -3493,12 +3816,14 @@ class SellerDashboardPanel extends StatelessWidget {
     required this.icon,
     required this.accent,
     required this.children,
+    this.actions = const [],
   });
 
   final String title;
   final IconData icon;
   final Color accent;
   final List<Widget> children;
+  final List<Widget> actions;
 
   @override
   Widget build(BuildContext context) {
@@ -3525,6 +3850,10 @@ class SellerDashboardPanel extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: children),
+            if (actions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: actions),
+            ],
           ],
         ),
       ),
@@ -3737,18 +4066,25 @@ class SellerMetricGrid extends StatelessWidget {
     super.key,
     required this.productCount,
     required this.collectionCount,
+    required this.orderCount,
+    required this.revenue,
+    required this.rating,
   });
 
   final int productCount;
   final int collectionCount;
+  final int orderCount;
+  final double revenue;
+  final double rating;
 
   @override
   Widget build(BuildContext context) {
     final metrics = [
-      const SellerMetric('Orders', '24', Icons.receipt_long),
+      SellerMetric('Orders', orderCount.toString(), Icons.receipt_long),
       SellerMetric('Products', productCount.toString(), Icons.inventory_2),
       SellerMetric('Collections', collectionCount.toString(), Icons.category),
-      const SellerMetric('Rating', '4.8', Icons.star),
+      SellerMetric('Revenue', money(revenue), Icons.payments_outlined),
+      SellerMetric('Rating', rating == 0 ? 'No reviews' : rating.toStringAsFixed(1), Icons.star),
     ];
     return GridView.builder(
       shrinkWrap: true,
@@ -3976,7 +4312,7 @@ class SellerOrderTile extends StatelessWidget {
           order.customer,
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
-        subtitle: Text(order.summary),
+        subtitle: Text('${order.summary} - ${money(order.total)}'),
         trailing: FilledButton.tonal(
           onPressed: () {},
           child: Text(order.status),
@@ -4063,7 +4399,7 @@ class Shop {
       category: json['category'] as String? ?? 'Store',
       location: json['city'] as String? ?? '',
       story: json['story'] as String? ?? 'Shop products directly from this Souk store.',
-      rating: parseDouble(json['rating']) == 0 ? 4.8 : parseDouble(json['rating']),
+      rating: parseDouble(json['rating']),
       color: const Color(0xFF1F7A4D),
       icon: Icons.storefront,
       delivery: json['deliveryLabel'] as String? ?? 'Delivery available',
@@ -4124,7 +4460,7 @@ class Product {
       color: const Color(0xFF1F7A4D),
       icon: Icons.inventory_2,
       description: json['description'] as String? ?? '',
-      rating: parseDouble(json['rating']) == 0 ? 4.8 : parseDouble(json['rating']),
+      rating: parseDouble(json['rating']),
       stock: parseInt(json['stock']),
       imageUrl: json['imageUrl'] as String?,
       images: images.isEmpty && json['imageUrl'] != null ? [json['imageUrl'] as String] : images,
@@ -4534,8 +4870,87 @@ class SellerInventoryCollection {
   final int productCount;
 }
 
+class SellerGrowthStats {
+  const SellerGrowthStats({
+    this.views = 0,
+    this.clicks = 0,
+    this.addToCarts = 0,
+    this.orders = 0,
+    this.revenue = 0,
+    this.followers = 0,
+    this.loyaltyAccounts = 0,
+    this.campaigns = 0,
+    this.placements = 0,
+    this.rating = 0,
+    this.topCity = '',
+  });
+
+  factory SellerGrowthStats.fromJson(Map<String, dynamic> json) {
+    final analyticsRows = json['analytics'] as List<dynamic>? ?? const [];
+    var views = 0;
+    var clicks = 0;
+    var addToCarts = 0;
+    var orders = 0;
+    var revenue = 0.0;
+    var topCity = '';
+    for (final row in analyticsRows) {
+      final item = row as Map<String, dynamic>;
+      views += parseInt(item['views']);
+      clicks += parseInt(item['clicks']);
+      addToCarts += parseInt(item['addToCarts']);
+      orders += parseInt(item['orders']);
+      revenue += parseDouble(item['revenue']);
+      final city = item['topCity'] as String?;
+      if (topCity.isEmpty && city != null && city.isNotEmpty) {
+        topCity = city;
+      }
+    }
+    return SellerGrowthStats(
+      views: views,
+      clicks: clicks,
+      addToCarts: addToCarts,
+      orders: orders,
+      revenue: revenue,
+      followers: parseInt(json['followers']),
+      loyaltyAccounts: parseInt(json['loyaltyAccounts']),
+      campaigns: (json['campaigns'] as List<dynamic>? ?? const []).length,
+      placements: (json['placements'] as List<dynamic>? ?? const []).length,
+      rating: parseDouble(json['rating']),
+      topCity: topCity,
+    );
+  }
+
+  final int views;
+  final int clicks;
+  final int addToCarts;
+  final int orders;
+  final double revenue;
+  final int followers;
+  final int loyaltyAccounts;
+  final int campaigns;
+  final int placements;
+  final double rating;
+  final String topCity;
+
+  SellerGrowthStats copyWith({double? revenue}) {
+    return SellerGrowthStats(
+      views: views,
+      clicks: clicks,
+      addToCarts: addToCarts,
+      orders: orders,
+      revenue: revenue ?? this.revenue,
+      followers: followers,
+      loyaltyAccounts: loyaltyAccounts,
+      campaigns: campaigns,
+      placements: placements,
+      rating: rating,
+      topCity: topCity,
+    );
+  }
+}
+
 class SellerOrder {
-  const SellerOrder(this.customer, this.summary, this.status);
+  const SellerOrder(this.customer, this.summary, this.status, this.total);
 
   factory SellerOrder.fromJson(Map<String, dynamic> json) {
     final customer = json['customer'] as Map<String, dynamic>? ?? const <String, dynamic>{};
@@ -4551,12 +4966,14 @@ class SellerOrder {
       (customer['name'] as String?) ?? (customer['email'] as String?) ?? 'Customer',
       summary,
       json['status'] as String? ?? 'PLACED',
+      parseDouble(json['total']),
     );
   }
 
   final String customer;
   final String summary;
   final String status;
+  final double total;
 }
 
 class SellerMetric {
@@ -4589,6 +5006,199 @@ class OnboardingItem {
   final String title;
   final IconData icon;
   final String subtitle;
+}
+
+Future<void> showCampaignDialog(
+  BuildContext context,
+  ValueChanged<Map<String, dynamic>> onSubmit,
+) async {
+  final title = TextEditingController(text: 'New arrivals just dropped');
+  final message = TextEditingController(text: 'Shop the latest products before they sell out.');
+  var channel = 'PUSH';
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Create campaign'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: channel,
+                    decoration: const InputDecoration(
+                      labelText: 'Channel',
+                      prefixIcon: Icon(Icons.notifications_active_outlined),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'PUSH', child: Text('Push')),
+                      DropdownMenuItem(value: 'WHATSAPP', child: Text('WhatsApp')),
+                      DropdownMenuItem(value: 'EMAIL', child: Text('Email')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => channel = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(
+                      labelText: 'Title',
+                      prefixIcon: Icon(Icons.title),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: message,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Message',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  onSubmit({
+                    'channel': channel,
+                    'title': title.text.trim(),
+                    'message': message.text.trim(),
+                    'audience': 'followers',
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Create'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  title.dispose();
+  message.dispose();
+}
+
+Future<void> showPlacementDialog(
+  BuildContext context,
+  List<SellerInventoryProduct> products,
+  ValueChanged<Map<String, dynamic>> onSubmit,
+) async {
+  final title = TextEditingController(text: 'Featured homepage placement');
+  final budget = TextEditingController(text: '25');
+  var productId = products.first.id;
+  var placement = 'home';
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Create placement'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: productId,
+                    decoration: const InputDecoration(
+                      labelText: 'Product',
+                      prefixIcon: Icon(Icons.inventory_2_outlined),
+                    ),
+                    items: [
+                      for (final product in products.take(50))
+                        DropdownMenuItem(
+                          value: product.id,
+                          child: Text(product.name, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => productId = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: placement,
+                    decoration: const InputDecoration(
+                      labelText: 'Placement',
+                      prefixIcon: Icon(Icons.ads_click),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'home', child: Text('Homepage')),
+                      DropdownMenuItem(value: 'search', child: Text('Search')),
+                      DropdownMenuItem(value: 'category', child: Text('Category')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => placement = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(
+                      labelText: 'Title',
+                      prefixIcon: Icon(Icons.title),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: budget,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Budget',
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  onSubmit({
+                    'productId': productId,
+                    'title': title.text.trim(),
+                    'placement': placement,
+                    'budget': double.tryParse(budget.text.trim()) ?? 0,
+                    'status': 'ACTIVE',
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Create'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  title.dispose();
+  budget.dispose();
+}
+
+String? nullableText(String value) {
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';
