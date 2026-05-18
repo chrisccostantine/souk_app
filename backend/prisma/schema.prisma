@@ -104,6 +104,7 @@ model Product {
   price       Decimal
   stock       Int         @default(0)
   active      Boolean     @default(true)
+  featured    Boolean     @default(false)
   rating      Float       @default(0)
   imageUrl    String?
   shopifyProductId String?

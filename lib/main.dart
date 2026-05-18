@@ -659,7 +659,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   Widget build(BuildContext context) {
     final products = _products.where((product) {
       final q = _query.trim().toLowerCase();
-      final inCategory = _category == 'All' || product.category == _category;
+      final inCategory =
+          _category == 'All' || product.category == _category || product.collectionNames.contains(_category);
       final inSearch =
           q.isEmpty ||
           product.name.toLowerCase().contains(q) ||
@@ -678,7 +679,11 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         showAllFeatured: _showAllFeatured,
         loading: _catalogLoading,
         message: _catalogMessage,
-        categories: _products.map((product) => product.category).toSet().toList()..sort(),
+        categories: {
+          for (final product in _products) product.category,
+          for (final product in _products) ...product.collectionNames,
+        }.toList()
+          ..sort(),
         favoriteIds: _favoriteIds,
         onViewAllFeatured: () => setState(() => _showAllFeatured = !_showAllFeatured),
         onQueryChanged: (value) => setState(() => _query = value),
@@ -823,7 +828,21 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compactFeatured = query.trim().isEmpty && category == 'All' && !showAllFeatured;
-    final featuredProducts = compactFeatured ? products.take(7).toList() : products;
+    final chosenFeatured = products.where((product) => product.featured).toList();
+    final featuredProducts = compactFeatured
+        ? (chosenFeatured.isEmpty ? products : chosenFeatured).take(7).toList()
+        : products;
+    final categorySections = categories
+        .take(5)
+        .map((name) => MapEntry(
+              name,
+              products
+                  .where((product) => product.category == name || product.collectionNames.contains(name))
+                  .take(10)
+                  .toList(),
+            ))
+        .where((entry) => entry.value.isNotEmpty)
+        .toList();
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -891,27 +910,41 @@ class HomePage extends StatelessWidget {
           )
         else if (compactFeatured)
           SliverToBoxAdapter(
-            child: SizedBox(
-              height: 245,
-              child: ListView.separated(
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-                scrollDirection: Axis.horizontal,
-                itemCount: featuredProducts.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, index) {
-                  final product = featuredProducts[index];
-                  return SizedBox(
-                    width: 156,
-                    child: ProductMiniCard(
-                      product: product,
-                      isFavorite: favoriteIds.contains(product.id),
-                      onOpen: () => onOpenProduct(product),
-                      onAdd: () => onAddToCart(product),
-                      onFavorite: () => onToggleFavorite(product),
-                    ),
-                  );
-                },
-              ),
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 265,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: featuredProducts.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final product = featuredProducts[index];
+                      return SizedBox(
+                        width: 168,
+                        child: ProductMiniCard(
+                          product: product,
+                          isFavorite: favoriteIds.contains(product.id),
+                          onOpen: () => onOpenProduct(product),
+                          onAdd: () => onAddToCart(product),
+                          onFavorite: () => onToggleFavorite(product),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                for (final section in categorySections)
+                  CategoryProductSection(
+                    title: section.key,
+                    products: section.value,
+                    favoriteIds: favoriteIds,
+                    onOpenProduct: onOpenProduct,
+                    onAddToCart: onAddToCart,
+                    onToggleFavorite: onToggleFavorite,
+                    onViewAll: () => onCategoryChanged(section.key),
+                  ),
+              ],
             ),
           )
         else
@@ -1501,6 +1534,20 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
   }
 
+  Future<void> _toggleFeaturedProduct(SellerInventoryProduct product) async {
+    try {
+      await SoukApi(baseUrl: soukApiUrl).setProductFeatured(product.id, !product.featured);
+      await _loadSellerInventory();
+    } on SoukApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final store =
@@ -1602,7 +1649,10 @@ class _SellerHubPageState extends State<SellerHubPage>
               style: Theme.of(context).textTheme.bodySmall,
             ),
           for (final product in visibleSyncedProducts)
-            SellerInventoryTile(product: product),
+            SellerInventoryTile(
+              product: product,
+              onToggleFeatured: () => _toggleFeaturedProduct(product),
+            ),
         ],
         const SizedBox(height: 16),
         const SectionTitle(title: 'Incoming orders', action: 'Live orders'),
@@ -2050,7 +2100,7 @@ class ProductArt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 1.16,
+      aspectRatio: 1,
       child: Container(
         color: product.color.withValues(alpha: 0.14),
         child: Stack(
@@ -2067,11 +2117,9 @@ class ProductArt extends StatelessWidget {
                       ),
                       child: Icon(product.icon, color: Colors.white, size: 38),
                     )
-                  : Image.network(
-                      product.imageUrl!,
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
+                  : AppNetworkImage(
+                      url: product.imageUrl!,
+                      size: 360,
                       errorBuilder: (_, __, ___) {
                         return Container(
                           width: 76,
@@ -2098,6 +2146,41 @@ class ProductArt extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class AppNetworkImage extends StatelessWidget {
+  const AppNetworkImage({
+    super.key,
+    required this.url,
+    required this.size,
+    this.errorBuilder,
+  });
+
+  final String url;
+  final int size;
+  final ImageErrorWidgetBuilder? errorBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      optimizedImageUrl(url, size),
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      cacheWidth: size,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return child;
+        }
+        return Container(
+          color: const Color(0xFFE7F0EA),
+          alignment: Alignment.center,
+          child: const CircularProgressIndicator(strokeWidth: 2),
+        );
+      },
+      errorBuilder: errorBuilder,
     );
   }
 }
@@ -2228,34 +2311,52 @@ class ProductMiniCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(product.icon, color: product.color, size: 30),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
-                    onPressed: onFavorite,
-                    icon: Icon(
-                      isFavorite ? Icons.favorite : Icons.favorite_border,
-                    ),
+              AspectRatio(
+                aspectRatio: 1,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    children: [
+                      product.imageUrl == null
+                          ? Container(
+                              color: product.color,
+                              child: Icon(product.icon, color: Colors.white, size: 34),
+                            )
+                          : AppNetworkImage(url: product.imageUrl!, size: 260),
+                      Positioned(
+                        right: 4,
+                        top: 4,
+                        child: IconButton.filledTonal(
+                          tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
+                          onPressed: onFavorite,
+                          icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-              const Spacer(),
+              const SizedBox(height: 8),
               Text(
                 product.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
-              Text(product.formattedPrice),
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton.filledTonal(
-                  tooltip: 'Add to basket',
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.add),
-                ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Expanded(child: Text(product.formattedPrice)),
+                  IconButton.filledTonal(
+                    tooltip: 'Add to basket',
+                    onPressed: onAdd,
+                    icon: const Icon(Icons.add),
+                    constraints: const BoxConstraints.tightFor(
+                      width: 36,
+                      height: 36,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2265,7 +2366,70 @@ class ProductMiniCard extends StatelessWidget {
   }
 }
 
-class ProductDetailSheet extends StatelessWidget {
+class CategoryProductSection extends StatelessWidget {
+  const CategoryProductSection({
+    super.key,
+    required this.title,
+    required this.products,
+    required this.favoriteIds,
+    required this.onOpenProduct,
+    required this.onAddToCart,
+    required this.onToggleFavorite,
+    required this.onViewAll,
+  });
+
+  final String title;
+  final List<Product> products;
+  final Set<String> favoriteIds;
+  final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Product> onAddToCart;
+  final ValueChanged<Product> onToggleFavorite;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: SectionTitle(
+              title: title,
+              action: '${products.length} items',
+              actionButton: TextButton(onPressed: onViewAll, child: const Text('View all')),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 265,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              scrollDirection: Axis.horizontal,
+              itemCount: products.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final product = products[index];
+                return SizedBox(
+                  width: 168,
+                  child: ProductMiniCard(
+                    product: product,
+                    isFavorite: favoriteIds.contains(product.id),
+                    onOpen: () => onOpenProduct(product),
+                    onAdd: () => onAddToCart(product),
+                    onFavorite: () => onToggleFavorite(product),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ProductDetailSheet extends StatefulWidget {
   const ProductDetailSheet({
     super.key,
     required this.product,
@@ -2280,9 +2444,23 @@ class ProductDetailSheet extends StatelessWidget {
   final VoidCallback onAddToCart;
 
   @override
+  State<ProductDetailSheet> createState() => _ProductDetailSheetState();
+}
+
+class _ProductDetailSheetState extends State<ProductDetailSheet> {
+  ProductVariant? _selectedVariant;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedVariant = firstWhereOrNull(widget.product.variants, (variant) => variant.stock > 0) ??
+        (widget.product.variants.isEmpty ? null : widget.product.variants.first);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           18,
           0,
@@ -2293,62 +2471,62 @@ class ProductDetailSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 170,
-              width: double.infinity,
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
-              child: product.images.isEmpty
-                  ? Container(
-                      color: product.color.withValues(alpha: 0.15),
-                      child: Icon(product.icon, color: product.color, size: 78),
-                    )
-                  : PageView(
-                      children: [
-                        for (final image in product.images)
-                          Image.network(image, fit: BoxFit.cover),
-                      ],
-                    ),
+            AspectRatio(
+              aspectRatio: 1,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: widget.product.images.isEmpty
+                    ? Container(
+                        color: widget.product.color.withValues(alpha: 0.15),
+                        child: Icon(widget.product.icon, color: widget.product.color, size: 78),
+                      )
+                    : PageView(
+                        children: [
+                          for (final image in widget.product.images)
+                            AppNetworkImage(url: image, size: 900),
+                        ],
+                      ),
+              ),
             ),
             const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    product.name,
+                    widget.product.name,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
                 IconButton.filledTonal(
-                  tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
-                  onPressed: onFavorite,
+                  tooltip: widget.isFavorite ? 'Remove favorite' : 'Save favorite',
+                  onPressed: widget.onFavorite,
                   icon: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    widget.isFavorite ? Icons.favorite : Icons.favorite_border,
                   ),
                 ),
               ],
             ),
             Text(
-              '${product.shop.name} - ${product.category}',
+              '${widget.product.shop.name} - ${widget.product.category}',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: 12),
-            Text(product.description),
+            Text(widget.product.description),
             const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                Tag(label: '${product.rating.toStringAsFixed(1)} rating'),
-                Tag(label: '${product.stock} in stock'),
-                Tag(label: product.shop.delivery),
+                Tag(label: '${widget.product.rating.toStringAsFixed(1)} rating'),
+                Tag(label: '${widget.product.stock} in stock'),
+                Tag(label: widget.product.shop.delivery),
               ],
             ),
-            if (product.variants.isNotEmpty) ...[
+            if (widget.product.variants.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Variants', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
@@ -2356,8 +2534,17 @@ class ProductDetailSheet extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final variant in product.variants.take(10))
-                    Tag(label: '${variant.title} - ${money(variant.price)}'),
+                  for (final variant in widget.product.variants)
+                    ChoiceChip(
+                      selected: _selectedVariant?.title == variant.title,
+                      onSelected: variant.stock == 0 ? null : (_) => setState(() => _selectedVariant = variant),
+                      label: Text(
+                        '${variant.title} (${variant.stock})',
+                        style: TextStyle(
+                          decoration: variant.stock == 0 ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -2366,14 +2553,14 @@ class ProductDetailSheet extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    product.formattedPrice,
+                    money(_selectedVariant?.price ?? widget.product.price),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                 ),
                 FilledButton.icon(
-                  onPressed: onAddToCart,
+                  onPressed: (_selectedVariant?.stock ?? widget.product.stock) == 0 ? null : widget.onAddToCart,
                   icon: const Icon(Icons.add_shopping_cart),
                   label: const Text('Add to basket'),
                 ),
@@ -3045,9 +3232,14 @@ class CollectionBrowser extends StatelessWidget {
 }
 
 class SellerInventoryTile extends StatelessWidget {
-  const SellerInventoryTile({super.key, required this.product});
+  const SellerInventoryTile({
+    super.key,
+    required this.product,
+    required this.onToggleFeatured,
+  });
 
   final SellerInventoryProduct product;
+  final VoidCallback onToggleFeatured;
 
   @override
   Widget build(BuildContext context) {
@@ -3066,10 +3258,11 @@ class SellerInventoryTile extends StatelessWidget {
                       child: const Icon(Icons.inventory_2),
                     )
                   : Image.network(
-                      product.imageUrl!,
+                      optimizedImageUrl(product.imageUrl!, 160),
                       width: 58,
                       height: 58,
                       fit: BoxFit.cover,
+                      cacheWidth: 160,
                       errorBuilder: (_, __, ___) {
                         return Container(
                           width: 58,
@@ -3122,9 +3315,20 @@ class SellerInventoryTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              money(product.price),
-              style: const TextStyle(fontWeight: FontWeight.w900),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: product.featured ? 'Remove from featured' : 'Feature product',
+                  onPressed: onToggleFeatured,
+                  icon: Icon(product.featured ? Icons.star : Icons.star_border),
+                ),
+                Text(
+                  money(product.price),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ],
             ),
           ],
         ),
@@ -3270,6 +3474,8 @@ class Product {
     required this.stock,
     required this.images,
     required this.variants,
+    required this.collectionNames,
+    required this.featured,
     this.imageUrl,
   });
 
@@ -3283,6 +3489,7 @@ class Product {
     final variants = (json['variants'] as List<dynamic>? ?? [])
         .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
         .toList();
+    final collectionNames = productCollectionNames(json);
     return Product(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Product',
@@ -3297,6 +3504,8 @@ class Product {
       imageUrl: json['imageUrl'] as String?,
       images: images.isEmpty && json['imageUrl'] != null ? [json['imageUrl'] as String] : images,
       variants: variants,
+      collectionNames: collectionNames,
+      featured: json['featured'] == true,
     );
   }
 
@@ -3313,6 +3522,8 @@ class Product {
   final String? imageUrl;
   final List<String> images;
   final List<ProductVariant> variants;
+  final List<String> collectionNames;
+  final bool featured;
 
   String get formattedPrice => money(price);
 }
@@ -3424,6 +3635,7 @@ class SellerInventoryProduct {
     required this.collectionIds,
     required this.variants,
     required this.images,
+    required this.featured,
     this.imageUrl,
   });
 
@@ -3450,6 +3662,7 @@ class SellerInventoryProduct {
       variants: (json['variants'] as List<dynamic>? ?? [])
           .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
           .toList(),
+      featured: json['featured'] == true,
       collections: collectionRows
           .map((collection) => collection['title'] as String? ?? 'Collection')
           .toList(),
@@ -3468,6 +3681,7 @@ class SellerInventoryProduct {
   final String? imageUrl;
   final List<String> images;
   final List<ProductVariant> variants;
+  final bool featured;
   final List<String> collections;
   final List<String> collectionIds;
 }
@@ -3548,6 +3762,28 @@ int parseInt(Object? value) {
     return value.toInt();
   }
   return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String optimizedImageUrl(String url, int width) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.host.contains('shopify')) {
+    return url;
+  }
+  return uri.replace(queryParameters: {
+    ...uri.queryParameters,
+    'width': width.toString(),
+  }).toString();
+}
+
+List<String> productCollectionNames(Map<String, dynamic> json) {
+  final rows = json['collections'] as List<dynamic>? ?? const [];
+  return rows
+      .map((item) => item as Map<String, dynamic>)
+      .map((item) => item['collection'] as Map<String, dynamic>?)
+      .whereType<Map<String, dynamic>>()
+      .map((collection) => collection['title'] as String? ?? '')
+      .where((title) => title.isNotEmpty)
+      .toList();
 }
 
 T? firstWhereOrNull<T>(Iterable<T> items, bool Function(T item) test) {

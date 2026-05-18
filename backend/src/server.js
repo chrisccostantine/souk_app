@@ -364,10 +364,48 @@ app.get('/api/products', async (req, res, next) => {
         shop: true,
         images: { orderBy: { position: 'asc' } },
         variants: { orderBy: { title: 'asc' } },
+        collections: {
+          include: { collection: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ products });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/products/:id/featured', async (req, res, next) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product) {
+      const error = new Error('Product not found');
+      error.status = 404;
+      throw error;
+    }
+    const featured = Boolean(req.body?.featured);
+    if (featured && !product.featured) {
+      const count = await prisma.product.count({
+        where: { shopId: product.shopId, featured: true },
+      });
+      if (count >= 10) {
+        const error = new Error('A store can feature up to 10 products');
+        error.status = 409;
+        throw error;
+      }
+    }
+    const updated = await prisma.product.update({
+      where: { id: product.id },
+      data: { featured },
+      include: {
+        shop: true,
+        images: { orderBy: { position: 'asc' } },
+        variants: { orderBy: { title: 'asc' } },
+        collections: { include: { collection: true } },
+      },
+    });
+    res.json({ product: updated });
   } catch (error) {
     next(error);
   }

@@ -57,6 +57,11 @@ class SoukApi {
     return body['product'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> setProductFeatured(String productId, bool featured) async {
+    final body = await _patch('/api/products/$productId/featured', {'featured': featured});
+    return body['product'] as Map<String, dynamic>;
+  }
+
   Future<String> startShopifyOAuth(Map<String, dynamic> payload) async {
     final body = await _post('/api/shopify/oauth/start', payload);
     return body['installUrl'] as String;
@@ -95,6 +100,14 @@ class SoukApi {
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> payload) async {
     final request = await _client.postUrl(_uri(path));
+    request.headers.contentType = ContentType.json;
+    request.write(jsonEncode(payload));
+    final response = await request.close();
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> payload) async {
+    final request = await _client.patchUrl(_uri(path));
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(payload));
     final response = await request.close();
