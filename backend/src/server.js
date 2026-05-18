@@ -315,7 +315,7 @@ app.get('/api/shops/:id/inventory', async (req, res, next) => {
     const shopId = String(req.params.id);
     const [products, collections] = await Promise.all([
       prisma.product.findMany({
-        where: { shopId },
+        where: { shopId, active: true },
         orderBy: { updatedAt: 'desc' },
         include: {
           images: { orderBy: { position: 'asc' } },
@@ -879,6 +879,13 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
     }
     const variant = shopifyProduct.variants?.[0];
     if (!variant) {
+      continue;
+    }
+    if (shopifyProduct.status === 'archived') {
+      await prisma.product.updateMany({
+        where: { shopId, shopifyProductId: String(shopifyProduct.id) },
+        data: { active: false, lastSyncedAt: now },
+      });
       continue;
     }
     const inventoryLevel = inventoryByItemId.get(String(variant.inventory_item_id));

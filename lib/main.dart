@@ -832,17 +832,6 @@ class HomePage extends StatelessWidget {
     final featuredProducts = compactFeatured
         ? (chosenFeatured.isEmpty ? products : chosenFeatured).take(7).toList()
         : products;
-    final categorySections = categories
-        .take(5)
-        .map((name) => MapEntry(
-              name,
-              products
-                  .where((product) => product.category == name || product.collectionNames.contains(name))
-                  .take(10)
-                  .toList(),
-            ))
-        .where((entry) => entry.value.isNotEmpty)
-        .toList();
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -934,16 +923,6 @@ class HomePage extends StatelessWidget {
                     },
                   ),
                 ),
-                for (final section in categorySections)
-                  CategoryProductSection(
-                    title: section.key,
-                    products: section.value,
-                    favoriteIds: favoriteIds,
-                    onOpenProduct: onOpenProduct,
-                    onAddToCart: onAddToCart,
-                    onToggleFavorite: onToggleFavorite,
-                    onViewAll: () => onCategoryChanged(section.key),
-                  ),
               ],
             ),
           )
@@ -2361,69 +2340,6 @@ class ProductMiniCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class CategoryProductSection extends StatelessWidget {
-  const CategoryProductSection({
-    super.key,
-    required this.title,
-    required this.products,
-    required this.favoriteIds,
-    required this.onOpenProduct,
-    required this.onAddToCart,
-    required this.onToggleFavorite,
-    required this.onViewAll,
-  });
-
-  final String title;
-  final List<Product> products;
-  final Set<String> favoriteIds;
-  final ValueChanged<Product> onOpenProduct;
-  final ValueChanged<Product> onAddToCart;
-  final ValueChanged<Product> onToggleFavorite;
-  final VoidCallback onViewAll;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: SectionTitle(
-              title: title,
-              action: '${products.length} items',
-              actionButton: TextButton(onPressed: onViewAll, child: const Text('View all')),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: 265,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              scrollDirection: Axis.horizontal,
-              itemCount: products.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final product = products[index];
-                return SizedBox(
-                  width: 168,
-                  child: ProductMiniCard(
-                    product: product,
-                    isFavorite: favoriteIds.contains(product.id),
-                    onOpen: () => onOpenProduct(product),
-                    onAdd: () => onAddToCart(product),
-                    onFavorite: () => onToggleFavorite(product),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
       ),
     );
   }
