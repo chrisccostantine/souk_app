@@ -383,6 +383,9 @@ model DeliveryRegion {
   id        String   @id @default(cuid())
   shopId    String
   name      String
+  ruleType  String   @default("REGION")
+  minOrder  Decimal?
+  maxOrder  Decimal?
   fee       Decimal  @default(0)
   eta       String
   active    Boolean  @default(true)

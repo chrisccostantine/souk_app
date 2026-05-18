@@ -49,7 +49,7 @@ app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
 app.use(
   express.json({
-    limit: '1mb',
+    limit: '6mb',
     verify: (req, _res, buf) => {
       req.rawBody = buf.toString('utf8');
     },
@@ -272,9 +272,10 @@ app.post('/api/auth/login', async (req, res, next) => {
   }
 });
 
-app.get('/api/shops', async (_req, res, next) => {
+app.get('/api/shops', async (req, res, next) => {
   try {
     const shops = await prisma.shop.findMany({
+      where: req.query.includeAll === 'true' ? {} : { status: 'ACTIVE', verified: true },
       orderBy: { createdAt: 'desc' },
       include: {
         products: {
@@ -417,7 +418,11 @@ app.patch('/api/admin/shops/:id/verification', async (req, res, next) => {
     const input = validate(verifyShopSchema, req.body);
     const shop = await prisma.shop.update({
       where: { id: String(req.params.id) },
-      data: input,
+      data: {
+        verified: input.verified,
+        verificationNote: input.verificationNote,
+        status: input.verified ? 'ACTIVE' : 'SUSPENDED',
+      },
     });
     res.json({ shop });
   } catch (error) {
@@ -556,6 +561,7 @@ app.get('/api/products', async (req, res, next) => {
     const products = await prisma.product.findMany({
       where: {
         active: true,
+        shop: { status: 'ACTIVE', verified: true },
         ...(shopId ? { shopId: String(shopId) } : {}),
         ...(category ? { category: String(category) } : {}),
         ...(q
@@ -794,6 +800,15 @@ app.get('/api/shopify/status', async (req, res, next) => {
 app.post('/api/shopify/sync', async (req, res, next) => {
   try {
     const input = validate(syncShopifySchema, req.body);
+    const shop = await prisma.shop.findUnique({
+      where: { id: input.shopId },
+      select: { status: true, verified: true },
+    });
+    if (!shop || shop.status !== 'ACTIVE' || !shop.verified) {
+      const error = new Error('Store must be approved by Scalora admin before Shopify sync');
+      error.status = 403;
+      throw error;
+    }
     const existingJob = [...shopifySyncJobs.values()].find(
       (job) => job.shopId === input.shopId && (job.status === 'queued' || job.status === 'running'),
     );

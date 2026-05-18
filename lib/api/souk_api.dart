@@ -18,8 +18,8 @@ class SoukApi {
     );
   }
 
-  Future<List<dynamic>> fetchShops() async {
-    final body = await _get('/api/shops');
+  Future<List<dynamic>> fetchShops({bool includeAll = false}) async {
+    final body = await _get('/api/shops', {'includeAll': includeAll ? 'true' : null});
     return body['shops'] as List<dynamic>;
   }
 

@@ -12,20 +12,19 @@ export const createShopSchema = z.object({
 });
 
 export const updateShopProfileSchema = z.object({
-  logoUrl: z.string().url().optional().nullable(),
-  bannerUrl: z.string().url().optional().nullable(),
+  logoUrl: z.string().optional().nullable(),
+  bannerUrl: z.string().optional().nullable(),
   primaryColor: z.string().min(4).max(16).optional().nullable(),
   accentColor: z.string().min(4).max(16).optional().nullable(),
   instagramUrl: z.string().url().optional().nullable(),
   tiktokUrl: z.string().url().optional().nullable(),
   websiteUrl: z.string().url().optional().nullable(),
-  whatsappPhone: z.string().min(6).optional().nullable(),
+  whatsappPhone: z.string().regex(/^\+961(3\d{6}|(70|71|76|78|79|81)\d{6}|(1|4|5|6|7|8|9)\d{6})$/).optional().nullable(),
   contactEmail: z.string().email().optional().nullable(),
   shippingPolicy: z.string().min(2).optional().nullable(),
   returnPolicy: z.string().min(2).optional().nullable(),
   deliveryLabel: z.string().min(2).optional(),
   minimumOrder: z.coerce.number().min(0).optional(),
-  subscriptionPlan: z.enum(['FREE', 'BASIC', 'PRO', 'ENTERPRISE']).optional(),
 });
 
 export const followStoreSchema = z.object({
@@ -84,7 +83,10 @@ export const aiAdCopySchema = z.object({
 });
 
 export const createDeliveryRegionSchema = z.object({
-  name: z.string().min(2),
+  name: z.string().min(2).default('Delivery rule'),
+  ruleType: z.enum(['REGION', 'PRICE']).default('REGION'),
+  minOrder: z.coerce.number().min(0).optional(),
+  maxOrder: z.coerce.number().min(0).optional(),
   fee: z.coerce.number().min(0).default(0),
   eta: z.string().min(2),
   active: z.boolean().default(true),

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api/souk_api.dart';
@@ -69,7 +71,7 @@ class SoukApp extends StatelessWidget {
   }
 }
 
-enum AccountRole { customer, seller }
+enum AccountRole { customer, seller, admin }
 
 class AppSession {
   const AppSession({
@@ -107,6 +109,13 @@ class _AuthGateState extends State<AuthGate> {
 
     if (session.role == AccountRole.seller) {
       return SellerAppShell(
+        session: session,
+        onLogout: () => setState(() => _session = null),
+      );
+    }
+
+    if (session.role == AccountRole.admin) {
+      return AdminDashboardPage(
         session: session,
         onLogout: () => setState(() => _session = null),
       );
@@ -154,6 +163,25 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_signup && _role == AccountRole.admin) {
+      setState(() => _authError = 'Admin access is login only.');
+      return;
+    }
+
+    if (!_signup &&
+        _role == AccountRole.admin &&
+        _email.text.trim().toLowerCase() == 'scalora.socialmedia.agency@gmail.com' &&
+        _password.text == '12345678') {
+      widget.onAuthenticated(
+        const AppSession(
+          name: 'Scalora Admin',
+          email: 'Scalora.socialmedia.agency@gmail.com',
+          role: AccountRole.admin,
+        ),
+      );
       return;
     }
 
@@ -233,6 +261,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       email: user['email']?.toString() ?? _email.text.trim(),
       role: user['role'] == 'SELLER'
           ? AccountRole.seller
+          : user['role'] == 'ADMIN'
+          ? AccountRole.admin
           : AccountRole.customer,
       store: shop == null
           ? null
@@ -303,6 +333,11 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                             icon: Icon(Icons.storefront_outlined),
                             label: Text('Store'),
                           ),
+                          ButtonSegment(
+                            value: AccountRole.admin,
+                            icon: Icon(Icons.admin_panel_settings_outlined),
+                            label: Text('Admin'),
+                          ),
                         ],
                         selected: {_role},
                         onSelectionChanged: (value) =>
@@ -354,6 +389,13 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           return null;
                         },
                       ),
+                      if (_signup && _role == AccountRole.admin) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Admin accounts are private. Use login.',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ],
                       if (_signup && isSeller) ...[
                         const SizedBox(height: 16),
                         Text(
@@ -884,6 +926,138 @@ class _SellerAppShellState extends State<SellerAppShell> {
   }
 }
 
+class AdminDashboardPage extends StatefulWidget {
+  const AdminDashboardPage({
+    super.key,
+    required this.session,
+    required this.onLogout,
+  });
+
+  final AppSession session;
+  final VoidCallback onLogout;
+
+  @override
+  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
+}
+
+class _AdminDashboardPageState extends State<AdminDashboardPage> {
+  List<Shop> _shops = [];
+  bool _loading = false;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadShops();
+  }
+
+  Future<void> _loadShops() async {
+    if (soukApiUrl.isEmpty) {
+      setState(() => _message = 'SOUK_API_URL is required for admin review.');
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _message = null;
+    });
+    try {
+      final rows = await SoukApi(baseUrl: soukApiUrl).fetchShops(includeAll: true);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _shops = rows.map((item) => Shop.fromJson(item as Map<String, dynamic>)).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _message = 'Could not load store requests.';
+      });
+    }
+  }
+
+  Future<void> _reviewShop(Shop shop, bool approved) async {
+    try {
+      await SoukApi(baseUrl: soukApiUrl).verifyShop(shop.id, {
+        'verified': approved,
+        'verificationNote': approved ? 'Approved by Scalora admin' : 'Declined by Scalora admin',
+      });
+      await _loadShops();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(approved ? '${shop.name} approved' : '${shop.name} declined'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on SoukApiException catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message), behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+          children: [
+            HeaderBar(session: widget.session, onLogout: widget.onLogout),
+            const SizedBox(height: 18),
+            const SectionTitle(title: 'Admin dashboard', action: 'Store approvals'),
+            const SizedBox(height: 12),
+            if (_loading)
+              const LinearProgressIndicator(minHeight: 6)
+            else if (_message != null)
+              EmptyState(
+                icon: Icons.admin_panel_settings_outlined,
+                title: 'Admin unavailable',
+                message: _message!,
+              )
+            else
+              for (final shop in _shops) ...[
+                Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: shop.verified ? const Color(0xFF1F7A4D) : const Color(0xFFC8673A),
+                      child: Icon(shop.verified ? Icons.verified : Icons.hourglass_top, color: Colors.white),
+                    ),
+                    title: Text(shop.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+                    subtitle: Text('${shop.category} - ${shop.location} - ${shop.statusLabel}'),
+                    trailing: Wrap(
+                      spacing: 8,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Approve',
+                          onPressed: () => _reviewShop(shop, true),
+                          icon: const Icon(Icons.check),
+                        ),
+                        IconButton.filledTonal(
+                          tooltip: 'Decline',
+                          onPressed: () => _reviewShop(shop, false),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class HomePage extends StatelessWidget {
   const HomePage({
     super.key,
@@ -1285,6 +1459,14 @@ class SellerHubPage extends StatefulWidget {
   State<SellerHubPage> createState() => _SellerHubPageState();
 }
 
+enum SellerMenuSection {
+  settings,
+  productSync,
+  analytics,
+  growth,
+  operations,
+}
+
 class _SellerHubPageState extends State<SellerHubPage>
     with WidgetsBindingObserver {
   final _shopifyStore = TextEditingController();
@@ -1304,6 +1486,7 @@ class _SellerHubPageState extends State<SellerHubPage>
   String _collectionQuery = '';
   bool _inventoryLoading = false;
   String? _inventoryMessage;
+  SellerMenuSection _sellerSection = SellerMenuSection.settings;
 
   @override
   void initState() {
@@ -1668,12 +1851,65 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
     try {
       await SoukApi(baseUrl: soukApiUrl).updateShopProfile(shopId, payload);
+      setState(() => _sellerSection = SellerMenuSection.productSync);
       _showSellerSnack('Store profile saved');
     } on SoukApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not save store profile');
     }
+  }
+
+  void _openSellerMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SellerMenuTile(
+                icon: Icons.settings_outlined,
+                label: 'Settings',
+                selected: _sellerSection == SellerMenuSection.settings,
+                onTap: () => _selectSellerSection(SellerMenuSection.settings),
+              ),
+              SellerMenuTile(
+                icon: Icons.sync,
+                label: 'Product sync',
+                selected: _sellerSection == SellerMenuSection.productSync,
+                onTap: () => _selectSellerSection(SellerMenuSection.productSync),
+              ),
+              SellerMenuTile(
+                icon: Icons.analytics_outlined,
+                label: 'Analytics',
+                selected: _sellerSection == SellerMenuSection.analytics,
+                onTap: () => _selectSellerSection(SellerMenuSection.analytics),
+              ),
+              SellerMenuTile(
+                icon: Icons.rocket_launch_outlined,
+                label: 'Growth & monetization',
+                selected: _sellerSection == SellerMenuSection.growth,
+                onTap: () => _selectSellerSection(SellerMenuSection.growth),
+              ),
+              SellerMenuTile(
+                icon: Icons.tune_outlined,
+                label: 'Operations',
+                selected: _sellerSection == SellerMenuSection.operations,
+                onTap: () => _selectSellerSection(SellerMenuSection.operations),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _selectSellerSection(SellerMenuSection section) {
+    Navigator.pop(context);
+    setState(() => _sellerSection = section);
   }
 
   Future<void> _createCampaign(Map<String, dynamic> payload) async {
@@ -1877,119 +2113,130 @@ class _SellerHubPageState extends State<SellerHubPage>
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        HeaderBar(session: widget.session, onLogout: widget.onLogout),
+        Row(
+          children: [
+            IconButton.filledTonal(
+              tooltip: 'Seller menu',
+              onPressed: _openSellerMenu,
+              icon: const Icon(Icons.menu),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: HeaderBar(session: widget.session, onLogout: widget.onLogout)),
+          ],
+        ),
         const SizedBox(height: 18),
         const SellerHero(),
         const SizedBox(height: 16),
         SellerStoreCard(store: store, ownerName: widget.session.name),
         const SizedBox(height: 16),
-        StoreOnboardingPanel(store: store, onSave: _saveStoreProfile),
-        const SizedBox(height: 16),
-        ShopifySyncCard(
-          shopifyStore: _shopifyStore,
-          connected: _shopifyConnected,
-          pending: _shopifyPending,
-          synced: _shopifySynced,
-          syncing: _shopifySyncing,
-          syncProgress: _shopifySyncProgress,
-          message: _shopifyMessage,
-          onConnect: _connectShopify,
-          onSync: _syncShopify,
-        ),
-        const SizedBox(height: 16),
-        SellerMetricGrid(
-          productCount: productCount,
-          collectionCount: _syncedCollections.length,
-          orderCount: _sellerOrders.length,
-          revenue: dashboardRevenue,
-          rating: _growthStats.rating,
-        ),
-        const SizedBox(height: 16),
-        SellerFeatureSuite(
-          productCount: productCount,
-          orderCount: _sellerOrders.length,
-          growthStats: dashboardGrowthStats,
-          synced: _shopifySynced,
-          products: _syncedProducts,
+        if (_sellerSection == SellerMenuSection.settings)
+          StoreOnboardingPanel(store: store, onSave: _saveStoreProfile),
+        if (_sellerSection == SellerMenuSection.productSync) ...[
+          ShopifySyncCard(
+            shopifyStore: _shopifyStore,
+            connected: _shopifyConnected,
+            pending: _shopifyPending,
+            synced: _shopifySynced,
+            syncing: _shopifySyncing,
+            syncProgress: _shopifySyncProgress,
+            message: _shopifyMessage,
+            onConnect: _connectShopify,
+            onSync: _syncShopify,
+          ),
+          const SizedBox(height: 16),
+          SectionTitle(
+            title: 'Collections',
+            action: '${_syncedCollections.length} synced',
+          ),
+          const SizedBox(height: 10),
+          if (_inventoryLoading)
+            const LinearProgressIndicator(minHeight: 6)
+          else if (_syncedCollections.isEmpty)
+            const EmptyState(
+              icon: Icons.category_outlined,
+              title: 'No synced collections yet',
+              message: 'Sync Shopify products after Scalora admin approves your store.',
+            )
+          else
+            CollectionBrowser(
+              collections: visibleCollections,
+              selectedId: _selectedCollectionId,
+              query: _collectionQuery,
+              onQueryChanged: (value) => setState(() => _collectionQuery = value),
+              onSelected: (collectionId) {
+                setState(() {
+                  _selectedCollectionId = _selectedCollectionId == collectionId ? null : collectionId;
+                });
+              },
+            ),
+          const SizedBox(height: 16),
+          SectionTitle(
+            title: selectedCollection?.title ?? 'Inventory',
+            action: _selectedCollectionId == null ? '$productCount products' : '${visibleSyncedProducts.length} products',
+          ),
+          const SizedBox(height: 10),
+          if (_inventoryMessage != null)
+            EmptyState(
+              icon: Icons.inventory_2_outlined,
+              title: 'Inventory unavailable',
+              message: _inventoryMessage!,
+            )
+          else if (visibleSyncedProducts.isEmpty)
+            const EmptyState(
+              icon: Icons.inventory_2_outlined,
+              title: 'No products yet',
+              message: 'Choose another collection or sync Shopify again.',
+            )
+          else ...[
+            if (_selectedCollectionId == null && _syncedProducts.length > visibleSyncedProducts.length)
+              Text(
+                'Showing first ${visibleSyncedProducts.length} products. Choose a collection to narrow the list.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            for (final product in visibleSyncedProducts)
+              SellerInventoryTile(
+                product: product,
+                onToggleFeatured: () => _toggleFeaturedProduct(product),
+              ),
+          ],
+        ],
+        if (_sellerSection == SellerMenuSection.analytics)
+          SellerMetricGrid(
+            productCount: productCount,
+            collectionCount: _syncedCollections.length,
+            orderCount: _sellerOrders.length,
+            revenue: dashboardRevenue,
+            rating: _growthStats.rating,
+          ),
+        if (_sellerSection == SellerMenuSection.growth)
+          SellerFeatureSuite(
+            productCount: productCount,
+            orderCount: _sellerOrders.length,
+            growthStats: dashboardGrowthStats,
+            synced: _shopifySynced,
+            products: _syncedProducts,
           onCreateCampaign: _createCampaign,
           onCreatePlacement: _createPlacement,
-          onGenerateProductCopy: _generateProductCopy,
-          onGenerateAdCopy: _generateAdCopy,
-          onCreateDeliveryRegion: _createDeliveryRegion,
-          onCreateLiveEvent: _createLiveEvent,
           onCreateAffiliateLink: _createAffiliateLink,
         ),
-        const SizedBox(height: 16),
-        SectionTitle(
-          title: 'Collections',
-          action: '${_syncedCollections.length} synced',
-        ),
-        const SizedBox(height: 10),
-        if (_inventoryLoading)
-          const LinearProgressIndicator(minHeight: 6)
-        else if (_syncedCollections.isEmpty)
-          const EmptyState(
-            icon: Icons.category_outlined,
-            title: 'No synced collections yet',
-            message: 'Sync Shopify products to import collections into Souk.',
-          )
-        else
-          CollectionBrowser(
-            collections: visibleCollections,
-            selectedId: _selectedCollectionId,
-            query: _collectionQuery,
-            onQueryChanged: (value) => setState(() => _collectionQuery = value),
-            onSelected: (collectionId) {
-              setState(() {
-                _selectedCollectionId = _selectedCollectionId == collectionId ? null : collectionId;
-              });
-            },
-          ),
-        const SizedBox(height: 16),
-        SectionTitle(
-          title: selectedCollection?.title ?? 'Inventory',
-          action: _selectedCollectionId == null ? '$productCount products' : '${visibleSyncedProducts.length} products',
-        ),
-        const SizedBox(height: 10),
-        if (_inventoryMessage != null)
-          EmptyState(
-            icon: Icons.inventory_2_outlined,
-            title: 'Inventory unavailable',
-            message: _inventoryMessage!,
-          )
-        else if (visibleSyncedProducts.isEmpty)
-          const EmptyState(
-            icon: Icons.inventory_2_outlined,
-            title: 'No products yet',
-            message: 'Choose another collection or sync Shopify again.',
-          )
-        else ...[
-          if (_selectedCollectionId == null && _syncedProducts.length > visibleSyncedProducts.length)
-            Text(
-              'Showing first ${visibleSyncedProducts.length} products. Choose a collection to narrow the list.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          for (final product in visibleSyncedProducts)
-            SellerInventoryTile(
-              product: product,
-              onToggleFeatured: () => _toggleFeaturedProduct(product),
-            ),
+        if (_sellerSection == SellerMenuSection.operations) ...[
+          DeliveryRulesPanel(onCreateDeliveryRule: _createDeliveryRegion),
+          const SizedBox(height: 16),
+          const SectionTitle(title: 'Incoming orders', action: 'Live orders'),
+          const SizedBox(height: 10),
+          if (_sellerOrders.isEmpty)
+            const EmptyState(
+              icon: Icons.receipt_long_outlined,
+              title: 'No live orders yet',
+              message: 'Customer orders will appear here after checkout.',
+            )
+          else
+            for (final order in _sellerOrders)
+              SellerOrderTile(
+                order: order,
+                onStatusChanged: (status) => _updateSellerOrderStatus(order, status),
+              ),
         ],
-        const SizedBox(height: 16),
-        const SectionTitle(title: 'Incoming orders', action: 'Live orders'),
-        const SizedBox(height: 10),
-        if (_sellerOrders.isEmpty)
-          const EmptyState(
-            icon: Icons.receipt_long_outlined,
-            title: 'No live orders yet',
-            message: 'Customer orders will appear here after checkout.',
-          )
-        else
-          for (final order in _sellerOrders)
-            SellerOrderTile(
-              order: order,
-              onStatusChanged: (status) => _updateSellerOrderStatus(order, status),
-            ),
       ],
     );
   }
@@ -2046,7 +2293,37 @@ class HeaderBar extends StatelessWidget {
   }
 
   String _roleLabel(AccountRole role) {
-    return role == AccountRole.seller ? 'Store account' : 'Customer account';
+    return role == AccountRole.seller
+        ? 'Store account'
+        : role == AccountRole.admin
+        ? 'Admin account'
+        : 'Customer account';
+  }
+}
+
+class SellerMenuTile extends StatelessWidget {
+  const SellerMenuTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+      trailing: selected ? const Icon(Icons.check_circle) : null,
+      selected: selected,
+      onTap: onTap,
+    );
   }
 }
 
@@ -3688,27 +3965,27 @@ class StoreOnboardingPanel extends StatefulWidget {
   });
 
   final ShopDraft store;
-  final ValueChanged<Map<String, dynamic>> onSave;
+  final Future<void> Function(Map<String, dynamic> payload) onSave;
 
   @override
   State<StoreOnboardingPanel> createState() => _StoreOnboardingPanelState();
 }
 
 class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
-  final _logoUrl = TextEditingController();
-  final _bannerUrl = TextEditingController();
   final _primaryColor = TextEditingController(text: '#1F7A4D');
   final _accentColor = TextEditingController(text: '#E7A72E');
   final _instagramUrl = TextEditingController();
   final _whatsappPhone = TextEditingController();
   final _shippingPolicy = TextEditingController(text: 'Delivery available in selected regions.');
   final _returnPolicy = TextEditingController(text: 'Returns accepted according to store policy.');
-  String _plan = 'FREE';
+  String? _logoDataUrl;
+  String? _bannerDataUrl;
+  bool _logoUploaded = false;
+  bool _bannerUploaded = false;
+  bool _saved = false;
 
   @override
   void dispose() {
-    _logoUrl.dispose();
-    _bannerUrl.dispose();
     _primaryColor.dispose();
     _accentColor.dispose();
     _instagramUrl.dispose();
@@ -3718,29 +3995,64 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
     super.dispose();
   }
 
-  void _save() {
-    widget.onSave({
-      'logoUrl': nullableText(_logoUrl.text),
-      'bannerUrl': nullableText(_bannerUrl.text),
+  Future<void> _save() async {
+    final whatsapp = normalizeLebanesePhone(_whatsappPhone.text);
+    if (_whatsappPhone.text.trim().isNotEmpty && whatsapp == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Use a Lebanese WhatsApp number, like 03 123 456 or +961 3 123 456'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    await widget.onSave({
+      'logoUrl': _logoDataUrl,
+      'bannerUrl': _bannerDataUrl,
       'primaryColor': nullableText(_primaryColor.text),
       'accentColor': nullableText(_accentColor.text),
       'instagramUrl': nullableText(_instagramUrl.text),
-      'whatsappPhone': nullableText(_whatsappPhone.text),
+      'whatsappPhone': whatsapp,
       'shippingPolicy': nullableText(_shippingPolicy.text),
       'returnPolicy': nullableText(_returnPolicy.text),
-      'subscriptionPlan': _plan,
+    });
+    if (mounted) {
+      setState(() => _saved = true);
+    }
+  }
+
+  Future<void> _pickStoreImage({required bool logo}) async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: logo ? 512 : 1400,
+      imageQuality: 70,
+    );
+    if (image == null) {
+      return;
+    }
+    final bytes = await image.readAsBytes();
+    final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+    setState(() {
+      if (logo) {
+        _logoDataUrl = dataUrl;
+        _logoUploaded = true;
+      } else {
+        _bannerDataUrl = dataUrl;
+        _bannerUploaded = true;
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final items = [
-      OnboardingItem('Logo and banner', Icons.image_outlined, 'Upload brand visuals'),
-      OnboardingItem('Theme colors', Icons.palette_outlined, 'Choose storefront colors'),
-      OnboardingItem('Social links', Icons.link, 'Instagram, TikTok, website'),
-      OnboardingItem('Shipping policy', Icons.local_shipping_outlined, widget.store.hasDelivery ? 'Delivery active' : 'Pickup setup'),
-      OnboardingItem('Return policy', Icons.assignment_return_outlined, 'Set clear rules'),
-      OnboardingItem('WhatsApp contact', Icons.chat_outlined, 'Support and order chat'),
+      OnboardingItem('Logo and banner', Icons.image_outlined, 'Upload brand visuals', _saved && _logoUploaded && _bannerUploaded),
+      OnboardingItem('Theme colors', Icons.palette_outlined, 'Choose storefront colors', _saved && _primaryColor.text.trim().isNotEmpty && _accentColor.text.trim().isNotEmpty),
+      OnboardingItem('Social links', Icons.link, 'Instagram, TikTok, website', _saved && _instagramUrl.text.trim().isNotEmpty),
+      OnboardingItem('Shipping policy', Icons.local_shipping_outlined, widget.store.hasDelivery ? 'Delivery active' : 'Pickup setup', _saved && _shippingPolicy.text.trim().isNotEmpty),
+      OnboardingItem('Return policy', Icons.assignment_return_outlined, 'Set clear rules', _saved && _returnPolicy.text.trim().isNotEmpty),
+      OnboardingItem('WhatsApp contact', Icons.chat_outlined, 'Support and order chat', _saved && normalizeLebanesePhone(_whatsappPhone.text) != null),
     ];
 
     return Card(
@@ -3761,51 +4073,42 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
             const SizedBox(height: 12),
             for (final item in items) SetupRow(item: item),
             const SizedBox(height: 8),
-            TextField(
-              controller: _logoUrl,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Logo URL',
-                prefixIcon: Icon(Icons.image_outlined),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _bannerUrl,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Banner URL',
-                prefixIcon: Icon(Icons.panorama_outlined),
-              ),
-            ),
-            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _primaryColor,
-                    decoration: const InputDecoration(
-                      labelText: 'Primary color',
-                      prefixIcon: Icon(Icons.palette_outlined),
-                    ),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pickStoreImage(logo: true),
+                    icon: Icon(_logoUploaded ? Icons.check_circle : Icons.upload_file),
+                    label: Text(_logoUploaded ? 'Logo uploaded' : 'Upload logo'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: TextField(
-                    controller: _accentColor,
-                    decoration: const InputDecoration(
-                      labelText: 'Accent color',
-                      prefixIcon: Icon(Icons.color_lens_outlined),
-                    ),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _pickStoreImage(logo: false),
+                    icon: Icon(_bannerUploaded ? Icons.check_circle : Icons.upload_file),
+                    label: Text(_bannerUploaded ? 'Banner uploaded' : 'Upload banner'),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
+            ColorSwatchPicker(
+              label: 'Primary color',
+              controller: _primaryColor,
+              onChanged: () => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            ColorSwatchPicker(
+              label: 'Accent color',
+              controller: _accentColor,
+              onChanged: () => setState(() {}),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: _instagramUrl,
               keyboardType: TextInputType.url,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Instagram URL',
                 prefixIcon: Icon(Icons.alternate_email),
@@ -3815,8 +4118,10 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
             TextField(
               controller: _whatsappPhone,
               keyboardType: TextInputType.phone,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                labelText: 'WhatsApp phone',
+                labelText: 'Lebanese WhatsApp number',
+                hintText: '+961 3 123 456',
                 prefixIcon: Icon(Icons.chat_outlined),
               ),
             ),
@@ -3825,6 +4130,7 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
               controller: _shippingPolicy,
               minLines: 2,
               maxLines: 4,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Shipping policy',
                 prefixIcon: Icon(Icons.local_shipping_outlined),
@@ -3835,29 +4141,11 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
               controller: _returnPolicy,
               minLines: 2,
               maxLines: 4,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Return policy',
                 prefixIcon: Icon(Icons.assignment_return_outlined),
               ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              initialValue: _plan,
-              decoration: const InputDecoration(
-                labelText: 'Subscription plan',
-                prefixIcon: Icon(Icons.workspace_premium_outlined),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'FREE', child: Text('Free')),
-                DropdownMenuItem(value: 'BASIC', child: Text('Basic')),
-                DropdownMenuItem(value: 'PRO', child: Text('Pro')),
-                DropdownMenuItem(value: 'ENTERPRISE', child: Text('Enterprise')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() => _plan = value);
-                }
-              },
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -3885,10 +4173,6 @@ class SellerFeatureSuite extends StatelessWidget {
     required this.products,
     required this.onCreateCampaign,
     required this.onCreatePlacement,
-    required this.onGenerateProductCopy,
-    required this.onGenerateAdCopy,
-    required this.onCreateDeliveryRegion,
-    required this.onCreateLiveEvent,
     required this.onCreateAffiliateLink,
   });
 
@@ -3899,10 +4183,6 @@ class SellerFeatureSuite extends StatelessWidget {
   final List<SellerInventoryProduct> products;
   final ValueChanged<Map<String, dynamic>> onCreateCampaign;
   final ValueChanged<Map<String, dynamic>> onCreatePlacement;
-  final VoidCallback onGenerateProductCopy;
-  final VoidCallback onGenerateAdCopy;
-  final ValueChanged<Map<String, dynamic>> onCreateDeliveryRegion;
-  final ValueChanged<Map<String, dynamic>> onCreateLiveEvent;
   final ValueChanged<Map<String, dynamic>> onCreateAffiliateLink;
 
   @override
@@ -3912,48 +4192,6 @@ class SellerFeatureSuite extends StatelessWidget {
         : '${((growthStats.orders / growthStats.views) * 100).toStringAsFixed(1)}%';
     return Column(
       children: [
-        SellerDashboardPanel(
-          title: 'Analytics',
-          icon: Icons.analytics_outlined,
-          accent: const Color(0xFF357C83),
-          children: [
-            MiniMetric('Views', growthStats.views.toString()),
-            MiniMetric('Clicks', growthStats.clicks.toString()),
-            MiniMetric('Add-to-cart', growthStats.addToCarts.toString()),
-            MiniMetric('Orders', orderCount.toString()),
-            MiniMetric('Revenue', money(growthStats.revenue)),
-            MiniMetric('Conversion', conversion),
-            MiniMetric('Followers', growthStats.followers.toString()),
-            MiniMetric('Top audience', growthStats.topCity.isEmpty ? 'No data' : growthStats.topCity),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SellerDashboardPanel(
-          title: 'AI commerce tools',
-          icon: Icons.auto_awesome,
-          accent: const Color(0xFFE7A72E),
-          children: const [
-            FeaturePill(icon: Icons.description_outlined, label: 'Product descriptions'),
-            FeaturePill(icon: Icons.support_agent, label: 'Store assistant'),
-            FeaturePill(icon: Icons.recommend_outlined, label: 'Recommendations'),
-            FeaturePill(icon: Icons.campaign_outlined, label: 'Ad captions'),
-            FeaturePill(icon: Icons.style_outlined, label: 'AI stylist'),
-            FeaturePill(icon: Icons.view_in_ar_outlined, label: 'AR try-on ready'),
-          ],
-          actions: [
-            OutlinedButton.icon(
-              onPressed: onGenerateProductCopy,
-              icon: const Icon(Icons.description_outlined),
-              label: const Text('Generate description'),
-            ),
-            OutlinedButton.icon(
-              onPressed: onGenerateAdCopy,
-              icon: const Icon(Icons.campaign_outlined),
-              label: const Text('Generate ad'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         SellerDashboardPanel(
           title: 'Growth and monetization',
           icon: Icons.rocket_launch_outlined,
@@ -3965,12 +4203,18 @@ class SellerFeatureSuite extends StatelessWidget {
             const FeaturePill(icon: Icons.workspace_premium_outlined, label: 'Subscriptions'),
             const FeaturePill(icon: Icons.verified_user_outlined, label: 'Store verification'),
             const FeaturePill(icon: Icons.loyalty_outlined, label: 'Coupons and VIP tiers'),
+            FeaturePill(icon: Icons.percent, label: 'Conversion $conversion'),
           ],
           actions: [
             OutlinedButton.icon(
               onPressed: () => showCampaignDialog(context, onCreateCampaign),
               icon: const Icon(Icons.notifications_active_outlined),
               label: const Text('New campaign'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showAffiliateDialog(context, onCreateAffiliateLink),
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('Add affiliate'),
             ),
             OutlinedButton.icon(
               onPressed: products.isEmpty
@@ -3985,36 +4229,35 @@ class SellerFeatureSuite extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        SellerDashboardPanel(
-          title: 'Operations',
-          icon: Icons.tune_outlined,
-          accent: const Color(0xFF1F7A4D),
-          children: const [
-            FeaturePill(icon: Icons.notifications_active_outlined, label: 'Push campaigns'),
-            FeaturePill(icon: Icons.delivery_dining, label: 'Delivery regions'),
-            FeaturePill(icon: Icons.map_outlined, label: 'Live tracking ready'),
-            FeaturePill(icon: Icons.chat_outlined, label: 'WhatsApp sales'),
-            FeaturePill(icon: Icons.admin_panel_settings_outlined, label: 'Admin controls'),
-            FeaturePill(icon: Icons.report_gmailerrorred_outlined, label: 'Reports and disputes'),
-          ],
-          actions: [
-            OutlinedButton.icon(
-              onPressed: () => showDeliveryRegionDialog(context, onCreateDeliveryRegion),
-              icon: const Icon(Icons.delivery_dining),
-              label: const Text('Add region'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => showLiveEventDialog(context, onCreateLiveEvent),
-              icon: const Icon(Icons.live_tv_outlined),
-              label: const Text('Schedule live'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => showAffiliateDialog(context, onCreateAffiliateLink),
-              icon: const Icon(Icons.group_add_outlined),
-              label: const Text('Add affiliate'),
-            ),
-          ],
+      ],
+    );
+  }
+}
+
+class DeliveryRulesPanel extends StatelessWidget {
+  const DeliveryRulesPanel({
+    super.key,
+    required this.onCreateDeliveryRule,
+  });
+
+  final ValueChanged<Map<String, dynamic>> onCreateDeliveryRule;
+
+  @override
+  Widget build(BuildContext context) {
+    return SellerDashboardPanel(
+      title: 'Delivery rules',
+      icon: Icons.delivery_dining,
+      accent: const Color(0xFF1F7A4D),
+      children: const [
+        FeaturePill(icon: Icons.place_outlined, label: 'By region'),
+        FeaturePill(icon: Icons.price_change_outlined, label: 'By item price'),
+        FeaturePill(icon: Icons.add_circle_outline, label: 'Multiple rules'),
+      ],
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () => showDeliveryRuleDialog(context, onCreateDeliveryRule),
+          icon: const Icon(Icons.add),
+          label: const Text('Add delivery rule'),
         ),
       ],
     );
@@ -4095,9 +4338,75 @@ class SetupRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.check_circle, color: Color(0xFF1F7A4D)),
+          Icon(
+            item.completed ? Icons.check_circle : Icons.radio_button_unchecked,
+            color: item.completed ? const Color(0xFF1F7A4D) : Colors.black38,
+          ),
         ],
       ),
+    );
+  }
+}
+
+class ColorSwatchPicker extends StatelessWidget {
+  const ColorSwatchPicker({
+    super.key,
+    required this.label,
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+
+  static const swatches = {
+    '#1F7A4D': Color(0xFF1F7A4D),
+    '#E7A72E': Color(0xFFE7A72E),
+    '#C8673A': Color(0xFFC8673A),
+    '#357C83': Color(0xFF357C83),
+    '#17211B': Color(0xFF17211B),
+    '#8B2F5A': Color(0xFF8B2F5A),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final entry in swatches.entries)
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () {
+                  controller.text = entry.key;
+                  onChanged();
+                },
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: entry.value,
+                  child: controller.text == entry.key
+                      ? const Icon(Icons.check, color: Colors.white, size: 18)
+                      : null,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          onChanged: (_) => onChanged(),
+          decoration: InputDecoration(
+            labelText: '$label number',
+            prefixIcon: const Icon(Icons.tag),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -4615,6 +4924,8 @@ class Shop {
     required this.delivery,
     required this.minimumOrder,
     required this.orderCount,
+    required this.verified,
+    required this.statusLabel,
   });
 
   factory Shop.fromJson(Map<String, dynamic> json) {
@@ -4631,6 +4942,8 @@ class Shop {
       delivery: json['deliveryLabel'] as String? ?? 'Delivery available',
       minimumOrder: parseDouble(json['minimumOrder']),
       orderCount: parseInt(json['orderCount']),
+      verified: json['verified'] == true,
+      statusLabel: json['status'] as String? ?? 'DRAFT',
     );
   }
 
@@ -4645,6 +4958,8 @@ class Shop {
   final String delivery;
   final double minimumOrder;
   final int orderCount;
+  final bool verified;
+  final String statusLabel;
 }
 
 class Product {
@@ -5229,11 +5544,12 @@ class DiscoveryItem {
 }
 
 class OnboardingItem {
-  const OnboardingItem(this.title, this.icon, this.subtitle);
+  const OnboardingItem(this.title, this.icon, this.subtitle, this.completed);
 
   final String title;
   final IconData icon;
   final String subtitle;
+  final bool completed;
 }
 
 Future<void> showCampaignDialog(
@@ -5541,6 +5857,120 @@ Future<void> showDeliveryRegionDialog(
   eta.dispose();
 }
 
+Future<void> showDeliveryRuleDialog(
+  BuildContext context,
+  ValueChanged<Map<String, dynamic>> onSubmit,
+) async {
+  final region = TextEditingController(text: 'Beirut');
+  final minPrice = TextEditingController(text: '0');
+  final maxPrice = TextEditingController(text: '50');
+  final fee = TextEditingController(text: '3.5');
+  final eta = TextEditingController(text: 'Same day');
+  var ruleType = 'REGION';
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          final byPrice = ruleType == 'PRICE';
+          return AlertDialog(
+            title: const Text('Add delivery rule'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'REGION', icon: Icon(Icons.place_outlined), label: Text('Region')),
+                      ButtonSegment(value: 'PRICE', icon: Icon(Icons.price_change_outlined), label: Text('Item price')),
+                    ],
+                    selected: {ruleType},
+                    onSelectionChanged: (value) => setDialogState(() => ruleType = value.first),
+                  ),
+                  const SizedBox(height: 10),
+                  if (!byPrice)
+                    TextField(
+                      controller: region,
+                      decoration: const InputDecoration(
+                        labelText: 'Region',
+                        prefixIcon: Icon(Icons.place_outlined),
+                      ),
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: minPrice,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'From price'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: maxPrice,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'To price'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: fee,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Delivery fee',
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: eta,
+                    decoration: const InputDecoration(
+                      labelText: 'ETA',
+                      prefixIcon: Icon(Icons.schedule),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  onSubmit({
+                    'ruleType': ruleType,
+                    'name': byPrice
+                        ? 'Price ${minPrice.text.trim()}-${maxPrice.text.trim()}'
+                        : region.text.trim(),
+                    'minOrder': byPrice ? double.tryParse(minPrice.text.trim()) ?? 0 : null,
+                    'maxOrder': byPrice ? double.tryParse(maxPrice.text.trim()) ?? 0 : null,
+                    'fee': double.tryParse(fee.text.trim()) ?? 0,
+                    'eta': eta.text.trim(),
+                    'active': true,
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  region.dispose();
+  minPrice.dispose();
+  maxPrice.dispose();
+  fee.dispose();
+  eta.dispose();
+}
+
 Future<void> showLiveEventDialog(
   BuildContext context,
   ValueChanged<Map<String, dynamic>> onSubmit,
@@ -5658,6 +6088,21 @@ class DialogField {
 String? nullableText(String value) {
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+String? normalizeLebanesePhone(String value) {
+  var digits = value.replaceAll(RegExp(r'[^0-9+]'), '');
+  if (digits.startsWith('+961')) {
+    digits = '0${digits.substring(4)}';
+  } else if (digits.startsWith('961')) {
+    digits = '0${digits.substring(3)}';
+  }
+  digits = digits.replaceAll(RegExp(r'[^0-9]'), '');
+  final valid = RegExp(r'^0(3[0-9]{6}|(70|71|76|78|79|81)[0-9]{6}|(1|4|5|6|7|8|9)[0-9]{6})$');
+  if (!valid.hasMatch(digits)) {
+    return null;
+  }
+  return '+961${digits.substring(1)}';
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';

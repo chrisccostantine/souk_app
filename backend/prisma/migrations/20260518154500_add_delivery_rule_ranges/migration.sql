@@ -1,0 +1,3 @@
+ALTER TABLE "DeliveryRegion" ADD COLUMN "ruleType" TEXT NOT NULL DEFAULT 'REGION';
+ALTER TABLE "DeliveryRegion" ADD COLUMN "minOrder" DECIMAL(65,30);
+ALTER TABLE "DeliveryRegion" ADD COLUMN "maxOrder" DECIMAL(65,30);
