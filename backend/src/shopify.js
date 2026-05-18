@@ -50,6 +50,34 @@ export class ShopifyClient {
     });
   }
 
+  async getAll(path, query = {}, bodyKey) {
+    const items = [];
+    let nextUrl = null;
+    do {
+      const url = nextUrl ?? new URL(`https://${this.shopDomain}/admin/api/${this.apiVersion}${path}`);
+      if (!nextUrl) {
+        const requestQuery = {
+          ...query,
+          limit: query.limit ?? 250,
+        };
+        for (const [key, value] of Object.entries(requestQuery)) {
+          if (value !== undefined && value !== null && value !== '') {
+            url.searchParams.set(key, value);
+          }
+        }
+      }
+      const result = await this.#requestWithMeta(url, {
+        headers: {
+          'X-Shopify-Access-Token': this.accessToken,
+          'Content-Type': 'application/json',
+        },
+      });
+      items.push(...(result.body[bodyKey] ?? []));
+      nextUrl = result.nextUrl;
+    } while (nextUrl);
+    return items;
+  }
+
   async post(path, body) {
     return this.#request(`https://${this.shopDomain}/admin/api/${this.apiVersion}${path}`, {
       method: 'POST',
@@ -62,15 +90,24 @@ export class ShopifyClient {
   }
 
   async #request(url, options, attempt = 0) {
+    const result = await this.#requestWithMeta(url, options, attempt);
+    return result.body;
+  }
+
+  async #requestWithMeta(url, options, attempt = 0) {
     await this.#throttle();
     const response = await fetch(url, options);
     if (response.status === 429 && attempt < 4) {
       const retryAfter = Number(response.headers.get('retry-after'));
       const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500;
       await delay(waitMs);
-      return this.#request(url, options, attempt + 1);
+      return this.#requestWithMeta(url, options, attempt + 1);
     }
-    return this.#decode(response);
+    const body = await this.#decode(response);
+    return {
+      body,
+      nextUrl: parseNextUrl(response.headers.get('link')),
+    };
   }
 
   async #throttle() {
@@ -96,17 +133,17 @@ export class ShopifyClient {
 
 export async function fetchShopifyCatalog(connection) {
   const client = new ShopifyClient(connection);
-  const { products } = await client.get('/products.json', { limit: 250 });
-  const customCollections = await client.get('/custom_collections.json', { limit: 250 });
-  const smartCollections = await client.get('/smart_collections.json', { limit: 250 });
-  const locations = await client.get('/locations.json', { limit: 250 });
+  const products = await client.getAll('/products.json', { limit: 250 }, 'products');
+  const customCollections = await client.getAll('/custom_collections.json', { limit: 250 }, 'custom_collections');
+  const smartCollections = await client.getAll('/smart_collections.json', { limit: 250 }, 'smart_collections');
+  const locationsResult = await client.get('/locations.json', { limit: 250 });
 
   const collections = [
-    ...(customCollections.custom_collections ?? []).map((collection) => ({
+    ...customCollections.map((collection) => ({
       ...collection,
       collectionType: 'CUSTOM',
     })),
-    ...(smartCollections.smart_collections ?? []).map((collection) => ({
+    ...smartCollections.map((collection) => ({
       ...collection,
       collectionType: 'SMART',
     })),
@@ -115,20 +152,20 @@ export async function fetchShopifyCatalog(connection) {
   const collects = [];
   for (const collection of collections) {
     if (collection.collectionType === 'CUSTOM') {
-      const result = await client.get('/collects.json', {
+      const collectionCollects = await client.getAll('/collects.json', {
         collection_id: collection.id,
         limit: 250,
-      });
-      collects.push(...(result.collects ?? []));
+      }, 'collects');
+      collects.push(...collectionCollects);
       continue;
     }
 
-    const result = await client.get('/products.json', {
+    const collectionProducts = await client.getAll('/products.json', {
       collection_id: collection.id,
       limit: 250,
-    });
+    }, 'products');
     collects.push(
-      ...(result.products ?? []).map((product) => ({
+      ...collectionProducts.map((product) => ({
         collection_id: collection.id,
         product_id: product.id,
       })),
@@ -153,7 +190,7 @@ export async function fetchShopifyCatalog(connection) {
     collections,
     collects,
     inventoryLevels,
-    locations: locations.locations ?? [],
+    locations: locationsResult.locations ?? [],
   };
 }
 
@@ -170,4 +207,19 @@ function delay(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function parseNextUrl(linkHeader) {
+  if (!linkHeader) {
+    return null;
+  }
+  const nextLink = linkHeader.split(',').find((part) => part.includes('rel="next"'));
+  if (!nextLink) {
+    return null;
+  }
+  const match = nextLink.match(/<([^>]+)>/);
+  if (!match) {
+    return null;
+  }
+  return new URL(match[1]);
 }

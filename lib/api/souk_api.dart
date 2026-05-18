@@ -75,6 +75,14 @@ class SoukApi {
     return body['order'] as Map<String, dynamic>;
   }
 
+  Future<List<dynamic>> fetchOrders({String? customerEmail, String? shopId}) async {
+    final body = await _get('/api/orders', {
+      'customerEmail': customerEmail,
+      'shopId': shopId,
+    });
+    return body['orders'] as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> _get(String path, [Map<String, String?> query = const {}]) async {
     final request = await _client.getUrl(_uri(path, query));
     final response = await request.close();
