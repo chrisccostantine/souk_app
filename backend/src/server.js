@@ -317,6 +317,8 @@ app.get('/api/shops/:id/inventory', async (req, res, next) => {
         where: { shopId },
         orderBy: { updatedAt: 'desc' },
         include: {
+          images: { orderBy: { position: 'asc' } },
+          variants: { orderBy: { title: 'asc' } },
           collections: {
             include: { collection: true },
           },
@@ -357,7 +359,11 @@ app.get('/api/products', async (req, res, next) => {
             }
           : {}),
       },
-      include: { shop: true },
+      include: {
+        shop: true,
+        images: { orderBy: { position: 'asc' } },
+        variants: { orderBy: { title: 'asc' } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ products });
@@ -788,6 +794,47 @@ async function upsertShopifyCatalog(shopId, connection, catalog) {
       },
     });
     productByShopifyId.set(String(shopifyProduct.id), product);
+
+    await prisma.productImage.deleteMany({ where: { productId: product.id } });
+    const imageRows = (shopifyProduct.images ?? [])
+      .filter((image) => image.src)
+      .map((image, index) => ({
+        id: crypto.randomUUID(),
+        productId: product.id,
+        url: image.src,
+        altText: image.alt ?? null,
+        position: Number(image.position ?? index),
+      }));
+    if (imageRows.length > 0) {
+      await prisma.productImage.createMany({
+        data: imageRows,
+        skipDuplicates: true,
+      });
+    }
+
+    await prisma.productVariant.deleteMany({ where: { productId: product.id } });
+    const variantRows = (shopifyProduct.variants ?? []).map((currentVariant) => {
+      const variantInventoryLevel = inventoryByItemId.get(String(currentVariant.inventory_item_id));
+      return {
+        id: crypto.randomUUID(),
+        productId: product.id,
+        title: currentVariant.title || 'Default',
+        price: Number(currentVariant.price ?? 0),
+        stock: Number(variantInventoryLevel?.available ?? currentVariant.inventory_quantity ?? 0),
+        sku: currentVariant.sku || null,
+        option1: currentVariant.option1 || null,
+        option2: currentVariant.option2 || null,
+        option3: currentVariant.option3 || null,
+        shopifyVariantId: String(currentVariant.id),
+        shopifyInventoryItemId: String(currentVariant.inventory_item_id),
+      };
+    });
+    if (variantRows.length > 0) {
+      await prisma.productVariant.createMany({
+        data: variantRows,
+        skipDuplicates: true,
+      });
+    }
   }
 
   for (const collect of catalog.collects) {

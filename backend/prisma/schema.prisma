@@ -118,8 +118,43 @@ model Product {
   orderItems  OrderItem[]
   favorites   Favorite[]
   collections ProductCollection[]
+  images      ProductImage[]
+  variants    ProductVariant[]
 
   @@unique([shopId, slug])
+  @@index([shopifyInventoryItemId])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String
+  url       String
+  altText   String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, url])
+  @@index([productId])
+}
+
+model ProductVariant {
+  id                     String   @id @default(cuid())
+  productId              String
+  title                  String
+  price                  Decimal
+  stock                  Int      @default(0)
+  sku                    String?
+  option1                String?
+  option2                String?
+  option3                String?
+  shopifyVariantId       String?
+  shopifyInventoryItemId String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  product                Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, shopifyVariantId])
   @@index([shopifyInventoryItemId])
 }
 

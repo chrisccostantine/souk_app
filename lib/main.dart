@@ -462,6 +462,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   List<Shop> _shops = [];
   List<Product> _products = [];
   bool _catalogLoading = false;
+  bool _showAllFeatured = false;
   String? _catalogMessage;
 
   int get _cartCount => _cart.fold(0, (sum, line) => sum + line.quantity);
@@ -674,10 +675,12 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         query: _query,
         category: _category,
         products: products,
+        showAllFeatured: _showAllFeatured,
         loading: _catalogLoading,
         message: _catalogMessage,
         categories: _products.map((product) => product.category).toSet().toList()..sort(),
         favoriteIds: _favoriteIds,
+        onViewAllFeatured: () => setState(() => _showAllFeatured = !_showAllFeatured),
         onQueryChanged: (value) => setState(() => _query = value),
         onCategoryChanged: (value) => setState(() => _category = value),
         onOpenProduct: _openProduct,
@@ -787,10 +790,12 @@ class HomePage extends StatelessWidget {
     required this.query,
     required this.category,
     required this.products,
+    required this.showAllFeatured,
     required this.loading,
     required this.message,
     required this.categories,
     required this.favoriteIds,
+    required this.onViewAllFeatured,
     required this.onQueryChanged,
     required this.onCategoryChanged,
     required this.onOpenProduct,
@@ -803,10 +808,12 @@ class HomePage extends StatelessWidget {
   final String query;
   final String category;
   final List<Product> products;
+  final bool showAllFeatured;
   final bool loading;
   final String? message;
   final List<String> categories;
   final Set<String> favoriteIds;
+  final VoidCallback onViewAllFeatured;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onCategoryChanged;
   final ValueChanged<Product> onOpenProduct;
@@ -815,6 +822,8 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compactFeatured = query.trim().isEmpty && category == 'All' && !showAllFeatured;
+    final featuredProducts = compactFeatured ? products.take(7).toList() : products;
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -846,6 +855,12 @@ class HomePage extends StatelessWidget {
                 SectionTitle(
                   title: 'Featured today',
                   action: '${products.length} items',
+                  actionButton: products.length > 7
+                      ? TextButton(
+                          onPressed: onViewAllFeatured,
+                          child: Text(compactFeatured ? 'View all' : 'Show less'),
+                        )
+                      : null,
                 ),
               ],
             ),
@@ -872,6 +887,31 @@ class HomePage extends StatelessWidget {
               icon: Icons.search_off,
               title: 'No matches yet',
               message: 'Try another shop, category, or product name.',
+            ),
+          )
+        else if (compactFeatured)
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 245,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+                scrollDirection: Axis.horizontal,
+                itemCount: featuredProducts.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemBuilder: (context, index) {
+                  final product = featuredProducts[index];
+                  return SizedBox(
+                    width: 156,
+                    child: ProductMiniCard(
+                      product: product,
+                      isFavorite: favoriteIds.contains(product.id),
+                      onOpen: () => onOpenProduct(product),
+                      onAdd: () => onAddToCart(product),
+                      onFavorite: () => onToggleFavorite(product),
+                    ),
+                  );
+                },
+              ),
             ),
           )
         else
@@ -1122,6 +1162,7 @@ class _SellerHubPageState extends State<SellerHubPage>
   List<SellerInventoryProduct> _syncedProducts = [];
   List<SellerInventoryCollection> _syncedCollections = [];
   String? _selectedCollectionId;
+  String _collectionQuery = '';
   bool _inventoryLoading = false;
   String? _inventoryMessage;
 
@@ -1448,6 +1489,9 @@ class _SellerHubPageState extends State<SellerHubPage>
             _syncedCollections,
             (collection) => collection.id == _selectedCollectionId,
           );
+    final visibleCollections = _syncedCollections
+        .where((collection) => collection.title.toLowerCase().contains(_collectionQuery.toLowerCase()))
+        .toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
@@ -1488,9 +1532,11 @@ class _SellerHubPageState extends State<SellerHubPage>
             message: 'Sync Shopify products to import collections into Souk.',
           )
         else
-          CollectionChipWrap(
-            collections: _syncedCollections,
+          CollectionBrowser(
+            collections: visibleCollections,
             selectedId: _selectedCollectionId,
+            query: _collectionQuery,
+            onQueryChanged: (value) => setState(() => _collectionQuery = value),
             onSelected: (collectionId) {
               setState(() {
                 _selectedCollectionId = _selectedCollectionId == collectionId ? null : collectionId;
@@ -1812,10 +1858,16 @@ class QuickActions extends StatelessWidget {
 }
 
 class SectionTitle extends StatelessWidget {
-  const SectionTitle({super.key, required this.title, required this.action});
+  const SectionTitle({
+    super.key,
+    required this.title,
+    required this.action,
+    this.actionButton,
+  });
 
   final String title;
   final String action;
+  final Widget? actionButton;
 
   @override
   Widget build(BuildContext context) {
@@ -1829,13 +1881,16 @@ class SectionTitle extends StatelessWidget {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
           ),
         ),
-        Text(
-          action,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.w800,
+        if (actionButton != null)
+          actionButton!
+        else
+          Text(
+            action,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
       ],
     );
   }
@@ -2207,11 +2262,19 @@ class ProductDetailSheet extends StatelessWidget {
             Container(
               height: 170,
               width: double.infinity,
-              decoration: BoxDecoration(
-                color: product.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(product.icon, color: product.color, size: 78),
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+              child: product.images.isEmpty
+                  ? Container(
+                      color: product.color.withValues(alpha: 0.15),
+                      child: Icon(product.icon, color: product.color, size: 78),
+                    )
+                  : PageView(
+                      children: [
+                        for (final image in product.images)
+                          Image.network(image, fit: BoxFit.cover),
+                      ],
+                    ),
             ),
             const SizedBox(height: 14),
             Row(
@@ -2251,6 +2314,19 @@ class ProductDetailSheet extends StatelessWidget {
                 Tag(label: product.shop.delivery),
               ],
             ),
+            if (product.variants.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Variants', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final variant in product.variants.take(10))
+                    Tag(label: '${variant.title} - ${money(variant.price)}'),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
             Row(
               children: [
@@ -2872,33 +2948,63 @@ class SellerMetricGrid extends StatelessWidget {
   }
 }
 
-class CollectionChipWrap extends StatelessWidget {
-  const CollectionChipWrap({
+class CollectionBrowser extends StatelessWidget {
+  const CollectionBrowser({
     super.key,
     required this.collections,
     required this.selectedId,
+    required this.query,
+    required this.onQueryChanged,
     required this.onSelected,
   });
 
   final List<SellerInventoryCollection> collections;
   final String? selectedId;
+  final String query;
+  final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Column(
       children: [
-        for (final collection in collections.take(24))
-          InputChip(
-            selected: selectedId == collection.id,
-            avatar: const Icon(Icons.category_outlined, size: 16),
-            label: Text('${collection.title} (${collection.productCount})'),
-            onPressed: () => onSelected(collection.id),
+        TextField(
+          onChanged: onQueryChanged,
+          decoration: const InputDecoration(
+            labelText: 'Search collections',
+            prefixIcon: Icon(Icons.search),
           ),
-        if (collections.length > 24)
-          Tag(label: '+${collections.length - 24} more'),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 210,
+          child: collections.isEmpty
+              ? const EmptyState(
+                  icon: Icons.category_outlined,
+                  title: 'No collections match',
+                  message: 'Try another collection name.',
+                )
+              : ListView.separated(
+                  itemCount: collections.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final collection = collections[index];
+                    final selected = selectedId == collection.id;
+                    return ListTile(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+                      ),
+                      selected: selected,
+                      leading: Icon(selected ? Icons.folder_open : Icons.folder_outlined),
+                      title: Text(collection.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text('${collection.productCount} products'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => onSelected(collection.id),
+                    );
+                  },
+                ),
+        ),
       ],
     );
   }
@@ -2956,6 +3062,17 @@ class SellerInventoryTile extends StatelessWidget {
                     '${product.stock} in stock - ${product.category}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  if (product.variants.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final variant in product.variants.take(3))
+                          Tag(label: variant.title),
+                      ],
+                    ),
+                  ],
                   if (product.collections.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Wrap(
@@ -3117,11 +3234,21 @@ class Product {
     required this.description,
     required this.rating,
     required this.stock,
+    required this.images,
+    required this.variants,
     this.imageUrl,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
     final shopJson = json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final images = (json['images'] as List<dynamic>? ?? [])
+        .map((item) => item as Map<String, dynamic>)
+        .map((item) => item['url'] as String? ?? '')
+        .where((url) => url.isNotEmpty)
+        .toList();
+    final variants = (json['variants'] as List<dynamic>? ?? [])
+        .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
+        .toList();
     return Product(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Product',
@@ -3134,6 +3261,8 @@ class Product {
       rating: parseDouble(json['rating']) == 0 ? 4.8 : parseDouble(json['rating']),
       stock: parseInt(json['stock']),
       imageUrl: json['imageUrl'] as String?,
+      images: images.isEmpty && json['imageUrl'] != null ? [json['imageUrl'] as String] : images,
+      variants: variants,
     );
   }
 
@@ -3148,6 +3277,8 @@ class Product {
   final double rating;
   final int stock;
   final String? imageUrl;
+  final List<String> images;
+  final List<ProductVariant> variants;
 
   String get formattedPrice => money(price);
 }
@@ -3161,6 +3292,29 @@ class CartLine {
   CartLine copyWith({int? quantity}) {
     return CartLine(product: product, quantity: quantity ?? this.quantity);
   }
+}
+
+class ProductVariant {
+  const ProductVariant({
+    required this.title,
+    required this.price,
+    required this.stock,
+    this.sku,
+  });
+
+  factory ProductVariant.fromJson(Map<String, dynamic> json) {
+    return ProductVariant(
+      title: json['title'] as String? ?? 'Variant',
+      price: parseDouble(json['price']),
+      stock: parseInt(json['stock']),
+      sku: json['sku'] as String?,
+    );
+  }
+
+  final String title;
+  final double price;
+  final int stock;
+  final String? sku;
 }
 
 class Order {
@@ -3234,6 +3388,8 @@ class SellerInventoryProduct {
     required this.stock,
     required this.collections,
     required this.collectionIds,
+    required this.variants,
+    required this.images,
     this.imageUrl,
   });
 
@@ -3244,6 +3400,11 @@ class SellerInventoryProduct {
         .map((item) => item['collection'] as Map<String, dynamic>?)
         .whereType<Map<String, dynamic>>()
         .toList();
+    final imageRows = (json['images'] as List<dynamic>? ?? [])
+        .map((item) => item as Map<String, dynamic>)
+        .map((item) => item['url'] as String? ?? '')
+        .where((url) => url.isNotEmpty)
+        .toList();
     return SellerInventoryProduct(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Product',
@@ -3251,6 +3412,10 @@ class SellerInventoryProduct {
       price: parseDouble(json['price']),
       stock: parseInt(json['stock']),
       imageUrl: json['imageUrl'] as String?,
+      images: imageRows.isEmpty && json['imageUrl'] != null ? [json['imageUrl'] as String] : imageRows,
+      variants: (json['variants'] as List<dynamic>? ?? [])
+          .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
+          .toList(),
       collections: collectionRows
           .map((collection) => collection['title'] as String? ?? 'Collection')
           .toList(),
@@ -3267,6 +3432,8 @@ class SellerInventoryProduct {
   final double price;
   final int stock;
   final String? imageUrl;
+  final List<String> images;
+  final List<ProductVariant> variants;
   final List<String> collections;
   final List<String> collectionIds;
 }
