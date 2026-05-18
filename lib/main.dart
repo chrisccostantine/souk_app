@@ -786,7 +786,6 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
-        onFollowStore: _followShop,
       ),
       StoresPage(
         session: widget.session,
@@ -797,6 +796,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
+        onFollowStore: _followShop,
       ),
       ActivityPage(
         session: widget.session,
