@@ -275,6 +275,113 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     );
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailController = TextEditingController(text: _email.text.trim());
+    var loading = false;
+    String? error;
+
+    final temporaryPassword = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              final email = emailController.text.trim();
+              if (email.isEmpty) {
+                setDialogState(() => error = 'Enter your account email.');
+                return;
+              }
+              if (soukApiUrl.isEmpty) {
+                setDialogState(() => error = 'SOUK_API_URL is required.');
+                return;
+              }
+              setDialogState(() {
+                loading = true;
+                error = null;
+              });
+              try {
+                final response = await SoukApi(baseUrl: soukApiUrl).forgotPassword({'email': email});
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext, response['temporaryPassword']?.toString());
+                }
+              } on SoukApiException catch (apiError) {
+                setDialogState(() => error = apiError.message);
+              } catch (submitError) {
+                setDialogState(() => error = 'Could not reset password: $submitError');
+              } finally {
+                if (dialogContext.mounted) {
+                  setDialogState(() => loading = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Forgot password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Enter your email and Souk will generate a temporary password for this prototype.'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: loading ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: loading ? null : submit,
+                  child: Text(loading ? 'Working...' : 'Reset'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    emailController.dispose();
+    if (!mounted || temporaryPassword == null) {
+      return;
+    }
+    _password.text = temporaryPassword;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Temporary password'),
+        content: SelectableText(
+          temporaryPassword,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Use this password'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSeller = _role == AccountRole.seller;
@@ -391,6 +498,15 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           return null;
                         },
                       ),
+                      if (!_signup) ...[
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _authLoading ? null : _showForgotPasswordDialog,
+                            child: const Text('Forgot password?'),
+                          ),
+                        ),
+                      ],
                       if (_signup && isSeller) ...[
                         const SizedBox(height: 16),
                         Text(
@@ -802,6 +918,127 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     }
   }
 
+  Future<void> _changePassword() async {
+    final currentPassword = TextEditingController();
+    final newPassword = TextEditingController();
+    final confirmPassword = TextEditingController();
+    var loading = false;
+    String? error;
+
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> submit() async {
+              if (newPassword.text.length < 6) {
+                setDialogState(() => error = 'Use at least 6 characters.');
+                return;
+              }
+              if (newPassword.text != confirmPassword.text) {
+                setDialogState(() => error = 'Passwords do not match.');
+                return;
+              }
+              if (soukApiUrl.isEmpty) {
+                setDialogState(() => error = 'SOUK_API_URL is required.');
+                return;
+              }
+              setDialogState(() {
+                loading = true;
+                error = null;
+              });
+              try {
+                await SoukApi(baseUrl: soukApiUrl).changePassword({
+                  'email': widget.session.email,
+                  'currentPassword': currentPassword.text,
+                  'newPassword': newPassword.text,
+                });
+                if (dialogContext.mounted) {
+                  Navigator.pop(dialogContext, true);
+                }
+              } on SoukApiException catch (apiError) {
+                setDialogState(() => error = apiError.message);
+              } catch (submitError) {
+                setDialogState(() => error = 'Could not update password: $submitError');
+              } finally {
+                if (dialogContext.mounted) {
+                  setDialogState(() => loading = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Change password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: currentPassword,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Current password',
+                      prefixIcon: Icon(Icons.lock_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: newPassword,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New password',
+                      prefixIcon: Icon(Icons.password_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: confirmPassword,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm new password',
+                      prefixIcon: Icon(Icons.verified_user_outlined),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: loading ? null : () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: loading ? null : submit,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(loading ? 'Saving...' : 'Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    currentPassword.dispose();
+    newPassword.dispose();
+    confirmPassword.dispose();
+
+    if (changed == true) {
+      _showSnack('Password updated');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final products = _products.where((product) {
@@ -861,6 +1098,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         orders: _orders,
         products: _products,
         favoriteIds: _favoriteIds,
+        onChangePassword: _changePassword,
       ),
       CartPage(
         session: widget.session,
@@ -1125,6 +1363,8 @@ class HomePage extends StatelessWidget {
     final featuredProducts = compactFeatured
         ? (chosenFeatured.isEmpty ? products : chosenFeatured).take(7).toList()
         : products;
+    final liveShopCount = products.map((product) => product.shop.id).where((id) => id.isNotEmpty).toSet().length;
+    final availableCount = products.where((product) => product.stock > 0).length;
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -1136,6 +1376,13 @@ class HomePage extends StatelessWidget {
                 HeaderBar(session: session, onLogout: onLogout),
                 const SizedBox(height: 18),
                 const MarketplaceHero(),
+                const SizedBox(height: 12),
+                ShopperPulseStrip(
+                  shopCount: liveShopCount,
+                  productCount: products.length,
+                  availableCount: availableCount,
+                  savedCount: favoriteIds.length,
+                ),
                 const SizedBox(height: 14),
                 SearchField(
                   value: query,
@@ -1158,6 +1405,8 @@ class HomePage extends StatelessWidget {
                     QuickAction('Fresh', Icons.flash_on, Color(0xFF1F7A4D)),
                   ],
                 ),
+                const SizedBox(height: 16),
+                ShopperEditorialBand(products: products),
                 const SizedBox(height: 16),
                 MarketplaceDiscoveryPanel(products: products),
                 const SizedBox(height: 16),
@@ -1322,6 +1571,7 @@ class ActivityPage extends StatelessWidget {
     required this.orders,
     required this.products,
     required this.favoriteIds,
+    required this.onChangePassword,
   });
 
   final AppSession session;
@@ -1329,6 +1579,7 @@ class ActivityPage extends StatelessWidget {
   final List<Order> orders;
   final List<Product> products;
   final Set<String> favoriteIds;
+  final VoidCallback onChangePassword;
 
   @override
   Widget build(BuildContext context) {
@@ -1340,6 +1591,11 @@ class ActivityPage extends StatelessWidget {
       children: [
         HeaderBar(session: session, onLogout: onLogout),
         const SizedBox(height: 18),
+        AccountSecurityCard(
+          session: session,
+          onChangePassword: onChangePassword,
+        ),
+        const SizedBox(height: 16),
         const SectionTitle(title: 'Orders', action: 'Track purchases'),
         const SizedBox(height: 12),
         for (final order in orders) ...[
@@ -1358,6 +1614,67 @@ class ActivityPage extends StatelessWidget {
         else
           for (final product in favorites) FavoriteTile(product: product),
       ],
+    );
+  }
+}
+
+class AccountSecurityCard extends StatelessWidget {
+  const AccountSecurityCard({
+    super.key,
+    required this.session,
+    required this.onChangePassword,
+  });
+
+  final AppSession session;
+  final VoidCallback onChangePassword;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: const Color(0xFF1F7A4D).withValues(alpha: 0.12),
+              child: Text(
+                session.name.isEmpty ? 'S' : session.name.substring(0, 1).toUpperCase(),
+                style: const TextStyle(
+                  color: Color(0xFF1F7A4D),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    session.email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            IconButton.filledTonal(
+              tooltip: 'Change password',
+              onPressed: onChangePassword,
+              icon: const Icon(Icons.lock_reset),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2405,35 +2722,152 @@ class MarketplaceHero extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFF244335),
+        color: const Color(0xFF17382B),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          const Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Icon(
+              Icons.shopping_bag_outlined,
+              color: Colors.white.withValues(alpha: 0.08),
+              size: 86,
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              HeroPill(icon: Icons.flash_on, label: 'Same day finds'),
-              HeroPill(icon: Icons.verified, label: 'Verified shops'),
+              const Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  HeroPill(icon: Icons.flash_on, label: 'New drops'),
+                  HeroPill(icon: Icons.verified, label: 'Verified shops'),
+                  HeroPill(icon: Icons.shopping_bag, label: 'One basket'),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Your local marketplace, dressed up for fast discovery.',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  height: 1.06,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Search live products, save pieces you love, and checkout from multiple stores without hopping between websites.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.78),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 18),
-          Text(
-            'Discover stores that feel close, fresh, and easy to buy from.',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              height: 1.06,
-            ),
+        ],
+      ),
+    );
+  }
+}
+
+class ShopperPulseStrip extends StatelessWidget {
+  const ShopperPulseStrip({
+    super.key,
+    required this.shopCount,
+    required this.productCount,
+    required this.availableCount,
+    required this.savedCount,
+  });
+
+  final int shopCount;
+  final int productCount;
+  final int availableCount;
+  final int savedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: ShopperPulseTile(
+            icon: Icons.storefront,
+            value: shopCount.toString(),
+            label: 'shops',
+            color: const Color(0xFF1F7A4D),
           ),
-          const SizedBox(height: 10),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ShopperPulseTile(
+            icon: Icons.inventory_2_outlined,
+            value: productCount.toString(),
+            label: 'items',
+            color: const Color(0xFFC8673A),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ShopperPulseTile(
+            icon: Icons.check_circle_outline,
+            value: availableCount.toString(),
+            label: 'in stock',
+            color: const Color(0xFF357C83),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ShopperPulseTile(
+            icon: Icons.favorite_border,
+            value: savedCount.toString(),
+            label: 'saved',
+            color: const Color(0xFFE7A72E),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ShopperPulseTile extends StatelessWidget {
+  const ShopperPulseTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(height: 5),
           Text(
-            'Browse curated local products, save favorites, and check out directly from one basket.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withValues(alpha: 0.78),
-            ),
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
           ),
         ],
       ),
@@ -2877,6 +3311,140 @@ class QuickActions extends StatelessWidget {
   }
 }
 
+class ShopperEditorialBand extends StatelessWidget {
+  const ShopperEditorialBand({super.key, required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final topCategory = products.isEmpty
+        ? 'New arrivals'
+        : mostCommon(products.map((product) => product.category));
+    final topStore = products.isEmpty
+        ? 'Verified stores'
+        : mostCommon(products.map((product) => product.shop.name));
+    final limitedCount = products.where((product) => product.stock > 0 && product.stock <= 5).length;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE7A72E).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.auto_awesome, color: Color(0xFF7A4F00)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      topCategory,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Curated live picks from $topStore',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: EditorialMetric(
+                  label: 'limited stock',
+                  value: limitedCount.toString(),
+                  icon: Icons.hourglass_bottom,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: EditorialMetric(
+                  label: 'price range',
+                  value: products.isEmpty ? '\$0' : '${money(lowestPrice(products))}+',
+                  icon: Icons.sell_outlined,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EditorialMetric extends StatelessWidget {
+  const EditorialMetric({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F4EC),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF1F7A4D)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class MarketplaceDiscoveryPanel extends StatelessWidget {
   const MarketplaceDiscoveryPanel({super.key, required this.products});
 
@@ -3082,23 +3650,48 @@ class ProductCard extends StatelessWidget {
                         context,
                       ).textTheme.bodySmall?.copyWith(color: Colors.black54),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
                     Row(
                       children: [
+                        if (product.shop.verified) ...[
+                          const Icon(Icons.verified, size: 15, color: Color(0xFF1F7A4D)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Verified',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: const Color(0xFF1F7A4D),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         const Icon(
                           Icons.star,
-                          size: 16,
+                          size: 15,
                           color: Color(0xFFE7A72E),
                         ),
                         const SizedBox(width: 4),
                         Text(product.rating.toStringAsFixed(1)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          product.stock > 0 ? Icons.inventory_2_outlined : Icons.block,
+                          size: 15,
+                          color: product.stock > 0 ? Colors.black54 : Theme.of(context).colorScheme.error,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '${product.stock} left',
+                            product.stock > 0 ? '${product.stock} left' : 'Out of stock',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: product.stock > 0 ? Colors.black54 : Theme.of(context).colorScheme.error,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                         ),
                       ],
@@ -3115,7 +3708,7 @@ class ProductCard extends StatelessWidget {
                         ),
                         IconButton.filled(
                           tooltip: 'Add to basket',
-                          onPressed: onAdd,
+                          onPressed: product.stock <= 0 ? null : onAdd,
                           constraints: const BoxConstraints.tightFor(
                             width: 40,
                             height: 40,
@@ -6175,6 +6768,29 @@ String? normalizeLebanesePhone(String value) {
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';
+
+String mostCommon(Iterable<String> values) {
+  final counts = <String, int>{};
+  for (final value in values) {
+    final trimmed = value.trim();
+    if (trimmed.isNotEmpty) {
+      counts[trimmed] = (counts[trimmed] ?? 0) + 1;
+    }
+  }
+  if (counts.isEmpty) {
+    return 'New arrivals';
+  }
+  final entries = counts.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  return entries.first.key;
+}
+
+double lowestPrice(List<Product> products) {
+  if (products.isEmpty) {
+    return 0;
+  }
+  return products.map((product) => product.price).reduce((a, b) => a < b ? a : b);
+}
 
 String paymentMethodCode(String label) {
   return switch (label) {

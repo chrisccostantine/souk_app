@@ -43,6 +43,14 @@ class SoukApi {
     return _post('/api/auth/login', payload);
   }
 
+  Future<Map<String, dynamic>> changePassword(Map<String, dynamic> payload) async {
+    return _post('/api/auth/change-password', payload);
+  }
+
+  Future<Map<String, dynamic>> forgotPassword(Map<String, dynamic> payload) async {
+    return _post('/api/auth/forgot-password', payload);
+  }
+
   Future<Map<String, dynamic>> createShop(Map<String, dynamic> payload) async {
     final body = await _post('/api/shops', payload);
     return body['shop'] as Map<String, dynamic>;

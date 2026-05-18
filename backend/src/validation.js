@@ -134,6 +134,16 @@ export const loginSchema = z.object({
   role: z.enum(['CUSTOMER', 'SELLER']).optional(),
 });
 
+export const changePasswordSchema = z.object({
+  email: z.string().email(),
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(6),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
 export const createProductSchema = z.object({
   shopId: z.string().min(1),
   name: z.string().min(2),

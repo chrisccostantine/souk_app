@@ -15,6 +15,7 @@ import {
   analyticsEventSchema,
   aiAdCopySchema,
   aiProductCopySchema,
+  changePasswordSchema,
   createAffiliateLinkSchema,
   createCampaignSchema,
   createDeliveryRegionSchema,
@@ -24,6 +25,7 @@ import {
   createProductSchema,
   createReviewSchema,
   favoriteProductSchema,
+  forgotPasswordSchema,
   createShopSchema,
   followStoreSchema,
   loginSchema,
@@ -266,6 +268,63 @@ app.post('/api/auth/login', async (req, res, next) => {
     res.json({
       user: publicUser(user),
       shop: user.shops[0] ?? null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/change-password', async (req, res, next) => {
+  try {
+    const input = validate(changePasswordSchema, req.body);
+    const user = await prisma.user.findUnique({ where: { email: input.email } });
+
+    if (!user || !passwordMatches(input.currentPassword, user)) {
+      const error = new Error('Current password is incorrect');
+      error.status = 401;
+      throw error;
+    }
+
+    const passwordSecret = makePasswordSecret(input.newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: passwordSecret.hash,
+        passwordSalt: passwordSecret.salt,
+      },
+    });
+
+    res.json({ ok: true, message: 'Password updated' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/forgot-password', async (req, res, next) => {
+  try {
+    const input = validate(forgotPasswordSchema, req.body);
+    const user = await prisma.user.findUnique({ where: { email: input.email } });
+
+    if (!user) {
+      const error = new Error('No account was found for this email');
+      error.status = 404;
+      throw error;
+    }
+
+    const temporaryPassword = `Souk-${crypto.randomBytes(3).toString('hex')}`;
+    const passwordSecret = makePasswordSecret(temporaryPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: passwordSecret.hash,
+        passwordSalt: passwordSecret.salt,
+      },
+    });
+
+    res.json({
+      ok: true,
+      message: 'Temporary password generated. Change it after login.',
+      temporaryPassword,
     });
   } catch (error) {
     next(error);
