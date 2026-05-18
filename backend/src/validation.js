@@ -58,6 +58,58 @@ export const createPlacementSchema = z.object({
   endsAt: z.coerce.date().optional(),
 });
 
+export const createReviewSchema = z.object({
+  customerEmail: z.string().email(),
+  customerName: z.string().min(2),
+  rating: z.coerce.number().int().min(1).max(5),
+  comment: z.string().max(500).optional(),
+});
+
+export const favoriteProductSchema = z.object({
+  customerEmail: z.string().email(),
+  customerName: z.string().min(2),
+});
+
+export const aiProductCopySchema = z.object({
+  productName: z.string().min(2),
+  category: z.string().min(2),
+  tone: z.string().default('premium and friendly'),
+  keywords: z.string().optional(),
+});
+
+export const aiAdCopySchema = z.object({
+  storeName: z.string().min(2),
+  offer: z.string().min(2),
+  channel: z.enum(['instagram', 'push', 'whatsapp']).default('instagram'),
+});
+
+export const createDeliveryRegionSchema = z.object({
+  name: z.string().min(2),
+  fee: z.coerce.number().min(0).default(0),
+  eta: z.string().min(2),
+  active: z.boolean().default(true),
+});
+
+export const createLiveEventSchema = z.object({
+  title: z.string().min(2),
+  startsAt: z.coerce.date(),
+  streamUrl: z.string().url().optional(),
+  active: z.boolean().default(false),
+});
+
+export const createAffiliateLinkSchema = z.object({
+  creatorName: z.string().min(2),
+  creatorHandle: z.string().optional(),
+  code: z.string().min(3),
+  commissionRate: z.coerce.number().min(0).max(100).default(10),
+  status: z.enum(['PROPOSED', 'ACTIVE', 'COMPLETED', 'CANCELLED']).default('PROPOSED'),
+});
+
+export const verifyShopSchema = z.object({
+  verified: z.boolean(),
+  verificationNote: z.string().optional(),
+});
+
 export const signupSchema = z.object({
   role: z.enum(['CUSTOMER', 'SELLER']),
   name: z.string().min(2),

@@ -75,6 +75,55 @@ class SoukApi {
     return body['placement'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> createDeliveryRegion(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/delivery-regions', payload);
+    return body['region'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createLiveEvent(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/live-events', payload);
+    return body['event'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createAffiliateLink(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/affiliate-links', payload);
+    return body['link'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> verifyShop(String shopId, Map<String, dynamic> payload) async {
+    final body = await _patch('/api/admin/shops/$shopId/verification', payload);
+    return body['shop'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createReview(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/reviews', payload);
+    return body['review'] as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> fetchReviews(String shopId) async {
+    final body = await _get('/api/shops/$shopId/reviews');
+    return body['reviews'] as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> favoriteProduct(String productId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/products/$productId/favorite', payload);
+    return body['favorite'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateOrderStatus(String orderId, String status) async {
+    final body = await _patch('/api/orders/$orderId/status', {'status': status});
+    return body['order'] as Map<String, dynamic>;
+  }
+
+  Future<String> generateProductCopy(Map<String, dynamic> payload) async {
+    final body = await _post('/api/ai/product-copy', payload);
+    return body['description'] as String? ?? '';
+  }
+
+  Future<Map<String, dynamic>> generateAdCopy(Map<String, dynamic> payload) async {
+    return _post('/api/ai/ad-copy', payload);
+  }
+
   Future<Map<String, dynamic>> fetchShopInventory(String shopId) async {
     return _get('/api/shops/$shopId/inventory');
   }

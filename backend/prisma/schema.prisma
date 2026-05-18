@@ -61,6 +61,13 @@ enum CampaignChannel {
   EMAIL
 }
 
+enum CollaborationStatus {
+  PROPOSED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id           String     @id @default(cuid())
   name         String
@@ -131,6 +138,9 @@ model Shop {
   notificationCampaigns NotificationCampaign[]
   sponsoredPlacements SponsoredPlacement[]
   analyticsDaily StoreAnalyticsDaily[]
+  deliveryRegions DeliveryRegion[]
+  liveEvents LiveSellingEvent[]
+  affiliateLinks AffiliateLink[]
   collections   Collection[]
   shopifyConnection ShopifyConnection?
 }
@@ -367,4 +377,40 @@ model StoreAnalyticsDaily {
   shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
 
   @@unique([shopId, day])
+}
+
+model DeliveryRegion {
+  id        String   @id @default(cuid())
+  shopId    String
+  name      String
+  fee       Decimal  @default(0)
+  eta       String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model LiveSellingEvent {
+  id        String   @id @default(cuid())
+  shopId    String
+  title     String
+  startsAt  DateTime
+  streamUrl String?
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model AffiliateLink {
+  id        String              @id @default(cuid())
+  shopId    String
+  creatorName String
+  creatorHandle String?
+  code      String
+  commissionRate Decimal       @default(0)
+  status    CollaborationStatus @default(PROPOSED)
+  createdAt DateTime            @default(now())
+  shop      Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, code])
 }

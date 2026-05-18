@@ -13,10 +13,17 @@ import {
 } from './shopify.js';
 import {
   analyticsEventSchema,
+  aiAdCopySchema,
+  aiProductCopySchema,
+  createAffiliateLinkSchema,
   createCampaignSchema,
+  createDeliveryRegionSchema,
+  createLiveEventSchema,
   createOrderSchema,
   createPlacementSchema,
   createProductSchema,
+  createReviewSchema,
+  favoriteProductSchema,
   createShopSchema,
   followStoreSchema,
   loginSchema,
@@ -26,6 +33,7 @@ import {
   syncShopifySchema,
   updateOrderStatusSchema,
   updateShopProfileSchema,
+  verifyShopSchema,
   validate,
 } from './validation.js';
 
@@ -368,6 +376,55 @@ app.get('/api/shops/:id/growth', async (req, res, next) => {
   }
 });
 
+app.post('/api/shops/:id/delivery-regions', async (req, res, next) => {
+  try {
+    const input = validate(createDeliveryRegionSchema, req.body);
+    const region = await prisma.deliveryRegion.create({
+      data: { ...input, shopId: String(req.params.id) },
+    });
+    res.status(201).json({ region });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/live-events', async (req, res, next) => {
+  try {
+    const input = validate(createLiveEventSchema, req.body);
+    const event = await prisma.liveSellingEvent.create({
+      data: { ...input, shopId: String(req.params.id) },
+    });
+    res.status(201).json({ event });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/affiliate-links', async (req, res, next) => {
+  try {
+    const input = validate(createAffiliateLinkSchema, req.body);
+    const link = await prisma.affiliateLink.create({
+      data: { ...input, shopId: String(req.params.id) },
+    });
+    res.status(201).json({ link });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/admin/shops/:id/verification', async (req, res, next) => {
+  try {
+    const input = validate(verifyShopSchema, req.body);
+    const shop = await prisma.shop.update({
+      where: { id: String(req.params.id) },
+      data: input,
+    });
+    res.json({ shop });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/shops/:id/follow', async (req, res, next) => {
   try {
     const input = validate(followStoreSchema, req.body);
@@ -557,6 +614,29 @@ app.patch('/api/products/:id/featured', async (req, res, next) => {
       },
     });
     res.json({ product: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/products/:id/favorite', async (req, res, next) => {
+  try {
+    const input = validate(favoriteProductSchema, req.body);
+    const user = await prisma.user.upsert({
+      where: { email: input.customerEmail },
+      update: { name: input.customerName },
+      create: {
+        email: input.customerEmail,
+        name: input.customerName,
+        role: 'CUSTOMER',
+      },
+    });
+    const favorite = await prisma.favorite.upsert({
+      where: { userId_productId: { userId: user.id, productId: req.params.id } },
+      update: {},
+      create: { userId: user.id, productId: req.params.id },
+    });
+    res.status(201).json({ favorite });
   } catch (error) {
     next(error);
   }
@@ -874,6 +954,82 @@ app.patch('/api/orders/:id/status', async (req, res, next) => {
       },
     });
     res.json({ order });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/reviews', async (req, res, next) => {
+  try {
+    const input = validate(createReviewSchema, req.body);
+    const shopId = String(req.params.id);
+    const user = await prisma.user.upsert({
+      where: { email: input.customerEmail },
+      update: { name: input.customerName },
+      create: {
+        email: input.customerEmail,
+        name: input.customerName,
+        role: 'CUSTOMER',
+      },
+    });
+    const review = await prisma.review.create({
+      data: {
+        userId: user.id,
+        shopId,
+        rating: input.rating,
+        comment: input.comment,
+      },
+    });
+    const aggregate = await prisma.review.aggregate({
+      where: { shopId },
+      _avg: { rating: true },
+    });
+    await prisma.shop.update({
+      where: { id: shopId },
+      data: { rating: aggregate._avg.rating ?? input.rating },
+    });
+    res.status(201).json({ review });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/shops/:id/reviews', async (req, res, next) => {
+  try {
+    const reviews = await prisma.review.findMany({
+      where: { shopId: String(req.params.id) },
+      include: { user: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    res.json({ reviews });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/ai/product-copy', (req, res, next) => {
+  try {
+    const input = validate(aiProductCopySchema, req.body);
+    const keywords = input.keywords ? ` Designed around ${input.keywords}.` : '';
+    res.json({
+      description:
+        `${input.productName} brings a ${input.tone} feel to ${input.category}.` +
+        `${keywords} Easy to style, simple to order, and ready for local delivery through Souk.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/ai/ad-copy', (req, res, next) => {
+  try {
+    const input = validate(aiAdCopySchema, req.body);
+    const prefix = input.channel === 'whatsapp' ? 'Hi! ' : '';
+    res.json({
+      caption: `${prefix}${input.storeName} just launched: ${input.offer}. Shop now on Souk before it is gone.`,
+      headline: `${input.offer} at ${input.storeName}`,
+    });
   } catch (error) {
     next(error);
   }

@@ -583,6 +583,23 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         _showSnack('Saved to favorites');
       }
     });
+    if (_favoriteIds.contains(product.id)) {
+      _persistFavorite(product);
+    }
+  }
+
+  Future<void> _persistFavorite(Product product) async {
+    if (soukApiUrl.isEmpty || product.id.isEmpty) {
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).favoriteProduct(product.id, {
+        'customerEmail': widget.session.email,
+        'customerName': widget.session.name,
+      });
+    } catch (_) {
+      // Local favorite still works if persistence is temporarily unavailable.
+    }
   }
 
   Future<void> _followShop(Shop shop) async {
@@ -621,9 +638,31 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             Navigator.pop(context);
             _addToCart(product);
           },
+          onReview: (rating, comment) => _createReview(product, rating, comment),
         );
       },
     );
+  }
+
+  Future<void> _createReview(Product product, int rating, String comment) async {
+    if (soukApiUrl.isEmpty || product.shop.id.isEmpty) {
+      _showSnack('SOUK_API_URL is required to review stores');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).createReview(product.shop.id, {
+        'customerEmail': widget.session.email,
+        'customerName': widget.session.name,
+        'rating': rating,
+        'comment': comment,
+      });
+      _loadCatalog();
+      _showSnack('Review submitted');
+    } on SoukApiException catch (error) {
+      _showSnack(error.message);
+    } catch (_) {
+      _showSnack('Could not submit review');
+    }
   }
 
   void _trackShopEvent(Product product, String event) {
@@ -1671,6 +1710,116 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
   }
 
+  Future<void> _updateSellerOrderStatus(SellerOrder order, String status) async {
+    if (soukApiUrl.isEmpty || order.id.isEmpty) {
+      _showSellerSnack('Connect the backend before updating orders.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).updateOrderStatus(order.id, status);
+      await _loadSellerOrders();
+      _showSellerSnack('Order updated to $status');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not update order');
+    }
+  }
+
+  Future<void> _generateProductCopy() async {
+    final product = _syncedProducts.isEmpty ? null : _syncedProducts.first;
+    if (soukApiUrl.isEmpty || product == null) {
+      _showSellerSnack('Sync products first, then generate product copy.');
+      return;
+    }
+    try {
+      final copy = await SoukApi(baseUrl: soukApiUrl).generateProductCopy({
+        'productName': product.name,
+        'category': product.category,
+        'tone': 'premium and local',
+        'keywords': product.collections.join(', '),
+      });
+      if (!mounted) {
+        return;
+      }
+      await showGeneratedCopyDialog(context, 'Product description', copy);
+    } catch (_) {
+      _showSellerSnack('Could not generate product copy');
+    }
+  }
+
+  Future<void> _generateAdCopy() async {
+    if (soukApiUrl.isEmpty) {
+      _showSellerSnack('Connect the backend before generating ads.');
+      return;
+    }
+    try {
+      final copy = await SoukApi(baseUrl: soukApiUrl).generateAdCopy({
+        'storeName': widget.session.store?.name ?? 'Your store',
+        'offer': 'new arrivals and limited stock',
+        'channel': 'instagram',
+      });
+      if (!mounted) {
+        return;
+      }
+      await showGeneratedCopyDialog(
+        context,
+        copy['headline'] as String? ?? 'Ad copy',
+        copy['caption'] as String? ?? '',
+      );
+    } catch (_) {
+      _showSellerSnack('Could not generate ad copy');
+    }
+  }
+
+  Future<void> _createDeliveryRegion(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before adding delivery regions.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).createDeliveryRegion(shopId, payload);
+      _showSellerSnack('Delivery region saved');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not save delivery region');
+    }
+  }
+
+  Future<void> _createLiveEvent(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before scheduling live selling.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).createLiveEvent(shopId, payload);
+      _showSellerSnack('Live selling event scheduled');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not schedule live event');
+    }
+  }
+
+  Future<void> _createAffiliateLink(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before adding affiliates.');
+      return;
+    }
+    try {
+      await SoukApi(baseUrl: soukApiUrl).createAffiliateLink(shopId, payload);
+      _showSellerSnack('Affiliate link created');
+    } on SoukApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not create affiliate link');
+    }
+  }
+
   void _showSellerSnack(String message) {
     if (!mounted) {
       return;
@@ -1764,6 +1913,11 @@ class _SellerHubPageState extends State<SellerHubPage>
           products: _syncedProducts,
           onCreateCampaign: _createCampaign,
           onCreatePlacement: _createPlacement,
+          onGenerateProductCopy: _generateProductCopy,
+          onGenerateAdCopy: _generateAdCopy,
+          onCreateDeliveryRegion: _createDeliveryRegion,
+          onCreateLiveEvent: _createLiveEvent,
+          onCreateAffiliateLink: _createAffiliateLink,
         ),
         const SizedBox(height: 16),
         SectionTitle(
@@ -1831,7 +1985,11 @@ class _SellerHubPageState extends State<SellerHubPage>
             message: 'Customer orders will appear here after checkout.',
           )
         else
-          for (final order in _sellerOrders) SellerOrderTile(order: order),
+          for (final order in _sellerOrders)
+            SellerOrderTile(
+              order: order,
+              onStatusChanged: (status) => _updateSellerOrderStatus(order, status),
+            ),
       ],
     );
   }
@@ -2928,12 +3086,14 @@ class ProductDetailSheet extends StatefulWidget {
     required this.isFavorite,
     required this.onFavorite,
     required this.onAddToCart,
+    required this.onReview,
   });
 
   final Product product;
   final bool isFavorite;
   final VoidCallback onFavorite;
   final VoidCallback onAddToCart;
+  final void Function(int rating, String comment) onReview;
 
   @override
   State<ProductDetailSheet> createState() => _ProductDetailSheetState();
@@ -2981,6 +3141,10 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
     );
     final url = Uri.parse('https://wa.me/?text=$message');
     await launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  void _openReviewDialog() {
+    showReviewDialog(context, widget.onReview);
   }
 
   @override
@@ -3076,6 +3240,15 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
             ),
             const SizedBox(height: 12),
             const TrustAndReviewStrip(),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _openReviewDialog,
+                icon: const Icon(Icons.rate_review_outlined),
+                label: const Text('Review this store'),
+              ),
+            ),
             if (widget.product.variants.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text('Variants', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
@@ -3712,6 +3885,11 @@ class SellerFeatureSuite extends StatelessWidget {
     required this.products,
     required this.onCreateCampaign,
     required this.onCreatePlacement,
+    required this.onGenerateProductCopy,
+    required this.onGenerateAdCopy,
+    required this.onCreateDeliveryRegion,
+    required this.onCreateLiveEvent,
+    required this.onCreateAffiliateLink,
   });
 
   final int productCount;
@@ -3721,6 +3899,11 @@ class SellerFeatureSuite extends StatelessWidget {
   final List<SellerInventoryProduct> products;
   final ValueChanged<Map<String, dynamic>> onCreateCampaign;
   final ValueChanged<Map<String, dynamic>> onCreatePlacement;
+  final VoidCallback onGenerateProductCopy;
+  final VoidCallback onGenerateAdCopy;
+  final ValueChanged<Map<String, dynamic>> onCreateDeliveryRegion;
+  final ValueChanged<Map<String, dynamic>> onCreateLiveEvent;
+  final ValueChanged<Map<String, dynamic>> onCreateAffiliateLink;
 
   @override
   Widget build(BuildContext context) {
@@ -3745,17 +3928,29 @@ class SellerFeatureSuite extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        const SellerDashboardPanel(
+        SellerDashboardPanel(
           title: 'AI commerce tools',
           icon: Icons.auto_awesome,
-          accent: Color(0xFFE7A72E),
-          children: [
+          accent: const Color(0xFFE7A72E),
+          children: const [
             FeaturePill(icon: Icons.description_outlined, label: 'Product descriptions'),
             FeaturePill(icon: Icons.support_agent, label: 'Store assistant'),
             FeaturePill(icon: Icons.recommend_outlined, label: 'Recommendations'),
             FeaturePill(icon: Icons.campaign_outlined, label: 'Ad captions'),
             FeaturePill(icon: Icons.style_outlined, label: 'AI stylist'),
             FeaturePill(icon: Icons.view_in_ar_outlined, label: 'AR try-on ready'),
+          ],
+          actions: [
+            OutlinedButton.icon(
+              onPressed: onGenerateProductCopy,
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('Generate description'),
+            ),
+            OutlinedButton.icon(
+              onPressed: onGenerateAdCopy,
+              icon: const Icon(Icons.campaign_outlined),
+              label: const Text('Generate ad'),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -3791,17 +3986,34 @@ class SellerFeatureSuite extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        const SellerDashboardPanel(
+        SellerDashboardPanel(
           title: 'Operations',
           icon: Icons.tune_outlined,
-          accent: Color(0xFF1F7A4D),
-          children: [
+          accent: const Color(0xFF1F7A4D),
+          children: const [
             FeaturePill(icon: Icons.notifications_active_outlined, label: 'Push campaigns'),
             FeaturePill(icon: Icons.delivery_dining, label: 'Delivery regions'),
             FeaturePill(icon: Icons.map_outlined, label: 'Live tracking ready'),
             FeaturePill(icon: Icons.chat_outlined, label: 'WhatsApp sales'),
             FeaturePill(icon: Icons.admin_panel_settings_outlined, label: 'Admin controls'),
             FeaturePill(icon: Icons.report_gmailerrorred_outlined, label: 'Reports and disputes'),
+          ],
+          actions: [
+            OutlinedButton.icon(
+              onPressed: () => showDeliveryRegionDialog(context, onCreateDeliveryRegion),
+              icon: const Icon(Icons.delivery_dining),
+              label: const Text('Add region'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showLiveEventDialog(context, onCreateLiveEvent),
+              icon: const Icon(Icons.live_tv_outlined),
+              label: const Text('Schedule live'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => showAffiliateDialog(context, onCreateAffiliateLink),
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('Add affiliate'),
+            ),
           ],
         ),
       ],
@@ -4299,9 +4511,14 @@ class SellerInventoryTile extends StatelessWidget {
 }
 
 class SellerOrderTile extends StatelessWidget {
-  const SellerOrderTile({super.key, required this.order});
+  const SellerOrderTile({
+    super.key,
+    required this.order,
+    required this.onStatusChanged,
+  });
 
   final SellerOrder order;
+  final ValueChanged<String> onStatusChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -4313,9 +4530,18 @@ class SellerOrderTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text('${order.summary} - ${money(order.total)}'),
-        trailing: FilledButton.tonal(
-          onPressed: () {},
-          child: Text(order.status),
+        trailing: PopupMenuButton<String>(
+          tooltip: 'Update status',
+          onSelected: onStatusChanged,
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'ACCEPTED', child: Text('Accept')),
+            PopupMenuItem(value: 'PACKING', child: Text('Packing')),
+            PopupMenuItem(value: 'READY', child: Text('Ready')),
+            PopupMenuItem(value: 'OUT_FOR_DELIVERY', child: Text('Out for delivery')),
+            PopupMenuItem(value: 'DELIVERED', child: Text('Delivered')),
+            PopupMenuItem(value: 'CANCELLED', child: Text('Cancel')),
+          ],
+          child: Chip(label: Text(order.status)),
         ),
       ),
     );
@@ -4950,7 +5176,7 @@ class SellerGrowthStats {
 }
 
 class SellerOrder {
-  const SellerOrder(this.customer, this.summary, this.status, this.total);
+  const SellerOrder(this.id, this.customer, this.summary, this.status, this.total);
 
   factory SellerOrder.fromJson(Map<String, dynamic> json) {
     final customer = json['customer'] as Map<String, dynamic>? ?? const <String, dynamic>{};
@@ -4963,6 +5189,7 @@ class SellerOrder {
             return '${row['quantity'] ?? 1} x ${product['name'] ?? 'Product'}';
           }).join(', ');
     return SellerOrder(
+      json['id'] as String? ?? '',
       (customer['name'] as String?) ?? (customer['email'] as String?) ?? 'Customer',
       summary,
       json['status'] as String? ?? 'PLACED',
@@ -4970,6 +5197,7 @@ class SellerOrder {
     );
   }
 
+  final String id;
   final String customer;
   final String summary;
   final String status;
@@ -5194,6 +5422,237 @@ Future<void> showPlacementDialog(
   );
   title.dispose();
   budget.dispose();
+}
+
+Future<void> showReviewDialog(
+  BuildContext context,
+  void Function(int rating, String comment) onSubmit,
+) async {
+  final comment = TextEditingController();
+  var rating = 5;
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Review store'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<int>(
+                    initialValue: rating,
+                    decoration: const InputDecoration(
+                      labelText: 'Rating',
+                      prefixIcon: Icon(Icons.star_outline),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 5, child: Text('5 stars')),
+                      DropdownMenuItem(value: 4, child: Text('4 stars')),
+                      DropdownMenuItem(value: 3, child: Text('3 stars')),
+                      DropdownMenuItem(value: 2, child: Text('2 stars')),
+                      DropdownMenuItem(value: 1, child: Text('1 star')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() => rating = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: comment,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Comment',
+                      prefixIcon: Icon(Icons.rate_review_outlined),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  onSubmit(rating, comment.text.trim());
+                  Navigator.pop(context);
+                },
+                child: const Text('Submit'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  comment.dispose();
+}
+
+Future<void> showGeneratedCopyDialog(
+  BuildContext context,
+  String title,
+  String copy,
+) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: SelectableText(copy.isEmpty ? 'No copy generated.' : copy),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> showDeliveryRegionDialog(
+  BuildContext context,
+  ValueChanged<Map<String, dynamic>> onSubmit,
+) async {
+  final name = TextEditingController(text: 'Beirut');
+  final fee = TextEditingController(text: '3.5');
+  final eta = TextEditingController(text: 'Same day');
+  await showSimpleFormDialog(
+    context: context,
+    title: 'Add delivery region',
+    fields: [
+      DialogField(controller: name, label: 'Region', icon: Icons.place_outlined),
+      DialogField(controller: fee, label: 'Fee', icon: Icons.payments_outlined, keyboardType: TextInputType.number),
+      DialogField(controller: eta, label: 'ETA', icon: Icons.schedule),
+    ],
+    onSubmit: () => onSubmit({
+      'name': name.text.trim(),
+      'fee': double.tryParse(fee.text.trim()) ?? 0,
+      'eta': eta.text.trim(),
+      'active': true,
+    }),
+  );
+  name.dispose();
+  fee.dispose();
+  eta.dispose();
+}
+
+Future<void> showLiveEventDialog(
+  BuildContext context,
+  ValueChanged<Map<String, dynamic>> onSubmit,
+) async {
+  final title = TextEditingController(text: 'New arrivals live');
+  final streamUrl = TextEditingController();
+  await showSimpleFormDialog(
+    context: context,
+    title: 'Schedule live selling',
+    fields: [
+      DialogField(controller: title, label: 'Title', icon: Icons.live_tv_outlined),
+      DialogField(controller: streamUrl, label: 'Stream URL', icon: Icons.link, keyboardType: TextInputType.url),
+    ],
+    onSubmit: () => onSubmit({
+      'title': title.text.trim(),
+      'startsAt': DateTime.now().add(const Duration(days: 1)).toIso8601String(),
+      'streamUrl': nullableText(streamUrl.text),
+      'active': false,
+    }),
+  );
+  title.dispose();
+  streamUrl.dispose();
+}
+
+Future<void> showAffiliateDialog(
+  BuildContext context,
+  ValueChanged<Map<String, dynamic>> onSubmit,
+) async {
+  final creatorName = TextEditingController();
+  final handle = TextEditingController();
+  final code = TextEditingController(text: 'SOUK10');
+  final commission = TextEditingController(text: '10');
+  await showSimpleFormDialog(
+    context: context,
+    title: 'Add affiliate',
+    fields: [
+      DialogField(controller: creatorName, label: 'Creator name', icon: Icons.person_outline),
+      DialogField(controller: handle, label: 'Handle', icon: Icons.alternate_email),
+      DialogField(controller: code, label: 'Code', icon: Icons.confirmation_number_outlined),
+      DialogField(controller: commission, label: 'Commission %', icon: Icons.percent, keyboardType: TextInputType.number),
+    ],
+    onSubmit: () => onSubmit({
+      'creatorName': creatorName.text.trim(),
+      'creatorHandle': nullableText(handle.text),
+      'code': code.text.trim(),
+      'commissionRate': double.tryParse(commission.text.trim()) ?? 10,
+      'status': 'ACTIVE',
+    }),
+  );
+  creatorName.dispose();
+  handle.dispose();
+  code.dispose();
+  commission.dispose();
+}
+
+Future<void> showSimpleFormDialog({
+  required BuildContext context,
+  required String title,
+  required List<DialogField> fields,
+  required VoidCallback onSubmit,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final field in fields) ...[
+              TextField(
+                controller: field.controller,
+                keyboardType: field.keyboardType,
+                decoration: InputDecoration(
+                  labelText: field.label,
+                  prefixIcon: Icon(field.icon),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            onSubmit();
+            Navigator.pop(context);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
+}
+
+class DialogField {
+  const DialogField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.keyboardType,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final TextInputType? keyboardType;
 }
 
 String? nullableText(String value) {
