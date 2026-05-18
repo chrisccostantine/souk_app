@@ -274,7 +274,7 @@ app.post('/api/auth/login', async (req, res, next) => {
   }
 });
 
-app.post('/api/auth/change-password', async (req, res, next) => {
+async function changePassword(req, res, next) {
   try {
     const input = validate(changePasswordSchema, req.body);
     const user = await prisma.user.findUnique({ where: { email: input.email } });
@@ -298,9 +298,9 @@ app.post('/api/auth/change-password', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+}
 
-app.post('/api/auth/forgot-password', async (req, res, next) => {
+async function forgotPassword(req, res, next) {
   try {
     const input = validate(forgotPasswordSchema, req.body);
     const user = await prisma.user.findUnique({ where: { email: input.email } });
@@ -329,7 +329,13 @@ app.post('/api/auth/forgot-password', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+}
+
+app.post('/api/auth/change-password', changePassword);
+app.post('/api/auth/password/change', changePassword);
+app.post('/api/auth/forgot-password', forgotPassword);
+app.post('/api/auth/password/forgot', forgotPassword);
+app.post('/api/auth/reset-password', forgotPassword);
 
 app.get('/api/shops', async (req, res, next) => {
   try {

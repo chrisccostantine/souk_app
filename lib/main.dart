@@ -265,13 +265,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
           : AccountRole.customer,
       store: shop == null
           ? null
-          : ShopDraft(
-              id: shop['id']?.toString(),
-              name: shop['name']?.toString() ?? 'My Souk Store',
-              category: shop['category']?.toString() ?? 'Store',
-              city: shop['city']?.toString() ?? 'Beirut',
-              hasDelivery: true,
-            ),
+          : ShopDraft.fromJson(shop),
     );
   }
 
@@ -305,7 +299,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                   Navigator.pop(dialogContext, response['temporaryPassword']?.toString());
                 }
               } on SoukApiException catch (apiError) {
-                setDialogState(() => error = apiError.message);
+                setDialogState(() => error = authFriendlyError(apiError));
               } catch (submitError) {
                 setDialogState(() => error = 'Could not reset password: $submitError');
               } finally {
@@ -1819,11 +1813,16 @@ class _SellerHubPageState extends State<SellerHubPage>
   bool _inventoryLoading = false;
   String? _inventoryMessage;
   SellerMenuSection _sellerSection = SellerMenuSection.settings;
+  ShopDraft? _liveStore;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.session.store?.isActive == true) {
+      _sellerSection = SellerMenuSection.productSync;
+    }
+    _refreshSellerStore();
     _refreshShopifyStatus();
     _loadSellerInventory();
     _loadSellerOrders();
@@ -1841,7 +1840,34 @@ class _SellerHubPageState extends State<SellerHubPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _refreshSellerStore();
       _refreshShopifyStatus();
+    }
+  }
+
+  Future<void> _refreshSellerStore() async {
+    final shopId = widget.session.store?.id;
+    if (soukApiUrl.isEmpty || shopId == null) {
+      return;
+    }
+    try {
+      final rows = await SoukApi(baseUrl: soukApiUrl).fetchShops(includeAll: true);
+      final row = firstWhereOrNull(
+        rows.whereType<Map<String, dynamic>>(),
+        (shop) => shop['id']?.toString() == shopId,
+      );
+      if (!mounted || row == null) {
+        return;
+      }
+      final refreshedStore = ShopDraft.fromJson(row);
+      setState(() {
+        _liveStore = refreshedStore;
+        if (refreshedStore.isActive && _sellerSection == SellerMenuSection.settings) {
+          _sellerSection = SellerMenuSection.productSync;
+        }
+      });
+    } catch (_) {
+      // The session store remains usable if status refresh is unavailable.
     }
   }
 
@@ -2414,12 +2440,14 @@ class _SellerHubPageState extends State<SellerHubPage>
   @override
   Widget build(BuildContext context) {
     final store =
+        _liveStore ??
         widget.session.store ??
         const ShopDraft(
           name: 'My Souk Store',
           category: 'Store',
           city: 'Beirut',
           hasDelivery: true,
+          status: 'DRAFT',
         );
     final productCount = _syncedProducts.length;
     final orderRevenue = _sellerOrders.fold<double>(
@@ -4570,6 +4598,7 @@ class SellerStoreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final active = store.isActive;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -4606,7 +4635,8 @@ class SellerStoreCard extends StatelessWidget {
                             ? 'Delivery enabled'
                             : 'Pickup only',
                       ),
-                      const Tag(label: 'Draft store'),
+                      Tag(label: active ? 'Active store' : store.statusDisplay),
+                      if (store.verified) const Tag(label: 'Verified'),
                     ],
                   ),
                 ],
@@ -5981,13 +6011,39 @@ class ShopDraft {
     required this.category,
     required this.city,
     required this.hasDelivery,
+    this.verified = false,
+    this.status = 'DRAFT',
   });
+
+  factory ShopDraft.fromJson(Map<String, dynamic> json) {
+    return ShopDraft(
+      id: json['id']?.toString(),
+      name: json['name']?.toString() ?? 'My Souk Store',
+      category: json['category']?.toString() ?? 'Store',
+      city: json['city']?.toString() ?? 'Beirut',
+      hasDelivery: (json['deliveryLabel']?.toString() ?? '').isNotEmpty,
+      verified: json['verified'] == true,
+      status: json['status']?.toString() ?? 'DRAFT',
+    );
+  }
 
   final String? id;
   final String name;
   final String category;
   final String city;
   final bool hasDelivery;
+  final bool verified;
+  final String status;
+
+  bool get isActive => status.toUpperCase() == 'ACTIVE' && verified;
+
+  String get statusDisplay {
+    return switch (status.toUpperCase()) {
+      'ACTIVE' => 'Active store',
+      'SUSPENDED' => 'Declined store',
+      _ => 'Pending approval',
+    };
+  }
 }
 
 class SellerInventoryProduct {
@@ -6768,6 +6824,13 @@ String? normalizeLebanesePhone(String value) {
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';
+
+String authFriendlyError(SoukApiException error) {
+  if (error.statusCode == 404 && error.message.contains('Route not found')) {
+    return 'Password reset is not live on the backend yet. Deploy the latest Railway backend, then try again.';
+  }
+  return error.message.replaceFirst(RegExp(r'^HTTP \d+:\s*'), '');
+}
 
 String mostCommon(Iterable<String> values) {
   final counts = <String, int>{};

@@ -48,7 +48,14 @@ class SoukApi {
   }
 
   Future<Map<String, dynamic>> forgotPassword(Map<String, dynamic> payload) async {
-    return _post('/api/auth/forgot-password', payload);
+    try {
+      return await _post('/api/auth/forgot-password', payload);
+    } on SoukApiException catch (error) {
+      if (error.statusCode != 404) {
+        rethrow;
+      }
+      return _post('/api/auth/reset-password', payload);
+    }
   }
 
   Future<Map<String, dynamic>> createShop(Map<String, dynamic> payload) async {
