@@ -95,36 +95,66 @@ function requireResetEmailConfig() {
   }
 }
 
+function withTimeout(promise, milliseconds, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), milliseconds);
+    }),
+  ]);
+}
+
+function emailSendError(error) {
+  const message = String(error?.message ?? error);
+  if (message.includes('timed out') || message.includes('ETIMEDOUT') || message.includes('ECONNECTION')) {
+    return 'Could not connect to Gmail SMTP. Try SMTP_PORT=587 with SMTP_SECURE=false, then redeploy.';
+  }
+  if (message.includes('Invalid login') || message.includes('EAUTH') || message.includes('Username and Password')) {
+    return 'Gmail rejected the SMTP login. Use the Gmail address in SMTP_USER and a fresh Google App Password in SMTP_PASS.';
+  }
+  return 'Could not send the password reset email. Check SMTP variables and redeploy.';
+}
+
 async function sendPasswordResetEmail({ to, name, resetCode }) {
   requireResetEmailConfig();
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT),
     secure: String(process.env.SMTP_SECURE ?? '').toLowerCase() === 'true' || Number(process.env.SMTP_PORT) === 465,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
+    connectionTimeout: 6000,
+    greetingTimeout: 6000,
+    socketTimeout: 8000,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
   });
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM,
-    to,
-    subject: 'Your Souk password reset code',
-    text: `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
-    html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.5;color:#17211B">
-        <h2>Your Souk reset code</h2>
-        <p>Hi ${name || 'there'},</p>
-        <p>Use this code to reset your password:</p>
-        <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:16px 0">${resetCode}</div>
-        <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
-      </div>
-    `,
-  });
+  try {
+    await withTimeout(
+      transporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to,
+        subject: 'Your Souk password reset code',
+        text: `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.5;color:#17211B">
+            <h2>Your Souk reset code</h2>
+            <p>Hi ${name || 'there'},</p>
+            <p>Use this code to reset your password:</p>
+            <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:16px 0">${resetCode}</div>
+            <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
+          </div>
+        `,
+      }),
+      9000,
+      'Email send timed out',
+    );
+  } catch (error) {
+    const sendError = new Error(emailSendError(error));
+    sendError.status = 502;
+    throw sendError;
+  }
 }
 
 function ensureShopifyOAuthConfig() {

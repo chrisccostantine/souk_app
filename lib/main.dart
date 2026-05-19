@@ -7974,6 +7974,15 @@ String authFriendlyError(SoukApiException error) {
   if (error.message.contains('Password reset email is not configured')) {
     return 'Password reset email is not configured on Railway. Add the SMTP variables first.';
   }
+  if (error.message.contains('Could not connect to Gmail SMTP')) {
+    return 'Could not connect to Gmail SMTP. In Railway try SMTP_PORT=587 and SMTP_SECURE=false, then redeploy.';
+  }
+  if (error.message.contains('Gmail rejected the SMTP login')) {
+    return 'Gmail rejected the email login. Use the Gmail address as SMTP_USER and a fresh Google App Password as SMTP_PASS.';
+  }
+  if (error.message.contains('Could not send the password reset email')) {
+    return 'Could not send the reset email. Check SMTP_USER, SMTP_PASS, SMTP_FROM, then redeploy.';
+  }
   return error.message.replaceFirst(RegExp(r'^HTTP \d+:\s*'), '');
 }
 
