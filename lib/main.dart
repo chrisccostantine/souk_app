@@ -278,23 +278,33 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     String? error;
     var codeRequested = false;
     String? helperText;
+    var dialogOpen = true;
 
     final newPassword = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            void safeSetDialogState(VoidCallback update) {
+              if (dialogOpen && dialogContext.mounted) {
+                setDialogState(update);
+              }
+            }
+
             Future<void> submit() async {
+              if (loading) {
+                return;
+              }
               final email = emailController.text.trim();
               if (email.isEmpty) {
-                setDialogState(() => error = 'Enter your account email.');
+                safeSetDialogState(() => error = 'Enter your account email.');
                 return;
               }
               if (soukApiUrl.isEmpty) {
-                setDialogState(() => error = 'SOUK_API_URL is required.');
+                safeSetDialogState(() => error = 'SOUK_API_URL is required.');
                 return;
               }
-              setDialogState(() {
+              safeSetDialogState(() {
                 loading = true;
                 error = null;
               });
@@ -303,7 +313,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 if (!codeRequested) {
                   final response = await api.forgotPassword({'email': email});
                   final nextCode = response['resetCode']?.toString();
-                  setDialogState(() {
+                  safeSetDialogState(() {
                     codeRequested = true;
                     if (nextCode != null) {
                       codeController.text = nextCode;
@@ -314,11 +324,11 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                   });
                 } else {
                   if (newPasswordController.text.length < 6) {
-                    setDialogState(() => error = 'Use at least 6 characters.');
+                    safeSetDialogState(() => error = 'Use at least 6 characters.');
                     return;
                   }
                   if (newPasswordController.text != confirmPasswordController.text) {
-                    setDialogState(() => error = 'Passwords do not match.');
+                    safeSetDialogState(() => error = 'Passwords do not match.');
                     return;
                   }
                   await api.confirmPasswordReset({
@@ -327,103 +337,114 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                     'newPassword': newPasswordController.text,
                   });
                   if (dialogContext.mounted) {
+                    dialogOpen = false;
                     Navigator.pop(dialogContext, newPasswordController.text);
                   }
                 }
               } on SoukApiException catch (apiError) {
-                setDialogState(() => error = authFriendlyError(apiError));
+                safeSetDialogState(() => error = authFriendlyError(apiError));
               } catch (submitError) {
-                setDialogState(() => error = 'Could not reset password: $submitError');
+                safeSetDialogState(() => error = 'Could not reset password: $submitError');
               } finally {
-                if (dialogContext.mounted) {
-                  setDialogState(() => loading = false);
-                }
+                safeSetDialogState(() => loading = false);
               }
             }
 
             return AlertDialog(
-              scrollable: true,
               insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
               title: const Text('Forgot password'),
-              content: SingleChildScrollView(
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      !codeRequested
-                          ? 'Enter your email to receive a reset code. Your password will not change yet.'
-                          : 'Enter the reset code from your email and choose your new password.',
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.62,
+                  ),
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          !codeRequested
+                              ? 'Enter your email to receive a reset code. Your password will not change yet.'
+                              : 'Enter the reset code from your email and choose your new password.',
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: emailController,
+                          enabled: !codeRequested,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email',
+                            prefixIcon: Icon(Icons.email_outlined),
+                          ),
+                        ),
+                        if (helperText != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            helperText!,
+                            style: const TextStyle(
+                              color: Color(0xFF1F7A4D),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                        if (codeRequested) ...[
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: codeController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Reset code',
+                              prefixIcon: Icon(Icons.pin_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: newPasswordController,
+                            obscureText: true,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'New password',
+                              prefixIcon: Icon(Icons.lock_outline),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: confirmPasswordController,
+                            obscureText: true,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => submit(),
+                            decoration: const InputDecoration(
+                              labelText: 'Confirm password',
+                              prefixIcon: Icon(Icons.verified_user_outlined),
+                            ),
+                          ),
+                        ],
+                        if (error != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            error!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: emailController,
-                      enabled: !codeRequested,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                    ),
-                    if (helperText != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        helperText!,
-                        style: const TextStyle(
-                          color: Color(0xFF1F7A4D),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                    if (codeRequested) ...[
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: codeController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Reset code',
-                          prefixIcon: Icon(Icons.pin_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: newPasswordController,
-                        obscureText: true,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          labelText: 'New password',
-                          prefixIcon: Icon(Icons.lock_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: confirmPasswordController,
-                        obscureText: true,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => submit(),
-                        decoration: const InputDecoration(
-                          labelText: 'Confirm password',
-                          prefixIcon: Icon(Icons.verified_user_outlined),
-                        ),
-                      ),
-                    ],
-                    if (error != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: loading ? null : () => Navigator.pop(dialogContext),
+                  onPressed: loading
+                      ? null
+                      : () {
+                          dialogOpen = false;
+                          Navigator.pop(dialogContext);
+                        },
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
@@ -443,11 +464,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       },
     );
 
-    emailController.dispose();
-    codeController.dispose();
+    dialogOpen = false;
     final selectedPassword = newPassword;
-    newPasswordController.dispose();
-    confirmPasswordController.dispose();
     if (!mounted || selectedPassword == null) {
       return;
     }

@@ -8,6 +8,7 @@ class SoukApi {
 
   final String baseUrl;
   final HttpClient _client;
+  static const _requestTimeout = Duration(seconds: 20);
 
   Uri _uri(String path, [Map<String, String?> query = const {}]) {
     return Uri.parse('$baseUrl$path').replace(
@@ -189,7 +190,7 @@ class SoukApi {
 
   Future<Map<String, dynamic>> _get(String path, [Map<String, String?> query = const {}]) async {
     final request = await _client.getUrl(_uri(path, query));
-    final response = await request.close();
+    final response = await request.close().timeout(_requestTimeout);
     return _decode(response);
   }
 
@@ -197,7 +198,7 @@ class SoukApi {
     final request = await _client.postUrl(_uri(path));
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(payload));
-    final response = await request.close();
+    final response = await request.close().timeout(_requestTimeout);
     return _decode(response);
   }
 
@@ -205,7 +206,7 @@ class SoukApi {
     final request = await _client.patchUrl(_uri(path));
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(payload));
-    final response = await request.close();
+    final response = await request.close().timeout(_requestTimeout);
     return _decode(response);
   }
 
