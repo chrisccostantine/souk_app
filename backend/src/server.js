@@ -95,6 +95,10 @@ function requireResetEmailConfig() {
   }
 }
 
+function smtpValue(key) {
+  return String(process.env[key] ?? '').trim();
+}
+
 function withTimeout(promise, milliseconds, message) {
   return Promise.race([
     promise,
@@ -110,30 +114,33 @@ function emailSendError(error) {
     return 'Could not connect to Gmail SMTP. Try SMTP_PORT=587 with SMTP_SECURE=false, then redeploy.';
   }
   if (message.includes('Invalid login') || message.includes('EAUTH') || message.includes('Username and Password')) {
-    return 'Gmail rejected the SMTP login. Use the Gmail address in SMTP_USER and a fresh Google App Password in SMTP_PASS.';
+    return 'Gmail rejected the SMTP login. Use the exact Gmail in SMTP_USER and paste SMTP_PASS without spaces.';
   }
-  return 'Could not send the password reset email. Check SMTP variables and redeploy.';
+  return `Could not send the password reset email: ${message}`;
 }
 
 async function sendPasswordResetEmail({ to, name, resetCode }) {
   requireResetEmailConfig();
+  const smtpUser = smtpValue('SMTP_USER');
+  const smtpPass = smtpValue('SMTP_PASS').replace(/\s+/g, '');
+  const smtpFrom = smtpValue('SMTP_FROM');
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: String(process.env.SMTP_SECURE ?? '').toLowerCase() === 'true' || Number(process.env.SMTP_PORT) === 465,
+    host: smtpValue('SMTP_HOST'),
+    port: Number(smtpValue('SMTP_PORT')),
+    secure: String(process.env.SMTP_SECURE ?? '').toLowerCase() === 'true' || Number(smtpValue('SMTP_PORT')) === 465,
     connectionTimeout: 6000,
     greetingTimeout: 6000,
     socketTimeout: 8000,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: smtpUser,
+      pass: smtpPass,
     },
   });
 
   try {
     await withTimeout(
       transporter.sendMail({
-        from: process.env.SMTP_FROM,
+        from: smtpFrom,
         to,
         subject: 'Your Souk password reset code',
         text: `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
@@ -151,6 +158,12 @@ async function sendPasswordResetEmail({ to, name, resetCode }) {
       'Email send timed out',
     );
   } catch (error) {
+    console.error('Password reset email failed', {
+      code: error?.code,
+      command: error?.command,
+      responseCode: error?.responseCode,
+      message: error?.message,
+    });
     const sendError = new Error(emailSendError(error));
     sendError.status = 502;
     throw sendError;
