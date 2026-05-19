@@ -16,6 +16,7 @@ import {
   aiAdCopySchema,
   aiProductCopySchema,
   changePasswordSchema,
+  confirmPasswordResetSchema,
   createAffiliateLinkSchema,
   createCampaignSchema,
   createDeliveryRegionSchema,
@@ -46,6 +47,7 @@ const requiredShopifyScopes = ['read_products', 'read_inventory', 'write_invento
 const shopifyScopes = requiredShopifyScopes.join(',');
 const oauthStates = new Map();
 const shopifySyncJobs = new Map();
+const passwordResetCodes = new Map();
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -311,8 +313,40 @@ async function forgotPassword(req, res, next) {
       throw error;
     }
 
-    const temporaryPassword = `Souk-${crypto.randomBytes(3).toString('hex')}`;
-    const passwordSecret = makePasswordSecret(temporaryPassword);
+    const resetCode = crypto.randomInt(100000, 999999).toString();
+    passwordResetCodes.set(input.email.toLowerCase(), {
+      code: resetCode,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    res.json({
+      ok: true,
+      message: 'Password reset code generated.',
+      resetCode,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function confirmPasswordReset(req, res, next) {
+  try {
+    const input = validate(confirmPasswordResetSchema, req.body);
+    const reset = passwordResetCodes.get(input.email.toLowerCase());
+    if (!reset || reset.code !== input.resetCode || reset.expiresAt < Date.now()) {
+      const error = new Error('Reset code is invalid or expired');
+      error.status = 400;
+      throw error;
+    }
+
+    const user = await prisma.user.findUnique({ where: { email: input.email } });
+    if (!user) {
+      const error = new Error('No account was found for this email');
+      error.status = 404;
+      throw error;
+    }
+
+    const passwordSecret = makePasswordSecret(input.newPassword);
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -320,12 +354,9 @@ async function forgotPassword(req, res, next) {
         passwordSalt: passwordSecret.salt,
       },
     });
+    passwordResetCodes.delete(input.email.toLowerCase());
 
-    res.json({
-      ok: true,
-      message: 'Temporary password generated. Change it after login.',
-      temporaryPassword,
-    });
+    res.json({ ok: true, message: 'Password updated' });
   } catch (error) {
     next(error);
   }
@@ -336,6 +367,8 @@ app.post('/api/auth/password/change', changePassword);
 app.post('/api/auth/forgot-password', forgotPassword);
 app.post('/api/auth/password/forgot', forgotPassword);
 app.post('/api/auth/reset-password', forgotPassword);
+app.post('/api/auth/reset-password/confirm', confirmPasswordReset);
+app.post('/api/auth/password/reset/confirm', confirmPasswordReset);
 
 app.get('/api/shops', async (req, res, next) => {
   try {

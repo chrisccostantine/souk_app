@@ -271,10 +271,15 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
 
   Future<void> _showForgotPasswordDialog() async {
     final emailController = TextEditingController(text: _email.text.trim());
+    final codeController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
     var loading = false;
     String? error;
+    String? resetCode;
+    String? helperText;
 
-    final temporaryPassword = await showDialog<String>(
+    final newPassword = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -294,9 +299,34 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 error = null;
               });
               try {
-                final response = await SoukApi(baseUrl: soukApiUrl).forgotPassword({'email': email});
-                if (dialogContext.mounted) {
-                  Navigator.pop(dialogContext, response['temporaryPassword']?.toString());
+                final api = SoukApi(baseUrl: soukApiUrl);
+                if (resetCode == null) {
+                  final response = await api.forgotPassword({'email': email});
+                  final nextCode = response['resetCode']?.toString();
+                  setDialogState(() {
+                    resetCode = nextCode;
+                    codeController.text = nextCode ?? '';
+                    helperText = nextCode == null
+                        ? 'Enter the reset code sent to your account.'
+                        : 'Prototype reset code: $nextCode';
+                  });
+                } else {
+                  if (newPasswordController.text.length < 6) {
+                    setDialogState(() => error = 'Use at least 6 characters.');
+                    return;
+                  }
+                  if (newPasswordController.text != confirmPasswordController.text) {
+                    setDialogState(() => error = 'Passwords do not match.');
+                    return;
+                  }
+                  await api.confirmPasswordReset({
+                    'email': email,
+                    'resetCode': codeController.text.trim(),
+                    'newPassword': newPasswordController.text,
+                  });
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, newPasswordController.text);
+                  }
                 }
               } on SoukApiException catch (apiError) {
                 setDialogState(() => error = authFriendlyError(apiError));
@@ -315,16 +345,60 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Enter your email and Souk will generate a temporary password for this prototype.'),
+                  Text(
+                    resetCode == null
+                        ? 'Enter your email to request a reset code. Your password will not change yet.'
+                        : 'Enter the reset code and choose your new password.',
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: emailController,
+                    enabled: resetCode == null,
                     keyboardType: TextInputType.emailAddress,
                     decoration: const InputDecoration(
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                   ),
+                  if (helperText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      helperText!,
+                      style: const TextStyle(
+                        color: Color(0xFF1F7A4D),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                  if (resetCode != null) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: codeController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Reset code',
+                        prefixIcon: Icon(Icons.pin_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: newPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'New password',
+                        prefixIcon: Icon(Icons.lock_outline),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: confirmPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm password',
+                        prefixIcon: Icon(Icons.verified_user_outlined),
+                      ),
+                    ),
+                  ],
                   if (error != null) ...[
                     const SizedBox(height: 10),
                     Text(
@@ -344,7 +418,13 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 ),
                 FilledButton(
                   onPressed: loading ? null : submit,
-                  child: Text(loading ? 'Working...' : 'Reset'),
+                  child: Text(
+                    loading
+                        ? 'Working...'
+                        : resetCode == null
+                            ? 'Get code'
+                            : 'Set password',
+                  ),
                 ),
               ],
             );
@@ -354,22 +434,23 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     );
 
     emailController.dispose();
-    if (!mounted || temporaryPassword == null) {
+    codeController.dispose();
+    final selectedPassword = newPassword;
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
+    if (!mounted || selectedPassword == null) {
       return;
     }
-    _password.text = temporaryPassword;
+    _password.text = selectedPassword;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Temporary password'),
-        content: SelectableText(
-          temporaryPassword,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
-        ),
+        title: const Text('Password updated'),
+        content: const Text('Your new password is filled in. You can login now.'),
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Use this password'),
+            child: const Text('Login'),
           ),
         ],
       ),
@@ -3249,7 +3330,7 @@ class SoukCategoryBubbles extends StatelessWidget {
             (item) => target == 'All' || item.category == target || item.collectionNames.contains(target),
           );
           return SoukCategoryBubble(
-            name: name,
+            name: shopperCategoryLabel(name),
             selected: selectedItem,
             product: product,
             icon: categoryIcon(name),
@@ -3316,9 +3397,11 @@ class SoukCategoryBubble extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               name,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
+                fontSize: 12,
                 fontWeight: FontWeight.w800,
                 color: selected ? const Color(0xFFA8663A) : Colors.black,
               ),
@@ -3339,7 +3422,7 @@ class SoukPromoBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final image = productPrimaryImage(products.isEmpty ? null : products.first);
     return Container(
-      height: 220,
+      height: 255,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: const Color(0xFFE9DED0),
@@ -3348,7 +3431,7 @@ class SoukPromoBanner extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(
-            left: 185,
+            left: 165,
             child: image == null
                 ? Container(
                     color: const Color(0xFFD7C2AA),
@@ -3365,9 +3448,9 @@ class SoukPromoBanner extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(18),
             child: SizedBox(
-              width: 230,
+              width: 210,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -3379,28 +3462,31 @@ class SoukPromoBanner extends StatelessWidget {
                           letterSpacing: 0,
                         ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
                     'Everything you need, in one place.',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontFamily: 'serif',
+                          fontSize: 26,
                           fontWeight: FontWeight.w800,
                           color: Colors.black,
                           height: 1.08,
                           letterSpacing: 0,
                         ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
                     'Discover quality products from trusted local sellers.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.3),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.25),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF8F552E),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                     onPressed: () {},
@@ -4884,9 +4970,13 @@ class SoukDealCard extends StatelessWidget {
                 children: [
                   Text(
                     product.name,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      height: 1.1,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -4972,10 +5062,11 @@ class SoukPopularCategoryTile extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    name,
+                    shopperCategoryLabel(name),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -7811,6 +7902,36 @@ IconData categoryIcon(String value) {
     return Icons.grid_view;
   }
   return Icons.category_outlined;
+}
+
+String shopperCategoryLabel(String value) {
+  final cleaned = value
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (cleaned.isEmpty) {
+    return 'All';
+  }
+  final lower = cleaned.toLowerCase();
+  if (lower == 'all stock') {
+    return 'All Stock';
+  }
+  if (lower.contains('apparel')) {
+    return lower.contains('women') ? 'Women' : 'Apparel';
+  }
+  if (lower.contains('shoe') || lower.contains('sneaker')) {
+    return 'Shoes';
+  }
+  if (lower.contains('electronic')) {
+    return 'Electronics';
+  }
+  if (lower.length > 14) {
+    return '${cleaned.substring(0, 13)}...';
+  }
+  return cleaned
+      .split(' ')
+      .map((part) => part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}')
+      .join(' ');
 }
 
 String authFriendlyError(SoukApiException error) {

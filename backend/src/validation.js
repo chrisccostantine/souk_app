@@ -144,6 +144,12 @@ export const forgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
+export const confirmPasswordResetSchema = z.object({
+  email: z.string().email(),
+  resetCode: z.string().min(6),
+  newPassword: z.string().min(6),
+});
+
 export const createProductSchema = z.object({
   shopId: z.string().min(1),
   name: z.string().min(2),
