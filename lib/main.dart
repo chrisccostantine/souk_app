@@ -1213,6 +1213,8 @@ class MarketplaceShell extends StatefulWidget {
 class _MarketplaceShellState extends State<MarketplaceShell> {
   int _tabIndex = 0;
   String _query = '';
+  String _searchDraft = '';
+  Timer? _searchDebounce;
   String _category = 'All';
   MarketplaceFilters _filters = const MarketplaceFilters();
   final List<CartLine> _cart = [];
@@ -1236,6 +1238,23 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     super.initState();
     _loadCatalog();
     _loadCustomerOrders();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _setSearchDraft(String value) {
+    setState(() => _searchDraft = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _query = value);
+    });
   }
 
   Future<void> _loadCatalog() async {
@@ -1671,7 +1690,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       HomePage(
         session: widget.session,
         onLogout: widget.onLogout,
-        query: _query,
+        query: _searchDraft,
         category: _category,
         products: products,
         allProducts: _products,
@@ -1685,7 +1704,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           ..sort(),
         favoriteIds: _favoriteIds,
         onViewAllFeatured: () => setState(() => _showAllFeatured = !_showAllFeatured),
-        onQueryChanged: (value) => setState(() => _query = value),
+        onQueryChanged: _setSearchDraft,
         onCategoryChanged: (value) => setState(() => _category = value),
         filters: _filters,
         filterOptions: MarketplaceFilterOptions.fromProducts(_products),
@@ -1965,6 +1984,7 @@ class HomePage extends StatelessWidget {
     final popularCategories = categories.isEmpty
         ? ['Home', 'Fashion', 'Electronics', 'Beauty']
         : categories.take(6).toList();
+    final suggestions = searchSuggestions(query, allProducts).take(5).toList();
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
@@ -1985,6 +2005,13 @@ class HomePage extends StatelessWidget {
                   onChanged: onQueryChanged,
                   onFiltersChanged: onFiltersChanged,
                 ),
+                if (suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SoukSearchSuggestions(
+                    products: suggestions,
+                    onSelected: onOpenProduct,
+                  ),
+                ],
                 const SizedBox(height: 22),
                 SoukCategoryBubbles(
                   selected: category,
@@ -1993,7 +2020,7 @@ class HomePage extends StatelessWidget {
                   onSelected: onCategoryChanged,
                 ),
                 const SizedBox(height: 26),
-                SoukPromoBanner(products: allProducts.isEmpty ? products : allProducts),
+                const SoukPromoBanner(),
                 const SizedBox(height: 26),
                 SoukSectionHeader(
                   title: 'Flash Deals',
@@ -2062,7 +2089,7 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 SizedBox(
-                  height: 150,
+                  height: 212,
                   child: ListView.separated(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                     scrollDirection: Axis.horizontal,
@@ -3718,7 +3745,7 @@ class SoukShopperTopBar extends StatelessWidget {
   }
 }
 
-class SoukSearchRow extends StatelessWidget {
+class SoukSearchRow extends StatefulWidget {
   const SoukSearchRow({
     super.key,
     required this.value,
@@ -3733,6 +3760,36 @@ class SoukSearchRow extends StatelessWidget {
   final MarketplaceFilterOptions options;
   final ValueChanged<String> onChanged;
   final ValueChanged<MarketplaceFilters> onFiltersChanged;
+
+  @override
+  State<SoukSearchRow> createState() => _SoukSearchRowState();
+}
+
+class _SoukSearchRowState extends State<SoukSearchRow> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant SoukSearchRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -3753,11 +3810,22 @@ class SoukSearchRow extends StatelessWidget {
               ],
             ),
             child: TextField(
-              onChanged: onChanged,
+              controller: _controller,
+              onChanged: widget.onChanged,
               textInputAction: TextInputAction.search,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Search for products, brands and more...',
-                prefixIcon: Icon(Icons.search, size: 28),
+                prefixIcon: const Icon(Icons.search, size: 28),
+                suffixIcon: widget.value.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          _controller.clear();
+                          widget.onChanged('');
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -3789,22 +3857,106 @@ class SoukSearchRow extends StatelessWidget {
                 isScrollControlled: true,
                 showDragHandle: true,
                 builder: (context) => MarketplaceFilterSheet(
-                  initialFilters: filters,
-                  options: options,
+                  initialFilters: widget.filters,
+                  options: widget.options,
                 ),
               );
               if (nextFilters != null) {
-                onFiltersChanged(nextFilters);
+                widget.onFiltersChanged(nextFilters);
               }
             },
             icon: Badge(
-              isLabelVisible: filters.hasActiveFilters,
+              isLabelVisible: widget.filters.hasActiveFilters,
               smallSize: 8,
               child: const Icon(Icons.tune, size: 28),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class SoukSearchSuggestions extends StatelessWidget {
+  const SoukSearchSuggestions({
+    super.key,
+    required this.products,
+    required this.onSelected,
+  });
+
+  final List<Product> products;
+  final ValueChanged<Product> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 64,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: products.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final product = products[index];
+          final image = productPrimaryImage(product);
+          return InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => onSelected(product),
+            child: Container(
+              width: 220,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      color: const Color(0xFFF4EEE7),
+                      child: image == null
+                          ? Icon(categoryIcon(product.category), color: const Color(0xFF8F552E))
+                          : AppNetworkImage(url: image, size: 120),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${product.shop.name} - ${money(product.price)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -3925,15 +4077,12 @@ class SoukCategoryBubble extends StatelessWidget {
 }
 
 class SoukPromoBanner extends StatelessWidget {
-  const SoukPromoBanner({super.key, required this.products});
-
-  final List<Product> products;
+  const SoukPromoBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final image = productPrimaryImage(products.isEmpty ? null : products.first);
     return Container(
-      height: 255,
+      height: 238,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: const Color(0xFFE9DED0),
@@ -3941,27 +4090,32 @@ class SoukPromoBanner extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned.fill(
-            left: 165,
-            child: image == null
-                ? Container(
-                    color: const Color(0xFFD7C2AA),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.chair_outlined, size: 88, color: Color(0xFF7A4B2A)),
-                  )
-                : AppNetworkImage(url: image, size: 640),
+          const Positioned(
+            right: -20,
+            top: 20,
+            bottom: 0,
+            child: _SoukBannerIllustration(),
           ),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.24),
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Color(0xFFE9DED0),
+                    Color(0xFFE9DED0),
+                    Color(0xFFE9DED0).withValues(alpha: 0.84),
+                  ],
+                  stops: [0, 0.62, 1],
+                ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(18),
-            child: SizedBox(
-              width: 210,
+            padding: const EdgeInsets.fromLTRB(18, 18, 150, 18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 265),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -3978,10 +4132,10 @@ class SoukPromoBanner extends StatelessWidget {
                     'Everything you need, in one place.',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontFamily: 'serif',
-                          fontSize: 26,
+                          fontSize: 25,
                           fontWeight: FontWeight.w800,
                           color: Colors.black,
-                          height: 1.08,
+                          height: 1.04,
                           letterSpacing: 0,
                         ),
                   ),
@@ -4020,6 +4174,63 @@ class SoukPromoBanner extends StatelessWidget {
                 SoukDot(active: false),
                 SoukDot(active: false),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SoukBannerIllustration extends StatelessWidget {
+  const _SoukBannerIllustration();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 178,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          Positioned(
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: 142,
+              decoration: const BoxDecoration(
+                color: Color(0xFFD7C2AA),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(80)),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 30,
+            child: Container(
+              width: 128,
+              height: 16,
+              decoration: BoxDecoration(
+                color: const Color(0xFFB78B62),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+          const Positioned(
+            bottom: 42,
+            child: Icon(Icons.local_florist_outlined, size: 98, color: Color(0xFF35523A)),
+          ),
+          Positioned(
+            bottom: 12,
+            child: Container(
+              width: 64,
+              height: 72,
+              decoration: BoxDecoration(
+                color: const Color(0xFFC8A47E),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(26),
+                  bottom: Radius.circular(18),
+                ),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.34), width: 2),
+              ),
             ),
           ),
         ],
@@ -5558,8 +5769,10 @@ class SoukPopularCategoryTile extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
+            AspectRatio(
+              aspectRatio: 1,
               child: Container(
                 width: double.infinity,
                 color: const Color(0xFFF2EAE1),
@@ -8372,6 +8585,57 @@ String? normalizeLebanesePhone(String value) {
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';
+
+List<Product> searchSuggestions(String query, List<Product> products) {
+  final q = query.trim().toLowerCase();
+  if (q.length < 2) {
+    return const [];
+  }
+
+  final scored = <({Product product, int score})>[];
+  for (final product in products) {
+    var score = 0;
+    final name = product.name.toLowerCase();
+    final shop = product.shop.name.toLowerCase();
+    final category = product.category.toLowerCase();
+    final collections = product.collectionNames.map((value) => value.toLowerCase());
+
+    if (name.startsWith(q)) {
+      score += 100;
+    } else if (name.contains(q)) {
+      score += 70;
+    }
+    if (shop.startsWith(q)) {
+      score += 55;
+    } else if (shop.contains(q)) {
+      score += 35;
+    }
+    if (category.startsWith(q)) {
+      score += 40;
+    } else if (category.contains(q)) {
+      score += 24;
+    }
+    if (collections.any((value) => value.startsWith(q))) {
+      score += 34;
+    } else if (collections.any((value) => value.contains(q))) {
+      score += 18;
+    }
+
+    if (score > 0) {
+      scored.add((product: product, score: score));
+    }
+  }
+
+  scored.sort((a, b) {
+    final scoreCompare = b.score.compareTo(a.score);
+    if (scoreCompare != 0) {
+      return scoreCompare;
+    }
+    return a.product.name.compareTo(b.product.name);
+  });
+
+  return scored.map((entry) => entry.product).toList(growable: false);
+}
 
 String? productPrimaryImage(Product? product) {
   if (product == null) {
