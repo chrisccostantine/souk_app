@@ -148,6 +148,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
   bool _signup = false;
   AccountRole _role = AccountRole.customer;
   bool _authLoading = false;
+  bool _passwordVisible = false;
   String? _authError;
 
   @override
@@ -490,46 +491,38 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     );
   }
 
+  void _showAuthSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSeller = _role == AccountRole.seller;
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
           children: [
-            const HeaderBar(),
-            const SizedBox(height: 20),
+            const AuthBrandHeader(),
+            const SizedBox(height: 24),
+            const AuthHeroPanel(),
+            const SizedBox(height: 22),
             Container(
-              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: const Color(0xFF244335),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome to Souk',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Customers shop with an account. Stores enter through a seller account and manage their dashboard from there.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.78),
-                    ),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 26,
+                    offset: const Offset(0, 14),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -537,18 +530,23 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                     children: [
                       Text(
                         _signup
-                            ? (_role == AccountRole.seller ? 'Register your store' : 'Create shopper account')
-                            : (_role == AccountRole.seller ? 'Store login' : 'Shopper login'),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                            ? (_role == AccountRole.seller ? 'Register Store' : 'Create Account')
+                            : 'Login to Souk',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: const Color(0xFF164A36),
+                              fontFamily: 'serif',
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0,
+                            ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 8),
                       Text(
                         _signup
-                            ? 'Fill in the details once, then continue to your account.'
+                            ? 'Create your account and continue into Souk.'
                             : 'Choose where you want to enter Souk.',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black54),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 18),
                       Row(
                         children: [
                           Expanded(
@@ -570,7 +568,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 18),
                       if (_signup) ...[
                         TextFormField(
                           controller: _name,
@@ -580,24 +578,29 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           ),
                           validator: requiredField,
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                       ],
                       TextFormField(
                         controller: _email,
                         decoration: const InputDecoration(
-                          labelText: 'Email',
+                          labelText: 'Email address',
                           prefixIcon: Icon(Icons.email_outlined),
                         ),
                         keyboardType: TextInputType.emailAddress,
                         validator: requiredField,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       TextFormField(
                         controller: _password,
-                        obscureText: true,
-                        decoration: const InputDecoration(
+                        obscureText: !_passwordVisible,
+                        decoration: InputDecoration(
                           labelText: 'Password',
-                          prefixIcon: Icon(Icons.lock_outline),
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            tooltip: _passwordVisible ? 'Hide password' : 'Show password',
+                            onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+                            icon: Icon(_passwordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                          ),
                         ),
                         validator: (value) {
                           if (value == null || value.length < 6) {
@@ -614,15 +617,16 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                             child: const Text('Forgot password?'),
                           ),
                         ),
-                      ],
+                      ] else
+                        const SizedBox(height: 14),
                       if (_signup && isSeller) ...[
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 4),
                         Text(
                           'Store setup',
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w900),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         TextFormField(
                           controller: _storeName,
                           decoration: const InputDecoration(
@@ -633,7 +637,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           ),
                           validator: requiredField,
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         TextFormField(
                           controller: _storeCategory,
                           decoration: const InputDecoration(
@@ -642,7 +646,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           ),
                           validator: requiredField,
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
                         TextFormField(
                           controller: _storeCity,
                           decoration: const InputDecoration(
@@ -666,6 +670,12 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF1F7A4D),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 17),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
                           onPressed: _authLoading ? null : _submit,
                           icon: _authLoading
                               ? const SizedBox(
@@ -687,10 +697,40 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      if (!_signup) ...[
+                        const SizedBox(height: 20),
+                        const AuthDivider(),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: AuthSocialButton(
+                                label: 'Continue with Google',
+                                icon: Icons.g_mobiledata,
+                                onTap: () => _showAuthSnack('Google login is coming soon'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: AuthSocialButton(
+                                label: 'Continue with Apple',
+                                icon: Icons.apple,
+                                onTap: () => _showAuthSnack('Apple login is coming soon'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
-                        child: TextButton.icon(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFF3F7F3),
+                            foregroundColor: const Color(0xFF1F7A4D),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
                           onPressed: _authLoading
                               ? null
                               : () => setState(() {
@@ -712,9 +752,289 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 ),
               ),
             ),
+            const SizedBox(height: 24),
+            const AuthTrustRow(),
+            const SizedBox(height: 24),
+            Center(
+              child: Text(
+                'Powered by Souk • Shopify Sync',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class AuthBrandHeader extends StatelessWidget {
+  const AuthBrandHeader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 56,
+          height: 64,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF3ED),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFF164A36).withValues(alpha: 0.18)),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: const [
+              Icon(Icons.shopping_bag_outlined, color: Color(0xFF164A36), size: 38),
+              Positioned(
+                bottom: 13,
+                child: Icon(Icons.eco, color: Color(0xFF164A36), size: 18),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Souk',
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontFamily: 'serif',
+                      color: const Color(0xFF164A36),
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                    ),
+              ),
+              Text(
+                'Shops, makers, and quick checkout',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+        IconButton.filledTonal(
+          tooltip: 'Notifications',
+          onPressed: () {},
+          icon: const Icon(Icons.notifications_none),
+        ),
+      ],
+    );
+  }
+}
+
+class AuthHeroPanel extends StatelessWidget {
+  const AuthHeroPanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 220,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFE5D8),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -18,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: 190,
+              decoration: const BoxDecoration(
+                color: Color(0xFFDCCBB6),
+                borderRadius: BorderRadius.horizontal(left: Radius.circular(90)),
+              ),
+              child: const Center(
+                child: Icon(Icons.local_florist, color: Color(0xFF43572C), size: 96),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: SizedBox(
+              width: 245,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Welcome to Souk',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontFamily: 'serif',
+                          color: const Color(0xFF164A36),
+                          fontWeight: FontWeight.w900,
+                          height: 1.05,
+                          letterSpacing: 0,
+                        ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Shop from trusted stores and unique makers across categories. Quality products. Secure checkout. Better shopping experience.',
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.black.withValues(alpha: 0.68),
+                          height: 1.35,
+                        ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Row(
+                    children: [
+                      AuthHeroDot(active: true),
+                      AuthHeroDot(active: false),
+                      AuthHeroDot(active: false),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AuthHeroDot extends StatelessWidget {
+  const AuthHeroDot({super.key, required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 10,
+      height: 10,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFF1F7A4D) : Colors.black.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class AuthDivider extends StatelessWidget {
+  const AuthDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Divider(color: Colors.black.withValues(alpha: 0.12))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            'OR',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        Expanded(child: Divider(color: Colors.black.withValues(alpha: 0.12))),
+      ],
+    );
+  }
+}
+
+class AuthSocialButton extends StatelessWidget {
+  const AuthSocialButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 24, color: Colors.black87),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.black87,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        side: BorderSide(color: Colors.black.withValues(alpha: 0.12)),
+      ),
+    );
+  }
+}
+
+class AuthTrustRow extends StatelessWidget {
+  const AuthTrustRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      AuthTrustItem(Icons.verified_user_outlined, 'Secure & Safe', 'Protected data'),
+      AuthTrustItem(Icons.workspace_premium_outlined, 'Trusted Stores', 'Verified sellers'),
+      AuthTrustItem(Icons.sync, 'Easy Returns', 'Hassle-free'),
+      AuthTrustItem(Icons.support_agent, '24/7 Support', 'We are here'),
+    ];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in items) ...[
+          Expanded(child: item),
+          if (item != items.last)
+            Container(
+              width: 1,
+              height: 58,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: Colors.black.withValues(alpha: 0.08),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class AuthTrustItem extends StatelessWidget {
+  const AuthTrustItem(this.icon, this.title, this.subtitle, {super.key});
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, color: const Color(0xFF164A36), size: 24),
+        const SizedBox(height: 6),
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
+        ),
+      ],
     );
   }
 }
@@ -3132,14 +3452,14 @@ class ChoiceCardButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
-        height: 76,
+        height: 70,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: selected ? color.withValues(alpha: 0.12) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
+          color: selected ? color.withValues(alpha: 0.08) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? color : Colors.black.withValues(alpha: 0.12),
             width: selected ? 2 : 1,
@@ -3148,8 +3468,8 @@ class ChoiceCardButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: selected ? color : Colors.black54),
-            const SizedBox(width: 8),
+            Icon(icon, color: selected ? color : Colors.black54, size: 28),
+            const SizedBox(width: 10),
             Flexible(
               child: Text(
                 label,
@@ -3158,6 +3478,7 @@ class ChoiceCardButton extends StatelessWidget {
                 style: TextStyle(
                   color: selected ? color : Colors.black87,
                   fontWeight: FontWeight.w900,
+                  fontSize: 16,
                 ),
               ),
             ),
