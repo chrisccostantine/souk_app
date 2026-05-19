@@ -343,8 +343,13 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 }
               } on SoukApiException catch (apiError) {
                 safeSetDialogState(() => error = authFriendlyError(apiError));
+              } on TimeoutException {
+                safeSetDialogState(
+                  () => error =
+                      'Email request timed out. Redeploy the latest backend and check Railway SMTP variables.',
+                );
               } catch (submitError) {
-                safeSetDialogState(() => error = 'Could not reset password: $submitError');
+                safeSetDialogState(() => error = resetFriendlyError(submitError));
               } finally {
                 safeSetDialogState(() => loading = false);
               }
@@ -7966,7 +7971,18 @@ String authFriendlyError(SoukApiException error) {
   if (error.statusCode == 404 && error.message.contains('Route not found')) {
     return 'Password reset is not live on the backend yet. Deploy the latest Railway backend, then try again.';
   }
+  if (error.message.contains('Password reset email is not configured')) {
+    return 'Password reset email is not configured on Railway. Add the SMTP variables first.';
+  }
   return error.message.replaceFirst(RegExp(r'^HTTP \d+:\s*'), '');
+}
+
+String resetFriendlyError(Object error) {
+  final message = error.toString();
+  if (message.toLowerCase().contains('timeout')) {
+    return 'Email request timed out. Redeploy the latest backend and check Railway SMTP variables.';
+  }
+  return 'Could not reset password. Check the email settings and try again.';
 }
 
 String mostCommon(Iterable<String> values) {

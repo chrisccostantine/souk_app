@@ -4,7 +4,7 @@ import 'dart:io';
 class SoukApi {
   SoukApi({required String baseUrl, HttpClient? client})
       : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), ''),
-        _client = client ?? HttpClient();
+        _client = client ?? (HttpClient()..connectionTimeout = _requestTimeout);
 
   final String baseUrl;
   final HttpClient _client;
