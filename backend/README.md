@@ -71,6 +71,21 @@ SHOPIFY_API_VERSION=2026-01
 APP_URL=https://your-railway-service.up.railway.app
 ```
 
+## Password Reset Email
+
+Forgot-password codes are emailed through SMTP. Add these variables to Railway:
+
+```text
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-email@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM=Souk <your-email@gmail.com>
+```
+
+For Gmail, `SMTP_PASS` must be an app password, not your normal Gmail password.
+
 Your Shopify app should request these scopes:
 
 - `read_products`

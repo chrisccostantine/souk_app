@@ -4,6 +4,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import nodemailer from 'nodemailer';
 import { prisma } from './db.js';
 import {
   adjustShopifyInventory,
@@ -82,6 +83,45 @@ function passwordMatches(password, user) {
     return false;
   }
   return makePasswordSecret(password, user.passwordSalt).hash === user.passwordHash;
+}
+
+function requireResetEmailConfig() {
+  const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'];
+  const missing = required.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    const error = new Error(`Password reset email is not configured. Missing: ${missing.join(', ')}`);
+    error.status = 500;
+    throw error;
+  }
+}
+
+async function sendPasswordResetEmail({ to, name, resetCode }) {
+  requireResetEmailConfig();
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: String(process.env.SMTP_SECURE ?? '').toLowerCase() === 'true' || Number(process.env.SMTP_PORT) === 465,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to,
+    subject: 'Your Souk password reset code',
+    text: `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.5;color:#17211B">
+        <h2>Your Souk reset code</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>Use this code to reset your password:</p>
+        <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:16px 0">${resetCode}</div>
+        <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
+      </div>
+    `,
+  });
 }
 
 function ensureShopifyOAuthConfig() {
@@ -318,11 +358,15 @@ async function forgotPassword(req, res, next) {
       code: resetCode,
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
+    await sendPasswordResetEmail({
+      to: user.email,
+      name: user.name,
+      resetCode,
+    });
 
     res.json({
       ok: true,
-      message: 'Password reset code generated.',
-      resetCode,
+      message: 'Password reset code sent by email.',
     });
   } catch (error) {
     next(error);

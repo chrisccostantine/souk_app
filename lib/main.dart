@@ -276,7 +276,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     final confirmPasswordController = TextEditingController();
     var loading = false;
     String? error;
-    String? resetCode;
+    var codeRequested = false;
     String? helperText;
 
     final newPassword = await showDialog<String>(
@@ -300,15 +300,17 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
               });
               try {
                 final api = SoukApi(baseUrl: soukApiUrl);
-                if (resetCode == null) {
+                if (!codeRequested) {
                   final response = await api.forgotPassword({'email': email});
                   final nextCode = response['resetCode']?.toString();
                   setDialogState(() {
-                    resetCode = nextCode;
-                    codeController.text = nextCode ?? '';
+                    codeRequested = true;
+                    if (nextCode != null) {
+                      codeController.text = nextCode;
+                    }
                     helperText = nextCode == null
-                        ? 'Enter the reset code sent to your account.'
-                        : 'Prototype reset code: $nextCode';
+                        ? 'Check your email for the reset code.'
+                        : 'Reset code: $nextCode';
                   });
                 } else {
                   if (newPasswordController.text.length < 6) {
@@ -340,76 +342,84 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
             }
 
             return AlertDialog(
+              scrollable: true,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
               title: const Text('Forgot password'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    resetCode == null
-                        ? 'Enter your email to request a reset code. Your password will not change yet.'
-                        : 'Enter the reset code and choose your new password.',
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: emailController,
-                    enabled: resetCode == null,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                  ),
-                  if (helperText != null) ...[
-                    const SizedBox(height: 10),
+              content: SingleChildScrollView(
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      helperText!,
-                      style: const TextStyle(
-                        color: Color(0xFF1F7A4D),
-                        fontWeight: FontWeight.w800,
-                      ),
+                      !codeRequested
+                          ? 'Enter your email to receive a reset code. Your password will not change yet.'
+                          : 'Enter the reset code from your email and choose your new password.',
                     ),
-                  ],
-                  if (resetCode != null) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller: codeController,
-                      keyboardType: TextInputType.number,
+                      controller: emailController,
+                      enabled: !codeRequested,
+                      keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
-                        labelText: 'Reset code',
-                        prefixIcon: Icon(Icons.pin_outlined),
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email_outlined),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: newPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'New password',
-                        prefixIcon: Icon(Icons.lock_outline),
+                    if (helperText != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        helperText!,
+                        style: const TextStyle(
+                          color: Color(0xFF1F7A4D),
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: confirmPasswordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Confirm password',
-                        prefixIcon: Icon(Icons.verified_user_outlined),
+                    ],
+                    if (codeRequested) ...[
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: codeController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Reset code',
+                          prefixIcon: Icon(Icons.pin_outlined),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: newPasswordController,
+                        obscureText: true,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'New password',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: confirmPasswordController,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => submit(),
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm password',
+                          prefixIcon: Icon(Icons.verified_user_outlined),
+                        ),
+                      ),
+                    ],
+                    if (error != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        error!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ],
-                  if (error != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      error!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -421,7 +431,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                   child: Text(
                     loading
                         ? 'Working...'
-                        : resetCode == null
+                        : !codeRequested
                             ? 'Get code'
                             : 'Set password',
                   ),
