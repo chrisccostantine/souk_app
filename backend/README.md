@@ -93,6 +93,28 @@ SMTP_FROM=Souk <your-email@gmail.com>
 
 For Gmail, `SMTP_PASS` must be an app password, not your normal Gmail password.
 
+## Social Login
+
+Google and Apple sign-in use mobile identity tokens. Optional backend verification variables:
+
+```text
+GOOGLE_CLIENT_ID=your-google-web-client-id.apps.googleusercontent.com
+APPLE_CLIENT_ID=your-apple-service-or-bundle-id
+```
+
+For Android Google sign-in, run the Flutter app with:
+
+```text
+--dart-define=GOOGLE_WEB_CLIENT_ID=your-google-web-client-id.apps.googleusercontent.com
+```
+
+For Android Apple sign-in, also provide:
+
+```text
+--dart-define=APPLE_SERVICE_ID=your-apple-service-id
+--dart-define=APPLE_REDIRECT_URI=https://your-apple-redirect-uri
+```
+
 Your Shopify app should request these scopes:
 
 - `read_products`

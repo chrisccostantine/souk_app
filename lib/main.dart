@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api/souk_api.dart';
@@ -10,6 +12,9 @@ import 'api/souk_api.dart';
 void main() => runApp(const SoukApp());
 
 const soukApiUrl = String.fromEnvironment('SOUK_API_URL');
+const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+const appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID');
+const appleRedirectUri = String.fromEnvironment('APPLE_REDIRECT_URI');
 
 class SoukApp extends StatelessWidget {
   const SoukApp({super.key});
@@ -149,6 +154,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
   AccountRole _role = AccountRole.customer;
   bool _authLoading = false;
   bool _passwordVisible = false;
+  String? _socialLoading;
   String? _authError;
 
   @override
@@ -268,6 +274,104 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
           ? null
           : ShopDraft.fromJson(shop),
     );
+  }
+
+  Future<void> _socialLogin(String provider) async {
+    if (_role == AccountRole.seller) {
+      _showAuthSnack('Store accounts need email login so we can connect the seller dashboard.');
+      return;
+    }
+    if (soukApiUrl.isEmpty || !soukApiUrl.startsWith('https://')) {
+      setState(() => _authError = 'SOUK_API_URL must point to your Railway backend.');
+      return;
+    }
+    setState(() {
+      _socialLoading = provider;
+      _authError = null;
+    });
+    try {
+      final payload = provider == 'GOOGLE'
+          ? await _googleAuthPayload()
+          : await _appleAuthPayload();
+      if (payload == null) {
+        return;
+      }
+      final response = await SoukApi(baseUrl: soukApiUrl).socialLogin(payload);
+      if (!mounted) {
+        return;
+      }
+      widget.onAuthenticated(_sessionFromAuthResponse(response));
+    } on SoukApiException catch (error) {
+      if (mounted) {
+        setState(() => _authError = authFriendlyError(error));
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _authError = 'Could not sign in with ${provider.toLowerCase()}: $error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _socialLoading = null);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _googleAuthPayload() async {
+    final account = await GoogleSignIn(
+      scopes: ['email', 'profile'],
+      serverClientId: googleWebClientId.isEmpty ? null : googleWebClientId,
+    ).signIn();
+    if (account == null) {
+      return null;
+    }
+    final auth = await account.authentication;
+    final idToken = auth.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Google did not return an identity token.');
+    }
+    return {
+      'provider': 'GOOGLE',
+      'idToken': idToken,
+      'name': account.displayName,
+      'email': account.email,
+    };
+  }
+
+  Future<Map<String, dynamic>?> _appleAuthPayload() async {
+    final webOptions = appleServiceId.isNotEmpty && appleRedirectUri.isNotEmpty
+        ? WebAuthenticationOptions(
+            clientId: appleServiceId,
+            redirectUri: Uri.parse(appleRedirectUri),
+          )
+        : null;
+    final available = await SignInWithApple.isAvailable();
+    if (!available && webOptions == null) {
+      throw Exception('Apple sign-in needs Apple Service ID setup on this device.');
+    }
+    const scopes = [
+      AppleIDAuthorizationScopes.email,
+      AppleIDAuthorizationScopes.fullName,
+    ];
+    final credential = webOptions == null
+        ? await SignInWithApple.getAppleIDCredential(scopes: scopes)
+        : await SignInWithApple.getAppleIDCredential(
+            scopes: scopes,
+            webAuthenticationOptions: webOptions,
+          );
+    final idToken = credential.identityToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Apple did not return an identity token.');
+    }
+    final fullName = [
+      credential.givenName,
+      credential.familyName,
+    ].whereType<String>().where((part) => part.trim().isNotEmpty).join(' ');
+    return {
+      'provider': 'APPLE',
+      'idToken': idToken,
+      'name': fullName.isEmpty ? null : fullName,
+      'email': credential.email,
+    };
   }
 
   Future<void> _showForgotPasswordDialog() async {
@@ -701,22 +805,20 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                         const SizedBox(height: 20),
                         const AuthDivider(),
                         const SizedBox(height: 16),
-                        Row(
+                        Column(
                           children: [
-                            Expanded(
-                              child: AuthSocialButton(
-                                label: 'Continue with Google',
-                                icon: Icons.g_mobiledata,
-                                onTap: () => _showAuthSnack('Google login is coming soon'),
-                              ),
+                            AuthSocialButton(
+                              label: 'Continue with Google',
+                              leading: const GoogleMark(),
+                              loading: _socialLoading == 'GOOGLE',
+                              onTap: () => _socialLogin('GOOGLE'),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: AuthSocialButton(
-                                label: 'Continue with Apple',
-                                icon: Icons.apple,
-                                onTap: () => _showAuthSnack('Apple login is coming soon'),
-                              ),
+                            const SizedBox(height: 10),
+                            AuthSocialButton(
+                              label: 'Continue with Apple',
+                              leading: const Icon(Icons.apple, size: 26, color: Colors.black),
+                              loading: _socialLoading == 'APPLE',
+                              onTap: () => _socialLogin('APPLE'),
                             ),
                           ],
                         ),
@@ -949,29 +1051,91 @@ class AuthSocialButton extends StatelessWidget {
   const AuthSocialButton({
     super.key,
     required this.label,
-    required this.icon,
+    required this.leading,
+    this.loading = false,
     required this.onTap,
   });
 
   final String label;
-  final IconData icon;
+  final Widget leading;
+  final bool loading;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 24, color: Colors.black87),
-      label: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: loading ? null : onTap,
+        child: Container(
+          width: double.infinity,
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: Center(
+                  child: loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : leading,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.black87,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        side: BorderSide(color: Colors.black.withValues(alpha: 0.12)),
+    );
+  }
+}
+
+class GoogleMark extends StatelessWidget {
+  const GoogleMark({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 24,
+      height: 24,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      ),
+      child: const Text(
+        'G',
+        style: TextStyle(
+          color: Color(0xFF4285F4),
+          fontWeight: FontWeight.w900,
+          fontSize: 17,
+          height: 1,
+        ),
       ),
     );
   }

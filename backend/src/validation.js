@@ -134,6 +134,13 @@ export const loginSchema = z.object({
   role: z.enum(['CUSTOMER', 'SELLER']).optional(),
 });
 
+export const socialAuthSchema = z.object({
+  provider: z.enum(['GOOGLE', 'APPLE']),
+  idToken: z.string().min(10),
+  name: z.string().optional(),
+  email: z.string().email().optional(),
+});
+
 export const changePasswordSchema = z.object({
   email: z.string().email(),
   currentPassword: z.string().min(1),

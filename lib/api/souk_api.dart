@@ -44,6 +44,10 @@ class SoukApi {
     return _post('/api/auth/login', payload);
   }
 
+  Future<Map<String, dynamic>> socialLogin(Map<String, dynamic> payload) async {
+    return _post('/api/auth/social', payload);
+  }
+
   Future<Map<String, dynamic>> changePassword(Map<String, dynamic> payload) async {
     return _post('/api/auth/change-password', payload);
   }

@@ -32,6 +32,7 @@ import {
   followStoreSchema,
   loginSchema,
   slugify,
+  socialAuthSchema,
   signupSchema,
   startShopifyOAuthSchema,
   syncShopifySchema,
@@ -331,6 +332,72 @@ function publicUser(user) {
   };
 }
 
+function decodeJwtPayload(token) {
+  const [, payload] = String(token).split('.');
+  if (!payload) {
+    const error = new Error('Invalid identity token');
+    error.status = 401;
+    throw error;
+  }
+  try {
+    return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+  } catch {
+    const error = new Error('Invalid identity token');
+    error.status = 401;
+    throw error;
+  }
+}
+
+async function verifyGoogleIdentity(idToken) {
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.email || body.email_verified !== 'true') {
+    const error = new Error('Google sign-in could not be verified');
+    error.status = 401;
+    throw error;
+  }
+  if (process.env.GOOGLE_CLIENT_ID && body.aud !== process.env.GOOGLE_CLIENT_ID) {
+    const error = new Error('Google sign-in is not configured for this app');
+    error.status = 401;
+    throw error;
+  }
+  return {
+    email: String(body.email).toLowerCase(),
+    name: body.name || body.given_name || String(body.email).split('@')[0],
+  };
+}
+
+function verifyAppleIdentity(idToken, fallback) {
+  const payload = decodeJwtPayload(idToken);
+  if (!payload.email && !fallback.email) {
+    const error = new Error('Apple did not provide an email for this account');
+    error.status = 401;
+    throw error;
+  }
+  if (payload.exp && Number(payload.exp) * 1000 < Date.now()) {
+    const error = new Error('Apple sign-in token expired');
+    error.status = 401;
+    throw error;
+  }
+  if (process.env.APPLE_CLIENT_ID && payload.aud !== process.env.APPLE_CLIENT_ID) {
+    const error = new Error('Apple sign-in is not configured for this app');
+    error.status = 401;
+    throw error;
+  }
+  const email = String(payload.email || fallback.email).toLowerCase();
+  return {
+    email,
+    name: fallback.name || email.split('@')[0],
+  };
+}
+
+async function socialProfile(input) {
+  if (input.provider === 'GOOGLE') {
+    return verifyGoogleIdentity(input.idToken);
+  }
+  return verifyAppleIdentity(input.idToken, input);
+}
+
 app.post('/api/auth/signup', async (req, res, next) => {
   try {
     const input = validate(signupSchema, req.body);
@@ -409,6 +476,43 @@ app.post('/api/auth/login', async (req, res, next) => {
       error.status = 403;
       throw error;
     }
+
+    res.json({
+      user: publicUser(user),
+      shop: user.shops[0] ?? null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/social', async (req, res, next) => {
+  try {
+    const input = validate(socialAuthSchema, req.body);
+    const profile = await socialProfile(input);
+    const existing = await prisma.user.findUnique({
+      where: { email: profile.email },
+      include: { shops: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+    if (existing?.role === 'SELLER') {
+      const error = new Error('Store accounts must login with email and password');
+      error.status = 403;
+      throw error;
+    }
+    const user = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: { name: profile.name || existing.name },
+          include: { shops: { orderBy: { createdAt: 'desc' }, take: 1 } },
+        })
+      : await prisma.user.create({
+          data: {
+            email: profile.email,
+            name: profile.name,
+            role: 'CUSTOMER',
+          },
+          include: { shops: { orderBy: { createdAt: 'desc' }, take: 1 } },
+        });
 
     res.json({
       user: publicUser(user),
