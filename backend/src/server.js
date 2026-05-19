@@ -86,13 +86,32 @@ function passwordMatches(password, user) {
 }
 
 function requireResetEmailConfig() {
+  if (process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
+    return;
+  }
   const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'];
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length > 0) {
-    const error = new Error(`Password reset email is not configured. Missing: ${missing.join(', ')}`);
+    const error = new Error(`Password reset email is not configured. Add RESEND_API_KEY and RESEND_FROM, or missing SMTP variables: ${missing.join(', ')}`);
     error.status = 500;
     throw error;
   }
+}
+
+function resetEmailText(name, resetCode) {
+  return `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`;
+}
+
+function resetEmailHtml(name, resetCode) {
+  return `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#17211B">
+      <h2>Your Souk reset code</h2>
+      <p>Hi ${name || 'there'},</p>
+      <p>Use this code to reset your password:</p>
+      <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:16px 0">${resetCode}</div>
+      <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
+    </div>
+  `;
 }
 
 function smtpValue(key) {
@@ -110,8 +129,11 @@ function withTimeout(promise, milliseconds, message) {
 
 function emailSendError(error) {
   const message = String(error?.message ?? error);
+  if (message.includes('Resend')) {
+    return message;
+  }
   if (message.includes('timed out') || message.includes('ETIMEDOUT') || message.includes('ECONNECTION')) {
-    return 'Could not connect to Gmail SMTP. Try SMTP_PORT=587 with SMTP_SECURE=false, then redeploy.';
+    return 'Could not connect to Gmail SMTP from Railway. Use RESEND_API_KEY and RESEND_FROM instead of SMTP.';
   }
   if (message.includes('Invalid login') || message.includes('EAUTH') || message.includes('Username and Password')) {
     return 'Gmail rejected the SMTP login. Use the exact Gmail in SMTP_USER and paste SMTP_PASS without spaces.';
@@ -119,8 +141,51 @@ function emailSendError(error) {
   return `Could not send the password reset email: ${message}`;
 }
 
+async function sendPasswordResetEmailWithResend({ to, name, resetCode }) {
+  const response = await withTimeout(
+    fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM,
+        to,
+        subject: 'Your Souk password reset code',
+        text: resetEmailText(name, resetCode),
+        html: resetEmailHtml(name, resetCode),
+      }),
+    }),
+    9000,
+    'Resend email send timed out',
+  );
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = body?.message || body?.error || `Resend failed with HTTP ${response.status}`;
+    const error = new Error(`Resend email failed: ${message}`);
+    error.status = 502;
+    throw error;
+  }
+}
+
 async function sendPasswordResetEmail({ to, name, resetCode }) {
   requireResetEmailConfig();
+  if (process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
+    try {
+      await sendPasswordResetEmailWithResend({ to, name, resetCode });
+      return;
+    } catch (error) {
+      console.error('Password reset email failed', {
+        provider: 'resend',
+        status: error?.status,
+        message: error?.message,
+      });
+      const sendError = new Error(emailSendError(error));
+      sendError.status = error?.status || 502;
+      throw sendError;
+    }
+  }
   const smtpUser = smtpValue('SMTP_USER');
   const smtpPass = smtpValue('SMTP_PASS').replace(/\s+/g, '');
   const smtpFrom = smtpValue('SMTP_FROM');
@@ -143,16 +208,8 @@ async function sendPasswordResetEmail({ to, name, resetCode }) {
         from: smtpFrom,
         to,
         subject: 'Your Souk password reset code',
-        text: `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.5;color:#17211B">
-            <h2>Your Souk reset code</h2>
-            <p>Hi ${name || 'there'},</p>
-            <p>Use this code to reset your password:</p>
-            <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:16px 0">${resetCode}</div>
-            <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
-          </div>
-        `,
+        text: resetEmailText(name, resetCode),
+        html: resetEmailHtml(name, resetCode),
       }),
       9000,
       'Email send timed out',

@@ -73,12 +73,19 @@ APP_URL=https://your-railway-service.up.railway.app
 
 ## Password Reset Email
 
-Forgot-password codes are emailed through SMTP. Add these variables to Railway:
+Forgot-password codes can be emailed through Resend over HTTPS. This avoids SMTP connection timeouts on Railway.
+
+```text
+RESEND_API_KEY=re_...
+RESEND_FROM=Souk <onboarding@resend.dev>
+```
+
+SMTP is also supported as a fallback:
 
 ```text
 SMTP_HOST=smtp.gmail.com
-SMTP_PORT=465
-SMTP_SECURE=true
+SMTP_PORT=587
+SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 SMTP_FROM=Souk <your-email@gmail.com>
