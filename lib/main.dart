@@ -813,13 +813,6 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                               loading: _socialLoading == 'GOOGLE',
                               onTap: () => _socialLogin('GOOGLE'),
                             ),
-                            const SizedBox(height: 10),
-                            AuthSocialButton(
-                              label: 'Continue with Apple',
-                              leading: const Icon(Icons.apple, size: 26, color: Colors.black),
-                              loading: _socialLoading == 'APPLE',
-                              onTap: () => _socialLogin('APPLE'),
-                            ),
                           ],
                         ),
                       ],
