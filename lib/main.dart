@@ -1033,6 +1033,33 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     }
   }
 
+  void _openCartSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * 0.88,
+            child: CartPage(
+              session: widget.session,
+              onLogout: widget.onLogout,
+              cart: _cart,
+              subtotal: _subtotal,
+              shopCount: _cartShopCount,
+              onQuantityChanged: _updateQuantity,
+              onCheckout: (info) {
+                Navigator.pop(sheetContext);
+                _placeOrder(info);
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final products = _products.where((product) {
@@ -1056,6 +1083,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         query: _query,
         category: _category,
         products: products,
+        allProducts: _products,
         showAllFeatured: _showAllFeatured,
         loading: _catalogLoading,
         message: _catalogMessage,
@@ -1074,6 +1102,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
+        cartCount: _cartCount,
+        onCartTap: _openCartSheet,
       ),
       StoresPage(
         session: widget.session,
@@ -1085,6 +1115,15 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
         onFollowStore: _followShop,
+        cartCount: _cartCount,
+        onCartTap: _openCartSheet,
+      ),
+      SellEntryPage(
+        session: widget.session,
+        onLogout: widget.onLogout,
+        onStartSelling: () => _showSnack('Register as a store from the login screen'),
+        cartCount: _cartCount,
+        onCartTap: _openCartSheet,
       ),
       ActivityPage(
         session: widget.session,
@@ -1093,53 +1132,25 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         products: _products,
         favoriteIds: _favoriteIds,
         onChangePassword: _changePassword,
+        cartCount: _cartCount,
+        onCartTap: _openCartSheet,
       ),
-      CartPage(
+      ProfilePage(
         session: widget.session,
         onLogout: widget.onLogout,
-        cart: _cart,
-        subtotal: _subtotal,
-        shopCount: _cartShopCount,
-        onQuantityChanged: _updateQuantity,
-        onCheckout: _placeOrder,
+        favoriteCount: _favoriteIds.length,
+        orderCount: _orders.length,
+        onChangePassword: _changePassword,
+        cartCount: _cartCount,
+        onCartTap: _openCartSheet,
       ),
     ];
 
     return Scaffold(
       body: SafeArea(child: pages[_tabIndex]),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: SoukBottomNav(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (index) => setState(() => _tabIndex = index),
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.storefront_outlined),
-            selectedIcon: Icon(Icons.storefront),
-            label: 'Souk',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.explore_outlined),
-            selectedIcon: Icon(Icons.explore),
-            label: 'Stores',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Orders',
-          ),
-          NavigationDestination(
-            icon: Badge.count(
-              count: _cartCount,
-              isLabelVisible: _cartCount > 0,
-              child: const Icon(Icons.shopping_bag_outlined),
-            ),
-            selectedIcon: Badge.count(
-              count: _cartCount,
-              isLabelVisible: _cartCount > 0,
-              child: const Icon(Icons.shopping_bag),
-            ),
-            label: 'Basket',
-          ),
-        ],
+        onSelected: (index) => setState(() => _tabIndex = index),
       ),
     );
   }
@@ -1313,6 +1324,7 @@ class HomePage extends StatelessWidget {
     required this.query,
     required this.category,
     required this.products,
+    required this.allProducts,
     required this.showAllFeatured,
     required this.loading,
     required this.message,
@@ -1327,6 +1339,8 @@ class HomePage extends StatelessWidget {
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
+    required this.cartCount,
+    required this.onCartTap,
   });
 
   final AppSession session;
@@ -1334,6 +1348,7 @@ class HomePage extends StatelessWidget {
   final String query;
   final String category;
   final List<Product> products;
+  final List<Product> allProducts;
   final bool showAllFeatured;
   final bool loading;
   final String? message;
@@ -1348,73 +1363,51 @@ class HomePage extends StatelessWidget {
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
+  final int cartCount;
+  final VoidCallback onCartTap;
 
   @override
   Widget build(BuildContext context) {
-    final compactFeatured =
-        query.trim().isEmpty && category == 'All' && !filters.hasActiveFilters && !showAllFeatured;
     final chosenFeatured = products.where((product) => product.featured).toList();
-    final featuredProducts = compactFeatured
-        ? (chosenFeatured.isEmpty ? products : chosenFeatured).take(7).toList()
-        : products;
-    final liveShopCount = products.map((product) => product.shop.id).where((id) => id.isNotEmpty).toSet().length;
-    final availableCount = products.where((product) => product.stock > 0).length;
+    final dealSource = chosenFeatured.isEmpty ? products : chosenFeatured;
+    final featuredProducts = (showAllFeatured ? dealSource : dealSource.take(8)).toList();
+    final popularCategories = categories.isEmpty
+        ? ['Home', 'Fashion', 'Electronics', 'Beauty']
+        : categories.take(6).toList();
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                HeaderBar(session: session, onLogout: onLogout),
-                const SizedBox(height: 18),
-                const MarketplaceHero(),
-                const SizedBox(height: 12),
-                ShopperPulseStrip(
-                  shopCount: liveShopCount,
-                  productCount: products.length,
-                  availableCount: availableCount,
-                  savedCount: favoriteIds.length,
+                SoukShopperTopBar(
+                  cartCount: cartCount,
+                  onCartTap: onCartTap,
                 ),
-                const SizedBox(height: 14),
-                SearchField(
+                const SizedBox(height: 24),
+                SoukSearchRow(
                   value: query,
                   filters: filters,
                   options: filterOptions,
                   onChanged: onQueryChanged,
                   onFiltersChanged: onFiltersChanged,
                 ),
-                const SizedBox(height: 12),
-                CategoryRail(
+                const SizedBox(height: 22),
+                SoukCategoryBubbles(
                   selected: category,
                   categories: categories,
+                  products: allProducts,
                   onSelected: onCategoryChanged,
                 ),
-                const SizedBox(height: 16),
-                QuickActions(
-                  items: const [
-                    QuickAction('Deals', Icons.local_offer, Color(0xFFE7A72E)),
-                    QuickAction('Nearby', Icons.place, Color(0xFF357C83)),
-                    QuickAction('Fresh', Icons.flash_on, Color(0xFF1F7A4D)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ShopperEditorialBand(products: products),
-                const SizedBox(height: 16),
-                MarketplaceDiscoveryPanel(products: products),
-                const SizedBox(height: 16),
-                const ShopperGrowthPanel(),
-                const SizedBox(height: 16),
-                SectionTitle(
-                  title: 'Featured today',
-                  action: '${products.length} items',
-                  actionButton: products.length > 7
-                      ? TextButton(
-                          onPressed: onViewAllFeatured,
-                          child: Text(compactFeatured ? 'View all' : 'Show less'),
-                        )
-                      : null,
+                const SizedBox(height: 26),
+                SoukPromoBanner(products: allProducts.isEmpty ? products : allProducts),
+                const SizedBox(height: 26),
+                SoukSectionHeader(
+                  title: 'Flash Deals',
+                  icon: Icons.bolt,
+                  onViewAll: onViewAllFeatured,
                 ),
               ],
             ),
@@ -1443,22 +1436,23 @@ class HomePage extends StatelessWidget {
               message: 'Try another shop, category, or product name.',
             ),
           )
-        else if (compactFeatured)
+        else
           SliverToBoxAdapter(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  height: 265,
+                  height: 250,
                   child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
                     scrollDirection: Axis.horizontal,
                     itemCount: featuredProducts.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    separatorBuilder: (_, __) => const SizedBox(width: 14),
                     itemBuilder: (context, index) {
                       final product = featuredProducts[index];
                       return SizedBox(
-                        width: 168,
-                        child: ProductMiniCard(
+                        width: 178,
+                        child: SoukDealCard(
                           product: product,
                           isFavorite: favoriteIds.contains(product.id),
                           onOpen: () => onOpenProduct(product),
@@ -1469,32 +1463,39 @@ class HomePage extends StatelessWidget {
                     },
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+                  child: SoukSectionHeader(
+                    title: 'Popular Categories',
+                    onViewAll: () => onCategoryChanged('All'),
+                  ),
+                ),
+                SizedBox(
+                  height: 150,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: popularCategories.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    itemBuilder: (context, index) {
+                      final name = popularCategories[index];
+                      final categoryProducts = allProducts
+                          .where((product) => product.category == name || product.collectionNames.contains(name))
+                          .toList();
+                      return SizedBox(
+                        width: 132,
+                        child: SoukPopularCategoryTile(
+                          name: name,
+                          products: categoryProducts,
+                          onTap: () => onCategoryChanged(name),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ],
             ),
           )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-            sliver: SliverGrid.builder(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 230,
-                childAspectRatio: 0.56,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemCount: products.length,
-              itemBuilder: (context, index) {
-                final product = products[index];
-                return ProductCard(
-                  product: product,
-                  isFavorite: favoriteIds.contains(product.id),
-                  onOpen: () => onOpenProduct(product),
-                  onAdd: () => onAddToCart(product),
-                  onFavorite: () => onToggleFavorite(product),
-                );
-              },
-            ),
-          ),
       ],
     );
   }
@@ -1512,6 +1513,8 @@ class StoresPage extends StatelessWidget {
     required this.onAddToCart,
     required this.onToggleFavorite,
     required this.onFollowStore,
+    required this.cartCount,
+    required this.onCartTap,
   });
 
   final AppSession session;
@@ -1523,13 +1526,15 @@ class StoresPage extends StatelessWidget {
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
   final ValueChanged<Shop> onFollowStore;
+  final int cartCount;
+  final VoidCallback onCartTap;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        HeaderBar(session: session, onLogout: onLogout),
+        SoukShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
         const SizedBox(height: 18),
         const SectionTitle(title: 'Local shops', action: 'Verified sellers'),
         const SizedBox(height: 12),
@@ -1566,6 +1571,8 @@ class ActivityPage extends StatelessWidget {
     required this.products,
     required this.favoriteIds,
     required this.onChangePassword,
+    required this.cartCount,
+    required this.onCartTap,
   });
 
   final AppSession session;
@@ -1574,6 +1581,8 @@ class ActivityPage extends StatelessWidget {
   final List<Product> products;
   final Set<String> favoriteIds;
   final VoidCallback onChangePassword;
+  final int cartCount;
+  final VoidCallback onCartTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1583,7 +1592,7 @@ class ActivityPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        HeaderBar(session: session, onLogout: onLogout),
+        SoukShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
         const SizedBox(height: 18),
         AccountSecurityCard(
           session: session,
@@ -1665,6 +1674,336 @@ class AccountSecurityCard extends StatelessWidget {
               tooltip: 'Change password',
               onPressed: onChangePassword,
               icon: const Icon(Icons.lock_reset),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SellEntryPage extends StatelessWidget {
+  const SellEntryPage({
+    super.key,
+    required this.session,
+    required this.onLogout,
+    required this.onStartSelling,
+    required this.cartCount,
+    required this.onCartTap,
+  });
+
+  final AppSession session;
+  final VoidCallback onLogout;
+  final VoidCallback onStartSelling;
+  final int cartCount;
+  final VoidCallback onCartTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      children: [
+        SoukShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+        const SizedBox(height: 24),
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3B2114),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.storefront, color: Colors.white, size: 42),
+              const SizedBox(height: 18),
+              Text(
+                'Sell on Souk',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Colors.white,
+                      fontFamily: 'serif',
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Create a store account, get approved by Scalora, then sync Shopify products into the marketplace.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      height: 1.4,
+                    ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onStartSelling,
+                icon: const Icon(Icons.arrow_forward),
+                label: const Text('Start selling'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        const EmptyState(
+          icon: Icons.verified_user_outlined,
+          title: 'Approval required',
+          message: 'Store products sync only after admin approval, so shoppers only see trusted active stores.',
+        ),
+      ],
+    );
+  }
+}
+
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({
+    super.key,
+    required this.session,
+    required this.onLogout,
+    required this.favoriteCount,
+    required this.orderCount,
+    required this.onChangePassword,
+    required this.cartCount,
+    required this.onCartTap,
+  });
+
+  final AppSession session;
+  final VoidCallback onLogout;
+  final int favoriteCount;
+  final int orderCount;
+  final VoidCallback onChangePassword;
+  final int cartCount;
+  final VoidCallback onCartTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      children: [
+        SoukShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+        const SizedBox(height: 24),
+        AccountSecurityCard(
+          session: session,
+          onChangePassword: onChangePassword,
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: ProfileStatTile(
+                icon: Icons.favorite_border,
+                value: favoriteCount.toString(),
+                label: 'Saved',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ProfileStatTile(
+                icon: Icons.receipt_long_outlined,
+                value: orderCount.toString(),
+                label: 'Orders',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: onLogout,
+          icon: const Icon(Icons.logout),
+          label: const Text('Logout'),
+        ),
+      ],
+    );
+  }
+}
+
+class ProfileStatTile extends StatelessWidget {
+  const ProfileStatTile({
+    super.key,
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFF8F552E)),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+              Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SoukBottomNav extends StatelessWidget {
+  const SoukBottomNav({
+    super.key,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 24,
+              offset: const Offset(0, -6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: SoukBottomNavItem(
+                icon: Icons.home_outlined,
+                selectedIcon: Icons.home,
+                label: 'Home',
+                selected: selectedIndex == 0,
+                onTap: () => onSelected(0),
+              ),
+            ),
+            Expanded(
+              child: SoukBottomNavItem(
+                icon: Icons.grid_view_outlined,
+                selectedIcon: Icons.grid_view,
+                label: 'Categories',
+                selected: selectedIndex == 1,
+                onTap: () => onSelected(1),
+              ),
+            ),
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => onSelected(2),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFA8663A),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFA8663A).withValues(alpha: 0.26),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 30),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Sell',
+                      style: TextStyle(
+                        color: selectedIndex == 2 ? const Color(0xFFA8663A) : Colors.black87,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: SoukBottomNavItem(
+                icon: Icons.receipt_long_outlined,
+                selectedIcon: Icons.receipt_long,
+                label: 'Orders',
+                selected: selectedIndex == 3,
+                onTap: () => onSelected(3),
+              ),
+            ),
+            Expanded(
+              child: SoukBottomNavItem(
+                icon: Icons.person_outline,
+                selectedIcon: Icons.person,
+                label: 'Profile',
+                selected: selectedIndex == 4,
+                onTap: () => onSelected(4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SoukBottomNavItem extends StatelessWidget {
+  const SoukBottomNavItem({
+    super.key,
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? const Color(0xFFA8663A) : Colors.black54;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(selected ? selectedIcon : icon, color: color, size: 28),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -2737,6 +3076,421 @@ class SellerMenuTile extends StatelessWidget {
       trailing: selected ? const Icon(Icons.check_circle) : null,
       selected: selected,
       onTap: onTap,
+    );
+  }
+}
+
+class SoukShopperTopBar extends StatelessWidget {
+  const SoukShopperTopBar({
+    super.key,
+    required this.cartCount,
+    required this.onCartTap,
+  });
+
+  final int cartCount;
+  final VoidCallback onCartTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Souk',
+            style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                  fontFamily: 'serif',
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF3B2114),
+                  letterSpacing: 0,
+                ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Notifications',
+          onPressed: () {},
+          icon: const Icon(Icons.notifications_none, size: 30),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          tooltip: 'Cart',
+          onPressed: onCartTap,
+          icon: Badge.count(
+            count: cartCount,
+            isLabelVisible: cartCount > 0,
+            backgroundColor: const Color(0xFFA8663A),
+            child: const Icon(Icons.shopping_cart_outlined, size: 30),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class SoukSearchRow extends StatelessWidget {
+  const SoukSearchRow({
+    super.key,
+    required this.value,
+    required this.filters,
+    required this.options,
+    required this.onChanged,
+    required this.onFiltersChanged,
+  });
+
+  final String value;
+  final MarketplaceFilters filters;
+  final MarketplaceFilterOptions options;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<MarketplaceFilters> onFiltersChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 62,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: TextField(
+              onChanged: onChanged,
+              textInputAction: TextInputAction.search,
+              decoration: const InputDecoration(
+                hintText: 'Search for products, brands and more...',
+                prefixIcon: Icon(Icons.search, size: 28),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Container(
+          width: 62,
+          height: 62,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.06),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: IconButton(
+            tooltip: 'Filters',
+            onPressed: () async {
+              final nextFilters = await showModalBottomSheet<MarketplaceFilters>(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (context) => MarketplaceFilterSheet(
+                  initialFilters: filters,
+                  options: options,
+                ),
+              );
+              if (nextFilters != null) {
+                onFiltersChanged(nextFilters);
+              }
+            },
+            icon: Badge(
+              isLabelVisible: filters.hasActiveFilters,
+              smallSize: 8,
+              child: const Icon(Icons.tune, size: 28),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class SoukCategoryBubbles extends StatelessWidget {
+  const SoukCategoryBubbles({
+    super.key,
+    required this.selected,
+    required this.categories,
+    required this.products,
+    required this.onSelected,
+  });
+
+  final String selected;
+  final List<String> categories;
+  final List<Product> products;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = ['All', ...categories.take(4), 'More'];
+    return SizedBox(
+      height: 126,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: visible.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 18),
+        itemBuilder: (context, index) {
+          final name = visible[index];
+          final target = name == 'More' ? 'All' : name;
+          final selectedItem = selected == target || (selected == 'All' && name == 'All');
+          final product = firstWhereOrNull(
+            products,
+            (item) => target == 'All' || item.category == target || item.collectionNames.contains(target),
+          );
+          return SoukCategoryBubble(
+            name: name,
+            selected: selectedItem,
+            product: product,
+            icon: categoryIcon(name),
+            onTap: () => onSelected(target),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SoukCategoryBubble extends StatelessWidget {
+  const SoukCategoryBubble({
+    super.key,
+    required this.name,
+    required this.selected,
+    required this.product,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String name;
+  final bool selected;
+  final Product? product;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(34),
+      onTap: onTap,
+      child: SizedBox(
+        width: 82,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 72,
+              height: selected ? 94 : 72,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: selected ? const Color(0xFFA8663A) : Colors.white,
+                borderRadius: BorderRadius.circular(selected ? 28 : 999),
+                border: Border.all(color: const Color(0xFFA8663A).withValues(alpha: selected ? 1 : 0.08)),
+              ),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ClipOval(
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    color: const Color(0xFFF4EEE7),
+                    child: productPrimaryImage(product) == null
+                        ? Icon(icon, color: const Color(0xFF3B2114), size: 30)
+                        : AppNetworkImage(
+                            url: productPrimaryImage(product)!,
+                            size: 160,
+                          ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: selected ? const Color(0xFFA8663A) : Colors.black,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SoukPromoBanner extends StatelessWidget {
+  const SoukPromoBanner({super.key, required this.products});
+
+  final List<Product> products;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = productPrimaryImage(products.isEmpty ? null : products.first);
+    return Container(
+      height: 220,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9DED0),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Stack(
+        children: [
+          Positioned.fill(
+            left: 185,
+            child: image == null
+                ? Container(
+                    color: const Color(0xFFD7C2AA),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.chair_outlined, size: 88, color: Color(0xFF7A4B2A)),
+                  )
+                : AppNetworkImage(url: image, size: 640),
+          ),
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.24),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(22),
+            child: SizedBox(
+              width: 230,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'WELCOME TO SOUK',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Everything you need, in one place.',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontFamily: 'serif',
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
+                          height: 1.08,
+                          letterSpacing: 0,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Discover quality products from trusted local sellers.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.3),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF8F552E),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () {},
+                    label: const Text('Shop Now'),
+                    icon: const Icon(Icons.arrow_forward),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Positioned(
+            bottom: 14,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SoukDot(active: true),
+                SoukDot(active: false),
+                SoukDot(active: false),
+                SoukDot(active: false),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SoukDot extends StatelessWidget {
+  const SoukDot({super.key, required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: active ? 8 : 7,
+      height: active ? 8 : 7,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(
+        color: active ? Colors.black : Colors.black.withValues(alpha: 0.16),
+        shape: BoxShape.circle,
+      ),
+    );
+  }
+}
+
+class SoukSectionHeader extends StatelessWidget {
+  const SoukSectionHeader({
+    super.key,
+    required this.title,
+    this.icon,
+    required this.onViewAll,
+  });
+
+  final String title;
+  final IconData? icon;
+  final VoidCallback onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              if (icon != null) ...[
+                const SizedBox(width: 6),
+                Icon(icon, color: const Color(0xFFC8673A), size: 22),
+              ],
+            ],
+          ),
+        ),
+        TextButton.icon(
+          onPressed: onViewAll,
+          label: const Text('View all'),
+          icon: const Icon(Icons.chevron_right),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF8F552E)),
+        ),
+      ],
     );
   }
 }
@@ -4040,6 +4794,198 @@ class ProductMiniCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class SoukDealCard extends StatelessWidget {
+  const SoukDealCard({
+    super.key,
+    required this.product,
+    required this.isFavorite,
+    required this.onOpen,
+    required this.onAdd,
+    required this.onFavorite,
+  });
+
+  final Product product;
+  final bool isFavorite;
+  final VoidCallback onOpen;
+  final VoidCallback onAdd;
+  final VoidCallback onFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final oldPrice = product.price * 1.25;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onOpen,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: productPrimaryImage(product) == null
+                        ? Container(
+                            color: const Color(0xFFF2EAE1),
+                            alignment: Alignment.center,
+                            child: Icon(product.icon, size: 54, color: const Color(0xFF8F552E)),
+                          )
+                        : AppNetworkImage(url: productPrimaryImage(product)!, size: 360),
+                  ),
+                  Positioned(
+                    left: 10,
+                    top: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFA8663A),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        '-20%',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: IconButton.filledTonal(
+                      tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
+                      onPressed: onFavorite,
+                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Wrap(
+                          spacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              product.formattedPrice,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                            ),
+                            Text(
+                              money(oldPrice),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.black45,
+                                    decoration: TextDecoration.lineThrough,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.star, color: Color(0xFFE7A72E), size: 18),
+                      const SizedBox(width: 3),
+                      Text(product.rating.toStringAsFixed(1)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SoukPopularCategoryTile extends StatelessWidget {
+  const SoukPopularCategoryTile({
+    super.key,
+    required this.name,
+    required this.products,
+    required this.onTap,
+  });
+
+  final String name;
+  final List<Product> products;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final product = products.isEmpty ? null : products.first;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: const Color(0xFFF2EAE1),
+                child: productPrimaryImage(product) == null
+                    ? Icon(categoryIcon(name), color: const Color(0xFF8F552E), size: 42)
+                    : AppNetworkImage(url: productPrimaryImage(product)!, size: 260),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              child: Column(
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${products.length}+ items',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -6824,6 +7770,48 @@ String? normalizeLebanesePhone(String value) {
 }
 
 String money(double value) => '\$${value.toStringAsFixed(2)}';
+
+String? productPrimaryImage(Product? product) {
+  if (product == null) {
+    return null;
+  }
+  if (product.imageUrl != null && product.imageUrl!.isNotEmpty) {
+    return product.imageUrl;
+  }
+  if (product.images.isNotEmpty) {
+    return product.images.first;
+  }
+  return null;
+}
+
+IconData categoryIcon(String value) {
+  final name = value.toLowerCase();
+  if (name.contains('fashion') || name.contains('clothing') || name.contains('apparel')) {
+    return Icons.checkroom_outlined;
+  }
+  if (name.contains('electronic') || name.contains('tech')) {
+    return Icons.headphones_outlined;
+  }
+  if (name.contains('beauty') || name.contains('skin')) {
+    return Icons.spa_outlined;
+  }
+  if (name.contains('home') || name.contains('decor')) {
+    return Icons.chair_outlined;
+  }
+  if (name.contains('bag')) {
+    return Icons.work_outline;
+  }
+  if (name.contains('shoe') || name.contains('sneaker')) {
+    return Icons.directions_run;
+  }
+  if (name.contains('jewel')) {
+    return Icons.diamond_outlined;
+  }
+  if (name.contains('more')) {
+    return Icons.grid_view;
+  }
+  return Icons.category_outlined;
+}
 
 String authFriendlyError(SoukApiException error) {
   if (error.statusCode == 404 && error.message.contains('Route not found')) {
