@@ -12,6 +12,15 @@ const retryablePatterns = [
   'Connection terminated',
 ];
 
+function databaseTarget() {
+  try {
+    const url = new URL(process.env.DATABASE_URL);
+    return `${url.hostname}:${url.port || '5432'}`;
+  } catch {
+    return 'unknown database host';
+  }
+}
+
 function wait(milliseconds) {
   return new Promise((resolve) => {
     setTimeout(resolve, milliseconds);
@@ -45,6 +54,8 @@ function isRetryable(output) {
   return retryablePatterns.some((pattern) => output.includes(pattern));
 }
 
+console.log(`Prisma migrate deploy target: ${databaseTarget()}`);
+
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   console.log(`Running Prisma migrate deploy (attempt ${attempt}/${maxAttempts})`);
   const result = await runPrismaDeploy();
@@ -54,6 +65,15 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   }
 
   if (!isRetryable(result.output) || attempt === maxAttempts) {
+    if (isRetryable(result.output)) {
+      console.error(
+        [
+          `Database was still unreachable at ${databaseTarget()} after ${attempt} attempts.`,
+          'On Railway, postgres.railway.internal only works when the API and Postgres services are in the same project and environment.',
+          'If they are already together and private networking still fails, set DATABASE_URL to the Postgres public/TCP proxy URL instead.',
+        ].join('\n'),
+      );
+    }
     process.exit(result.code || 1);
   }
 

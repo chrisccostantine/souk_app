@@ -179,7 +179,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     }
 
     if (!_signup &&
-        _email.text.trim().toLowerCase() == 'scalora.socialmedia.agency@gmail.com' &&
+        _email.text.trim().toLowerCase() ==
+            'scalora.socialmedia.agency@gmail.com' &&
         _password.text == '12345678') {
       widget.onAuthenticated(
         const AppSession(
@@ -270,19 +271,21 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
           : user['role'] == 'ADMIN'
           ? AccountRole.admin
           : AccountRole.customer,
-      store: shop == null
-          ? null
-          : ShopDraft.fromJson(shop),
+      store: shop == null ? null : ShopDraft.fromJson(shop),
     );
   }
 
   Future<void> _socialLogin(String provider) async {
     if (_role == AccountRole.seller) {
-      _showAuthSnack('Store accounts need email login so we can connect the seller dashboard.');
+      _showAuthSnack(
+        'Store accounts need email login so we can connect the seller dashboard.',
+      );
       return;
     }
     if (soukApiUrl.isEmpty || !soukApiUrl.startsWith('https://')) {
-      setState(() => _authError = 'SOUK_API_URL must point to your Railway backend.');
+      setState(
+        () => _authError = 'SOUK_API_URL must point to your Railway backend.',
+      );
       return;
     }
     setState(() {
@@ -307,7 +310,10 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _authError = 'Could not sign in with ${provider.toLowerCase()}: $error');
+        setState(
+          () => _authError =
+              'Could not sign in with ${provider.toLowerCase()}: $error',
+        );
       }
     } finally {
       if (mounted) {
@@ -346,7 +352,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
         : null;
     final available = await SignInWithApple.isAvailable();
     if (!available && webOptions == null) {
-      throw Exception('Apple sign-in needs Apple Service ID setup on this device.');
+      throw Exception(
+        'Apple sign-in needs Apple Service ID setup on this device.',
+      );
     }
     const scopes = [
       AppleIDAuthorizationScopes.email,
@@ -429,10 +437,13 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                   });
                 } else {
                   if (newPasswordController.text.length < 6) {
-                    safeSetDialogState(() => error = 'Use at least 6 characters.');
+                    safeSetDialogState(
+                      () => error = 'Use at least 6 characters.',
+                    );
                     return;
                   }
-                  if (newPasswordController.text != confirmPasswordController.text) {
+                  if (newPasswordController.text !=
+                      confirmPasswordController.text) {
                     safeSetDialogState(() => error = 'Passwords do not match.');
                     return;
                   }
@@ -454,14 +465,19 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                       'Email request timed out. Redeploy the latest backend and check Railway SMTP variables.',
                 );
               } catch (submitError) {
-                safeSetDialogState(() => error = resetFriendlyError(submitError));
+                safeSetDialogState(
+                  () => error = resetFriendlyError(submitError),
+                );
               } finally {
                 safeSetDialogState(() => loading = false);
               }
             }
 
             return AlertDialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 24,
+              ),
               title: const Text('Forgot password'),
               content: SizedBox(
                 width: double.maxFinite,
@@ -470,7 +486,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                     maxHeight: MediaQuery.sizeOf(context).height * 0.62,
                   ),
                   child: SingleChildScrollView(
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -563,8 +580,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                     loading
                         ? 'Working...'
                         : !codeRequested
-                            ? 'Get code'
-                            : 'Set password',
+                        ? 'Get code'
+                        : 'Set password',
                   ),
                 ),
               ],
@@ -584,7 +601,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Password updated'),
-        content: const Text('Your new password is filled in. You can login now.'),
+        content: const Text(
+          'Your new password is filled in. You can login now.',
+        ),
         actions: [
           FilledButton(
             onPressed: () => Navigator.pop(context),
@@ -634,9 +653,12 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                     children: [
                       Text(
                         _signup
-                            ? (_role == AccountRole.seller ? 'Register Store' : 'Create Account')
+                            ? (_role == AccountRole.seller
+                                  ? 'Register Store'
+                                  : 'Create Account')
                             : 'Login to Souk',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
                               color: const Color(0xFF164A36),
                               fontFamily: 'serif',
                               fontWeight: FontWeight.w900,
@@ -648,7 +670,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                         _signup
                             ? 'Create your account and continue into Souk.'
                             : 'Choose where you want to enter Souk.',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
                       ),
                       const SizedBox(height: 18),
                       Row(
@@ -658,7 +682,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                               icon: Icons.person_outline,
                               label: 'Shopper',
                               selected: _role == AccountRole.customer,
-                              onTap: () => setState(() => _role = AccountRole.customer),
+                              onTap: () =>
+                                  setState(() => _role = AccountRole.customer),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -667,7 +692,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                               icon: Icons.storefront_outlined,
                               label: 'Store',
                               selected: _role == AccountRole.seller,
-                              onTap: () => setState(() => _role = AccountRole.seller),
+                              onTap: () =>
+                                  setState(() => _role = AccountRole.seller),
                             ),
                           ),
                         ],
@@ -701,9 +727,17 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                           labelText: 'Password',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
-                            tooltip: _passwordVisible ? 'Hide password' : 'Show password',
-                            onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
-                            icon: Icon(_passwordVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                            tooltip: _passwordVisible
+                                ? 'Hide password'
+                                : 'Show password',
+                            onPressed: () => setState(
+                              () => _passwordVisible = !_passwordVisible,
+                            ),
+                            icon: Icon(
+                              _passwordVisible
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
                           ),
                         ),
                         validator: (value) {
@@ -717,7 +751,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton(
-                            onPressed: _authLoading ? null : _showForgotPasswordDialog,
+                            onPressed: _authLoading
+                                ? null
+                                : _showForgotPasswordDialog,
                             child: const Text('Forgot password?'),
                           ),
                         ),
@@ -778,7 +814,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                             backgroundColor: const Color(0xFF1F7A4D),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 17),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
                           ),
                           onPressed: _authLoading ? null : _submit,
                           icon: _authLoading
@@ -824,21 +862,25 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                             backgroundColor: const Color(0xFFF3F7F3),
                             foregroundColor: const Color(0xFF1F7A4D),
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                           onPressed: _authLoading
                               ? null
                               : () => setState(() {
-                                    _signup = !_signup;
-                                    _authError = null;
-                                  }),
-                          icon: Icon(_signup ? Icons.login : Icons.person_add_alt),
+                                  _signup = !_signup;
+                                  _authError = null;
+                                }),
+                          icon: Icon(
+                            _signup ? Icons.login : Icons.person_add_alt,
+                          ),
                           label: Text(
                             _signup
                                 ? 'Already have an account? Login'
                                 : (_role == AccountRole.seller
-                                    ? 'Register a store'
-                                    : 'Register as shopper'),
+                                      ? 'Register a store'
+                                      : 'Register as shopper'),
                           ),
                         ),
                       ),
@@ -853,7 +895,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
             Center(
               child: Text(
                 'Powered by Souk • Shopify Sync',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
               ),
             ),
           ],
@@ -876,12 +920,18 @@ class AuthBrandHeader extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFFEAF3ED),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF164A36).withValues(alpha: 0.18)),
+            border: Border.all(
+              color: const Color(0xFF164A36).withValues(alpha: 0.18),
+            ),
           ),
           child: Stack(
             alignment: Alignment.center,
             children: const [
-              Icon(Icons.shopping_bag_outlined, color: Color(0xFF164A36), size: 38),
+              Icon(
+                Icons.shopping_bag_outlined,
+                color: Color(0xFF164A36),
+                size: 38,
+              ),
               Positioned(
                 bottom: 13,
                 child: Icon(Icons.eco, color: Color(0xFF164A36), size: 18),
@@ -897,17 +947,19 @@ class AuthBrandHeader extends StatelessWidget {
               Text(
                 'Souk',
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                      fontFamily: 'serif',
-                      color: const Color(0xFF164A36),
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0,
-                    ),
+                  fontFamily: 'serif',
+                  color: const Color(0xFF164A36),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
               ),
               Text(
                 'Shops, makers, and quick checkout',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
               ),
             ],
           ),
@@ -944,10 +996,16 @@ class AuthHeroPanel extends StatelessWidget {
               width: 190,
               decoration: const BoxDecoration(
                 color: Color(0xFFDCCBB6),
-                borderRadius: BorderRadius.horizontal(left: Radius.circular(90)),
+                borderRadius: BorderRadius.horizontal(
+                  left: Radius.circular(90),
+                ),
               ),
               child: const Center(
-                child: Icon(Icons.local_florist, color: Color(0xFF43572C), size: 96),
+                child: Icon(
+                  Icons.local_florist,
+                  color: Color(0xFF43572C),
+                  size: 96,
+                ),
               ),
             ),
           ),
@@ -962,12 +1020,12 @@ class AuthHeroPanel extends StatelessWidget {
                   Text(
                     'Welcome to Souk',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontFamily: 'serif',
-                          color: const Color(0xFF164A36),
-                          fontWeight: FontWeight.w900,
-                          height: 1.05,
-                          letterSpacing: 0,
-                        ),
+                      fontFamily: 'serif',
+                      color: const Color(0xFF164A36),
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                      letterSpacing: 0,
+                    ),
                   ),
                   const SizedBox(height: 14),
                   Text(
@@ -975,9 +1033,9 @@ class AuthHeroPanel extends StatelessWidget {
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.black.withValues(alpha: 0.68),
-                          height: 1.35,
-                        ),
+                      color: Colors.black.withValues(alpha: 0.68),
+                      height: 1.35,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   const Row(
@@ -1009,7 +1067,9 @@ class AuthHeroDot extends StatelessWidget {
       height: 10,
       margin: const EdgeInsets.only(right: 12),
       decoration: BoxDecoration(
-        color: active ? const Color(0xFF1F7A4D) : Colors.black.withValues(alpha: 0.12),
+        color: active
+            ? const Color(0xFF1F7A4D)
+            : Colors.black.withValues(alpha: 0.12),
         shape: BoxShape.circle,
       ),
     );
@@ -1029,9 +1089,9 @@ class AuthDivider extends StatelessWidget {
           child: Text(
             'OR',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Colors.black54,
-                  fontWeight: FontWeight.w800,
-                ),
+              color: Colors.black54,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
         Expanded(child: Divider(color: Colors.black.withValues(alpha: 0.12))),
@@ -1140,8 +1200,16 @@ class AuthTrustRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const items = [
-      AuthTrustItem(Icons.verified_user_outlined, 'Secure & Safe', 'Protected data'),
-      AuthTrustItem(Icons.workspace_premium_outlined, 'Trusted Stores', 'Verified sellers'),
+      AuthTrustItem(
+        Icons.verified_user_outlined,
+        'Secure & Safe',
+        'Protected data',
+      ),
+      AuthTrustItem(
+        Icons.workspace_premium_outlined,
+        'Trusted Stores',
+        'Verified sellers',
+      ),
       AuthTrustItem(Icons.sync, 'Easy Returns', 'Hassle-free'),
       AuthTrustItem(Icons.support_agent, '24/7 Support', 'We are here'),
     ];
@@ -1189,7 +1257,9 @@ class AuthTrustItem extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
+          style: Theme.of(
+            context,
+          ).textTheme.labelSmall?.copyWith(color: Colors.black54),
         ),
       ],
     );
@@ -1231,7 +1301,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   double get _subtotal =>
       _cart.fold(0, (sum, line) => sum + (line.product.price * line.quantity));
 
-  int get _cartShopCount => _cart.map((line) => line.product.shop.id).toSet().length;
+  int get _cartShopCount =>
+      _cart.map((line) => line.product.shop.id).toSet().length;
 
   @override
   void initState() {
@@ -1272,8 +1343,12 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       final api = SoukApi(baseUrl: soukApiUrl);
       final shopRows = await api.fetchShops();
       final productRows = await api.fetchProducts();
-      final shops = shopRows.map((item) => Shop.fromJson(item as Map<String, dynamic>)).toList();
-      final products = productRows.map((item) => Product.fromJson(item as Map<String, dynamic>)).toList();
+      final shops = shopRows
+          .map((item) => Shop.fromJson(item as Map<String, dynamic>))
+          .toList();
+      final products = productRows
+          .map((item) => Product.fromJson(item as Map<String, dynamic>))
+          .toList();
       if (!mounted) {
         return;
       }
@@ -1298,14 +1373,18 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       return;
     }
     try {
-      final rows = await SoukApi(baseUrl: soukApiUrl).fetchOrders(customerEmail: widget.session.email);
+      final rows = await SoukApi(
+        baseUrl: soukApiUrl,
+      ).fetchOrders(customerEmail: widget.session.email);
       if (!mounted) {
         return;
       }
       setState(() {
         _orders
           ..clear()
-          ..addAll(rows.map((item) => Order.fromJson(item as Map<String, dynamic>)));
+          ..addAll(
+            rows.map((item) => Order.fromJson(item as Map<String, dynamic>)),
+          );
       });
     } catch (_) {
       // Keep the local list; checkout errors surface separately.
@@ -1415,13 +1494,18 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             Navigator.pop(context);
             _addToCart(product);
           },
-          onReview: (rating, comment) => _createReview(product, rating, comment),
+          onReview: (rating, comment) =>
+              _createReview(product, rating, comment),
         );
       },
     );
   }
 
-  Future<void> _createReview(Product product, int rating, String comment) async {
+  Future<void> _createReview(
+    Product product,
+    int rating,
+    String comment,
+  ) async {
     if (soukApiUrl.isEmpty || product.shop.id.isEmpty) {
       _showSnack('SOUK_API_URL is required to review stores');
       return;
@@ -1446,11 +1530,13 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     if (soukApiUrl.isEmpty || product.shop.id.isEmpty) {
       return;
     }
-    SoukApi(baseUrl: soukApiUrl).trackShopAnalytics(product.shop.id, {
-      'event': event,
-      'bestProductId': product.id,
-      'topCity': product.shop.location,
-    }).catchError((_) => <String, dynamic>{});
+    SoukApi(baseUrl: soukApiUrl)
+        .trackShopAnalytics(product.shop.id, {
+          'event': event,
+          'bestProductId': product.id,
+          'topCity': product.shop.location,
+        })
+        .catchError((_) => <String, dynamic>{});
   }
 
   Future<void> _placeOrder(CheckoutInfo info) async {
@@ -1479,27 +1565,33 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             for (final line in lines)
               {'productId': line.product.id, 'quantity': line.quantity},
           ],
-          'fulfillmentMethod': info.deliveryMethod == 'Pickup' ? 'PICKUP' : 'DELIVERY',
+          'fulfillmentMethod': info.deliveryMethod == 'Pickup'
+              ? 'PICKUP'
+              : 'DELIVERY',
           'paymentMethod': paymentMethodCode(info.paymentMethod),
           'deliveryAddress': info.address,
           'note': info.note,
         });
         final orderJson = body['order'] as Map<String, dynamic>? ?? body;
         final total = parseDouble(orderJson['total']);
-        final id = orderJson['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString();
+        final id =
+            orderJson['id'] as String? ??
+            DateTime.now().millisecondsSinceEpoch.toString();
         placedOrders.add(
           Order(
             id: '#${id.substring(0, id.length > 8 ? 8 : id.length)}',
             shopName: lines.first.product.shop.name,
             total: total == 0
                 ? lines.fold<double>(
-                      0,
-                      (sum, line) => sum + line.product.price * line.quantity,
-                    ) +
-                    (info.deliveryMethod == 'Pickup' ? 0 : 3.5)
+                        0,
+                        (sum, line) => sum + line.product.price * line.quantity,
+                      ) +
+                      (info.deliveryMethod == 'Pickup' ? 0 : 3.5)
                 : total,
             status: orderJson['status'] as String? ?? 'PLACED',
-            eta: info.deliveryMethod == 'Pickup' ? 'Ready in 2 hours' : 'Today, 6-8 PM',
+            eta: info.deliveryMethod == 'Pickup'
+                ? 'Ready in 2 hours'
+                : 'Today, 6-8 PM',
             itemCount: lines.fold(0, (sum, line) => sum + line.quantity),
           ),
         );
@@ -1563,7 +1655,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
               } on SoukApiException catch (apiError) {
                 setDialogState(() => error = apiError.message);
               } catch (submitError) {
-                setDialogState(() => error = 'Could not update password: $submitError');
+                setDialogState(
+                  () => error = 'Could not update password: $submitError',
+                );
               } finally {
                 if (dialogContext.mounted) {
                   setDialogState(() => loading = false);
@@ -1619,7 +1713,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
               ),
               actions: [
                 TextButton(
-                  onPressed: loading ? null : () => Navigator.pop(dialogContext, false),
+                  onPressed: loading
+                      ? null
+                      : () => Navigator.pop(dialogContext, false),
                   child: const Text('Cancel'),
                 ),
                 FilledButton.icon(
@@ -1675,7 +1771,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     final products = _products.where((product) {
       final q = _query.trim().toLowerCase();
       final inCategory =
-          _category == 'All' || product.category == _category || product.collectionNames.contains(_category);
+          _category == 'All' ||
+          product.category == _category ||
+          product.collectionNames.contains(_category);
       final inSearch =
           q.isEmpty ||
           product.name.toLowerCase().contains(q) ||
@@ -1683,8 +1781,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           product.category.toLowerCase().contains(q) ||
           product.collectionNames.any((name) => name.toLowerCase().contains(q));
       return inCategory && inSearch && _filters.matches(product);
-    }).toList()
-      ..sort(_filters.compare);
+    }).toList()..sort(_filters.compare);
 
     final pages = [
       HomePage(
@@ -1692,6 +1789,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onLogout: widget.onLogout,
         query: _searchDraft,
         category: _category,
+        shops: _shops,
         products: products,
         allProducts: _products,
         showAllFeatured: _showAllFeatured,
@@ -1700,10 +1798,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         categories: {
           for (final product in _products) product.category,
           for (final product in _products) ...product.collectionNames,
-        }.toList()
-          ..sort(),
+        }.toList()..sort(),
         favoriteIds: _favoriteIds,
-        onViewAllFeatured: () => setState(() => _showAllFeatured = !_showAllFeatured),
+        onViewAllFeatured: () =>
+            setState(() => _showAllFeatured = !_showAllFeatured),
         onQueryChanged: _setSearchDraft,
         onCategoryChanged: (value) => setState(() => _category = value),
         filters: _filters,
@@ -1712,6 +1810,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         onOpenProduct: _openProduct,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
+        onFollowStore: _followShop,
         cartCount: _cartCount,
         onCartTap: _openCartSheet,
       ),
@@ -1731,7 +1830,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       SellEntryPage(
         session: widget.session,
         onLogout: widget.onLogout,
-        onStartSelling: () => _showSnack('Register as a store from the login screen'),
+        onStartSelling: () =>
+            _showSnack('Register as a store from the login screen'),
         cartCount: _cartCount,
         onCartTap: _openCartSheet,
       ),
@@ -1829,12 +1929,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       _message = null;
     });
     try {
-      final rows = await SoukApi(baseUrl: soukApiUrl).fetchShops(includeAll: true);
+      final rows = await SoukApi(
+        baseUrl: soukApiUrl,
+      ).fetchShops(includeAll: true);
       if (!mounted) {
         return;
       }
       setState(() {
-        _shops = rows.map((item) => Shop.fromJson(item as Map<String, dynamic>)).toList();
+        _shops = rows
+            .map((item) => Shop.fromJson(item as Map<String, dynamic>))
+            .toList();
         _loading = false;
       });
     } catch (_) {
@@ -1852,7 +1956,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     try {
       await SoukApi(baseUrl: soukApiUrl).verifyShop(shop.id, {
         'verified': approved,
-        'verificationNote': approved ? 'Approved by Scalora admin' : 'Declined by Scalora admin',
+        'verificationNote': approved
+            ? 'Approved by Scalora admin'
+            : 'Declined by Scalora admin',
       });
       await _loadShops();
       if (!mounted) {
@@ -1860,13 +1966,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(approved ? '${shop.name} approved' : '${shop.name} declined'),
+          content: Text(
+            approved ? '${shop.name} approved' : '${shop.name} declined',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
     } on SoukApiException catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message), behavior: SnackBarBehavior.floating),
+        SnackBar(
+          content: Text(error.message),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -1880,7 +1991,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           children: [
             HeaderBar(session: widget.session, onLogout: widget.onLogout),
             const SizedBox(height: 18),
-            const SectionTitle(title: 'Admin dashboard', action: 'Store approvals'),
+            const SectionTitle(
+              title: 'Admin dashboard',
+              action: 'Store approvals',
+            ),
             const SizedBox(height: 12),
             if (_loading)
               const LinearProgressIndicator(minHeight: 6)
@@ -1895,11 +2009,21 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 Card(
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: shop.verified ? const Color(0xFF1F7A4D) : const Color(0xFFC8673A),
-                      child: Icon(shop.verified ? Icons.verified : Icons.hourglass_top, color: Colors.white),
+                      backgroundColor: shop.verified
+                          ? const Color(0xFF1F7A4D)
+                          : const Color(0xFFC8673A),
+                      child: Icon(
+                        shop.verified ? Icons.verified : Icons.hourglass_top,
+                        color: Colors.white,
+                      ),
                     ),
-                    title: Text(shop.name, style: const TextStyle(fontWeight: FontWeight.w900)),
-                    subtitle: Text('${shop.category} - ${shop.location} - ${shop.statusLabel}'),
+                    title: Text(
+                      shop.name,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      '${shop.category} - ${shop.location} - ${shop.statusLabel}',
+                    ),
                     trailing: Wrap(
                       spacing: 8,
                       children: [
@@ -1933,6 +2057,7 @@ class HomePage extends StatelessWidget {
     required this.onLogout,
     required this.query,
     required this.category,
+    required this.shops,
     required this.products,
     required this.allProducts,
     required this.showAllFeatured,
@@ -1949,6 +2074,7 @@ class HomePage extends StatelessWidget {
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
+    required this.onFollowStore,
     required this.cartCount,
     required this.onCartTap,
   });
@@ -1957,6 +2083,7 @@ class HomePage extends StatelessWidget {
   final VoidCallback onLogout;
   final String query;
   final String category;
+  final List<Shop> shops;
   final List<Product> products;
   final List<Product> allProducts;
   final bool showAllFeatured;
@@ -1973,14 +2100,58 @@ class HomePage extends StatelessWidget {
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
+  final ValueChanged<Shop> onFollowStore;
   final int cartCount;
   final VoidCallback onCartTap;
 
   @override
   Widget build(BuildContext context) {
-    final chosenFeatured = products.where((product) => product.featured).toList();
-    final dealSource = chosenFeatured.isEmpty ? products : chosenFeatured;
-    final featuredProducts = (showAllFeatured ? dealSource : dealSource.take(8)).toList();
+    final q = query.trim().toLowerCase();
+    final visibleShops =
+        shops.where((shop) {
+          final shopProducts = allProducts
+              .where((product) => product.shop.id == shop.id)
+              .toList();
+          final inCategory =
+              category == 'All' ||
+              shop.category == category ||
+              shopProducts.any(
+                (product) =>
+                    product.category == category ||
+                    product.collectionNames.contains(category),
+              );
+          final inSearch =
+              q.isEmpty ||
+              shop.name.toLowerCase().contains(q) ||
+              shop.category.toLowerCase().contains(q) ||
+              shop.location.toLowerCase().contains(q) ||
+              shopProducts.any(
+                (product) =>
+                    product.name.toLowerCase().contains(q) ||
+                    product.category.toLowerCase().contains(q) ||
+                    product.collectionNames.any(
+                      (name) => name.toLowerCase().contains(q),
+                    ),
+              );
+          return inCategory && inSearch;
+        }).toList()..sort((a, b) {
+          final verified = (b.verified ? 1 : 0).compareTo(a.verified ? 1 : 0);
+          if (verified != 0) {
+            return verified;
+          }
+          final orders = b.orderCount.compareTo(a.orderCount);
+          if (orders != 0) {
+            return orders;
+          }
+          return b.rating.compareTo(a.rating);
+        });
+    final featuredShops = visibleShops.take(8).toList();
+    final chosenFeatured = products
+        .where((product) => product.featured)
+        .toList();
+    final arrivalSource = chosenFeatured.isEmpty ? products : chosenFeatured;
+    final arrivalProducts =
+        (showAllFeatured ? arrivalSource : arrivalSource.take(8)).toList();
     final popularCategories = categories.isEmpty
         ? ['Home', 'Fashion', 'Electronics', 'Beauty']
         : categories.take(6).toList();
@@ -1993,10 +2164,7 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SoukShopperTopBar(
-                  cartCount: cartCount,
-                  onCartTap: onCartTap,
-                ),
+                SoukShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
                 const SizedBox(height: 24),
                 SoukSearchRow(
                   value: query,
@@ -2020,13 +2188,18 @@ class HomePage extends StatelessWidget {
                   onSelected: onCategoryChanged,
                 ),
                 const SizedBox(height: 26),
-                const SoukPromoBanner(),
-                const SizedBox(height: 26),
-                SoukSectionHeader(
-                  title: 'Flash Deals',
-                  icon: Icons.bolt,
-                  onViewAll: onViewAllFeatured,
+                SoukMarketplaceBanner(
+                  shopCount: shops.length,
+                  productCount: allProducts.length,
+                  verifiedCount: shops.where((shop) => shop.verified).length,
                 ),
+                if (featuredShops.isNotEmpty) ...[
+                  const SizedBox(height: 26),
+                  SoukSectionHeader(
+                    title: 'Featured Stores',
+                    icon: Icons.storefront,
+                  ),
+                ],
               ],
             ),
           ),
@@ -2045,7 +2218,7 @@ class HomePage extends StatelessWidget {
               message: message!,
             ),
           )
-        else if (products.isEmpty)
+        else if (visibleShops.isEmpty && products.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
             child: EmptyState(
@@ -2059,28 +2232,32 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  height: 250,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: featuredProducts.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 14),
-                    itemBuilder: (context, index) {
-                      final product = featuredProducts[index];
-                      return SizedBox(
-                        width: 178,
-                        child: SoukDealCard(
-                          product: product,
-                          isFavorite: favoriteIds.contains(product.id),
-                          onOpen: () => onOpenProduct(product),
-                          onAdd: () => onAddToCart(product),
-                          onFavorite: () => onToggleFavorite(product),
-                        ),
-                      );
-                    },
+                if (featuredShops.isNotEmpty)
+                  SizedBox(
+                    height: 254,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: featuredShops.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 14),
+                      itemBuilder: (context, index) {
+                        final shop = featuredShops[index];
+                        final shopProducts = allProducts
+                            .where((product) => product.shop.id == shop.id)
+                            .take(3)
+                            .toList();
+                        return SizedBox(
+                          width: 282,
+                          child: SoukFeaturedStoreCard(
+                            shop: shop,
+                            products: shopProducts,
+                            onFollow: () => onFollowStore(shop),
+                            onOpenProduct: onOpenProduct,
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
                   child: SoukSectionHeader(
@@ -2094,11 +2271,15 @@ class HomePage extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                     scrollDirection: Axis.horizontal,
                     itemCount: popularCategories.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    separatorBuilder: (_, _) => const SizedBox(width: 14),
                     itemBuilder: (context, index) {
                       final name = popularCategories[index];
                       final categoryProducts = allProducts
-                          .where((product) => product.category == name || product.collectionNames.contains(name))
+                          .where(
+                            (product) =>
+                                product.category == name ||
+                                product.collectionNames.contains(name),
+                          )
                           .toList();
                       return SizedBox(
                         width: 132,
@@ -2111,9 +2292,41 @@ class HomePage extends StatelessWidget {
                     },
                   ),
                 ),
+                if (arrivalProducts.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                    child: SoukSectionHeader(
+                      title: 'New Across Souk',
+                      icon: Icons.new_releases_outlined,
+                      onViewAll: onViewAllFeatured,
+                    ),
+                  ),
+                  SizedBox(
+                    height: 250,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: arrivalProducts.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 14),
+                      itemBuilder: (context, index) {
+                        final product = arrivalProducts[index];
+                        return SizedBox(
+                          width: 178,
+                          child: SoukDealCard(
+                            product: product,
+                            isFavorite: favoriteIds.contains(product.id),
+                            onOpen: () => onOpenProduct(product),
+                            onAdd: () => onAddToCart(product),
+                            onFavorite: () => onToggleFavorite(product),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
-          )
+          ),
       ],
     );
   }
@@ -2160,21 +2373,24 @@ class StoresPage extends StatelessWidget {
           const EmptyState(
             icon: Icons.storefront_outlined,
             title: 'No live stores yet',
-            message: 'Stores will appear here after sellers create shops and sync products.',
+            message:
+                'Stores will appear here after sellers create shops and sync products.',
           )
         else
           for (final shop in shops) ...[
-          ShopCard(
-            shop: shop,
-            products: products.where((product) => product.shop.id == shop.id).toList(),
-            favoriteIds: favoriteIds,
-            onOpenProduct: onOpenProduct,
-            onAddToCart: onAddToCart,
-            onToggleFavorite: onToggleFavorite,
-            onFollow: () => onFollowStore(shop),
-          ),
-          const SizedBox(height: 12),
-        ],
+            ShopCard(
+              shop: shop,
+              products: products
+                  .where((product) => product.shop.id == shop.id)
+                  .toList(),
+              favoriteIds: favoriteIds,
+              onOpenProduct: onOpenProduct,
+              onAddToCart: onAddToCart,
+              onToggleFavorite: onToggleFavorite,
+              onFollow: () => onFollowStore(shop),
+            ),
+            const SizedBox(height: 12),
+          ],
       ],
     );
   }
@@ -2260,7 +2476,9 @@ class AccountSecurityCard extends StatelessWidget {
               radius: 24,
               backgroundColor: const Color(0xFF1F7A4D).withValues(alpha: 0.12),
               child: Text(
-                session.name.isEmpty ? 'S' : session.name.substring(0, 1).toUpperCase(),
+                session.name.isEmpty
+                    ? 'S'
+                    : session.name.substring(0, 1).toUpperCase(),
                 style: const TextStyle(
                   color: Color(0xFF1F7A4D),
                   fontWeight: FontWeight.w900,
@@ -2283,7 +2501,9 @@ class AccountSecurityCard extends StatelessWidget {
                     session.email,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
                   ),
                 ],
               ),
@@ -2337,18 +2557,18 @@ class SellEntryPage extends StatelessWidget {
               Text(
                 'Sell on Souk',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontFamily: 'serif',
-                      fontWeight: FontWeight.w800,
-                    ),
+                  color: Colors.white,
+                  fontFamily: 'serif',
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Create a store account, get approved by Scalora, then sync Shopify products into the marketplace.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.78),
-                      height: 1.4,
-                    ),
+                  color: Colors.white.withValues(alpha: 0.78),
+                  height: 1.4,
+                ),
               ),
               const SizedBox(height: 18),
               FilledButton.icon(
@@ -2363,7 +2583,8 @@ class SellEntryPage extends StatelessWidget {
         const EmptyState(
           icon: Icons.verified_user_outlined,
           title: 'Approval required',
-          message: 'Store products sync only after admin approval, so shoppers only see trusted active stores.',
+          message:
+              'Store products sync only after admin approval, so shoppers only see trusted active stores.',
         ),
       ],
     );
@@ -2466,8 +2687,19 @@ class ProfileStatTile extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-              Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54)),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              ),
             ],
           ),
         ],
@@ -2539,19 +2771,27 @@ class SoukBottomNav extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFFA8663A).withValues(alpha: 0.26),
+                            color: const Color(
+                              0xFFA8663A,
+                            ).withValues(alpha: 0.26),
                             blurRadius: 18,
                             offset: const Offset(0, 8),
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 30),
+                      child: const Icon(
+                        Icons.shopping_bag_outlined,
+                        color: Colors.white,
+                        size: 30,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Sell',
                       style: TextStyle(
-                        color: selectedIndex == 2 ? const Color(0xFFA8663A) : Colors.black87,
+                        color: selectedIndex == 2
+                            ? const Color(0xFFA8663A)
+                            : Colors.black87,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -2681,7 +2921,9 @@ class _CartPageState extends State<CartPage> {
         const SizedBox(height: 18),
         SectionTitle(
           title: 'Basket',
-          action: widget.shopCount > 1 ? '${widget.shopCount} stores' : 'Direct checkout',
+          action: widget.shopCount > 1
+              ? '${widget.shopCount} stores'
+              : 'Direct checkout',
         ),
         const SizedBox(height: 12),
         if (widget.cart.isEmpty)
@@ -2742,13 +2984,7 @@ class SellerHubPage extends StatefulWidget {
   State<SellerHubPage> createState() => _SellerHubPageState();
 }
 
-enum SellerMenuSection {
-  settings,
-  productSync,
-  analytics,
-  growth,
-  operations,
-}
+enum SellerMenuSection { settings, productSync, analytics, growth, operations }
 
 class _SellerHubPageState extends State<SellerHubPage>
     with WidgetsBindingObserver {
@@ -2808,7 +3044,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final rows = await SoukApi(baseUrl: soukApiUrl).fetchShops(includeAll: true);
+      final rows = await SoukApi(
+        baseUrl: soukApiUrl,
+      ).fetchShops(includeAll: true);
       final row = firstWhereOrNull(
         rows.whereType<Map<String, dynamic>>(),
         (shop) => shop['id']?.toString() == shopId,
@@ -2819,7 +3057,8 @@ class _SellerHubPageState extends State<SellerHubPage>
       final refreshedStore = ShopDraft.fromJson(row);
       setState(() {
         _liveStore = refreshedStore;
-        if (refreshedStore.isActive && _sellerSection == SellerMenuSection.settings) {
+        if (refreshedStore.isActive &&
+            _sellerSection == SellerMenuSection.settings) {
           _sellerSection = SellerMenuSection.productSync;
         }
       });
@@ -2972,7 +3211,8 @@ class _SellerHubPageState extends State<SellerHubPage>
       }
       setState(() {
         _shopifySyncJobId = jobId;
-        _shopifyMessage = result['message'] as String? ?? 'Shopify sync started';
+        _shopifyMessage =
+            result['message'] as String? ?? 'Shopify sync started';
       });
       _pollShopifySyncJob(jobId);
     } on SoukApiException catch (error) {
@@ -3010,7 +3250,9 @@ class _SellerHubPageState extends State<SellerHubPage>
     _shopifySyncTimer?.cancel();
     _shopifySyncTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       try {
-        final job = await SoukApi(baseUrl: soukApiUrl).fetchShopifySyncJob(jobId);
+        final job = await SoukApi(
+          baseUrl: soukApiUrl,
+        ).fetchShopifySyncJob(jobId);
         if (!mounted || _shopifySyncJobId != jobId) {
           return;
         }
@@ -3103,7 +3345,9 @@ class _SellerHubPageState extends State<SellerHubPage>
         _syncedProducts = products;
         _syncedCollections = collections;
         if (_selectedCollectionId != null &&
-            !collections.any((collection) => collection.id == _selectedCollectionId)) {
+            !collections.any(
+              (collection) => collection.id == _selectedCollectionId,
+            )) {
           _selectedCollectionId = null;
         }
         _inventoryLoading = false;
@@ -3125,7 +3369,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final rows = await SoukApi(baseUrl: soukApiUrl).fetchOrders(shopId: shopId);
+      final rows = await SoukApi(
+        baseUrl: soukApiUrl,
+      ).fetchOrders(shopId: shopId);
       if (!mounted) {
         return;
       }
@@ -3194,7 +3440,8 @@ class _SellerHubPageState extends State<SellerHubPage>
                 icon: Icons.sync,
                 label: 'Product sync',
                 selected: _sellerSection == SellerMenuSection.productSync,
-                onTap: () => _selectSellerSection(SellerMenuSection.productSync),
+                onTap: () =>
+                    _selectSellerSection(SellerMenuSection.productSync),
               ),
               SellerMenuTile(
                 icon: Icons.analytics_outlined,
@@ -3261,7 +3508,10 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
   }
 
-  Future<void> _updateSellerOrderStatus(SellerOrder order, String status) async {
+  Future<void> _updateSellerOrderStatus(
+    SellerOrder order,
+    String status,
+  ) async {
     if (soukApiUrl.isEmpty || order.id.isEmpty) {
       _showSellerSnack('Connect the backend before updating orders.');
       return;
@@ -3382,14 +3632,19 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _toggleFeaturedProduct(SellerInventoryProduct product) async {
     try {
-      await SoukApi(baseUrl: soukApiUrl).setProductFeatured(product.id, !product.featured);
+      await SoukApi(
+        baseUrl: soukApiUrl,
+      ).setProductFeatured(product.id, !product.featured);
       await _loadSellerInventory();
     } on SoukApiException catch (error) {
       if (!mounted) {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message), behavior: SnackBarBehavior.floating),
+        SnackBar(
+          content: Text(error.message),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -3411,13 +3666,20 @@ class _SellerHubPageState extends State<SellerHubPage>
       0,
       (sum, order) => sum + order.total,
     );
-    final dashboardRevenue = _growthStats.revenue == 0 ? orderRevenue : _growthStats.revenue;
-    final dashboardGrowthStats = _growthStats.copyWith(revenue: dashboardRevenue);
+    final dashboardRevenue = _growthStats.revenue == 0
+        ? orderRevenue
+        : _growthStats.revenue;
+    final dashboardGrowthStats = _growthStats.copyWith(
+      revenue: dashboardRevenue,
+    );
     final visibleSyncedProducts = _selectedCollectionId == null
         ? _syncedProducts.take(80).toList()
         : _syncedProducts
-            .where((product) => product.collectionIds.contains(_selectedCollectionId))
-            .toList();
+              .where(
+                (product) =>
+                    product.collectionIds.contains(_selectedCollectionId),
+              )
+              .toList();
     final selectedCollection = _selectedCollectionId == null
         ? null
         : firstWhereOrNull(
@@ -3425,7 +3687,11 @@ class _SellerHubPageState extends State<SellerHubPage>
             (collection) => collection.id == _selectedCollectionId,
           );
     final visibleCollections = _syncedCollections
-        .where((collection) => collection.title.toLowerCase().contains(_collectionQuery.toLowerCase()))
+        .where(
+          (collection) => collection.title.toLowerCase().contains(
+            _collectionQuery.toLowerCase(),
+          ),
+        )
         .toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
@@ -3438,7 +3704,12 @@ class _SellerHubPageState extends State<SellerHubPage>
               icon: const Icon(Icons.menu),
             ),
             const SizedBox(width: 10),
-            Expanded(child: HeaderBar(session: widget.session, onLogout: widget.onLogout)),
+            Expanded(
+              child: HeaderBar(
+                session: widget.session,
+                onLogout: widget.onLogout,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 18),
@@ -3472,24 +3743,30 @@ class _SellerHubPageState extends State<SellerHubPage>
             const EmptyState(
               icon: Icons.category_outlined,
               title: 'No synced collections yet',
-              message: 'Sync Shopify products after Scalora admin approves your store.',
+              message:
+                  'Sync Shopify products after Scalora admin approves your store.',
             )
           else
             CollectionBrowser(
               collections: visibleCollections,
               selectedId: _selectedCollectionId,
               query: _collectionQuery,
-              onQueryChanged: (value) => setState(() => _collectionQuery = value),
+              onQueryChanged: (value) =>
+                  setState(() => _collectionQuery = value),
               onSelected: (collectionId) {
                 setState(() {
-                  _selectedCollectionId = _selectedCollectionId == collectionId ? null : collectionId;
+                  _selectedCollectionId = _selectedCollectionId == collectionId
+                      ? null
+                      : collectionId;
                 });
               },
             ),
           const SizedBox(height: 16),
           SectionTitle(
             title: selectedCollection?.title ?? 'Inventory',
-            action: _selectedCollectionId == null ? '$productCount products' : '${visibleSyncedProducts.length} products',
+            action: _selectedCollectionId == null
+                ? '$productCount products'
+                : '${visibleSyncedProducts.length} products',
           ),
           const SizedBox(height: 10),
           if (_inventoryMessage != null)
@@ -3505,7 +3782,8 @@ class _SellerHubPageState extends State<SellerHubPage>
               message: 'Choose another collection or sync Shopify again.',
             )
           else ...[
-            if (_selectedCollectionId == null && _syncedProducts.length > visibleSyncedProducts.length)
+            if (_selectedCollectionId == null &&
+                _syncedProducts.length > visibleSyncedProducts.length)
               Text(
                 'Showing first ${visibleSyncedProducts.length} products. Choose a collection to narrow the list.',
                 style: Theme.of(context).textTheme.bodySmall,
@@ -3532,10 +3810,10 @@ class _SellerHubPageState extends State<SellerHubPage>
             growthStats: dashboardGrowthStats,
             synced: _shopifySynced,
             products: _syncedProducts,
-          onCreateCampaign: _createCampaign,
-          onCreatePlacement: _createPlacement,
-          onCreateAffiliateLink: _createAffiliateLink,
-        ),
+            onCreateCampaign: _createCampaign,
+            onCreatePlacement: _createPlacement,
+            onCreateAffiliateLink: _createAffiliateLink,
+          ),
         if (_sellerSection == SellerMenuSection.operations) ...[
           DeliveryRulesPanel(onCreateDeliveryRule: _createDeliveryRegion),
           const SizedBox(height: 16),
@@ -3551,7 +3829,8 @@ class _SellerHubPageState extends State<SellerHubPage>
             for (final order in _sellerOrders)
               SellerOrderTile(
                 order: order,
-                onStatusChanged: (status) => _updateSellerOrderStatus(order, status),
+                onStatusChanged: (status) =>
+                    _updateSellerOrderStatus(order, status),
               ),
         ],
       ],
@@ -3717,11 +3996,11 @@ class SoukShopperTopBar extends StatelessWidget {
           child: Text(
             'Souk',
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontFamily: 'serif',
-                  fontWeight: FontWeight.w800,
-                  color: const Color(0xFF3B2114),
-                  letterSpacing: 0,
-                ),
+              fontFamily: 'serif',
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF3B2114),
+              letterSpacing: 0,
+            ),
           ),
         ),
         IconButton(
@@ -3852,15 +4131,16 @@ class _SoukSearchRowState extends State<SoukSearchRow> {
           child: IconButton(
             tooltip: 'Filters',
             onPressed: () async {
-              final nextFilters = await showModalBottomSheet<MarketplaceFilters>(
-                context: context,
-                isScrollControlled: true,
-                showDragHandle: true,
-                builder: (context) => MarketplaceFilterSheet(
-                  initialFilters: widget.filters,
-                  options: widget.options,
-                ),
-              );
+              final nextFilters =
+                  await showModalBottomSheet<MarketplaceFilters>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (context) => MarketplaceFilterSheet(
+                      initialFilters: widget.filters,
+                      options: widget.options,
+                    ),
+                  );
               if (nextFilters != null) {
                 widget.onFiltersChanged(nextFilters);
               }
@@ -3894,7 +4174,7 @@ class SoukSearchSuggestions extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: products.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
           final product = products[index];
           final image = productPrimaryImage(product);
@@ -3925,7 +4205,10 @@ class SoukSearchSuggestions extends StatelessWidget {
                       height: 48,
                       color: const Color(0xFFF4EEE7),
                       child: image == null
-                          ? Icon(categoryIcon(product.category), color: const Color(0xFF8F552E))
+                          ? Icon(
+                              categoryIcon(product.category),
+                              color: const Color(0xFF8F552E),
+                            )
                           : AppNetworkImage(url: image, size: 120),
                     ),
                   ),
@@ -3939,14 +4222,18 @@ class SoukSearchSuggestions extends StatelessWidget {
                           product.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${product.shop.name} - ${money(product.price)}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.black54),
                         ),
                       ],
                     ),
@@ -3983,14 +4270,18 @@ class SoukCategoryBubbles extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: visible.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 18),
+        separatorBuilder: (_, _) => const SizedBox(width: 18),
         itemBuilder: (context, index) {
           final name = visible[index];
           final target = name == 'More' ? 'All' : name;
-          final selectedItem = selected == target || (selected == 'All' && name == 'All');
+          final selectedItem =
+              selected == target || (selected == 'All' && name == 'All');
           final product = firstWhereOrNull(
             products,
-            (item) => target == 'All' || item.category == target || item.collectionNames.contains(target),
+            (item) =>
+                target == 'All' ||
+                item.category == target ||
+                item.collectionNames.contains(target),
           );
           return SoukCategoryBubble(
             name: shopperCategoryLabel(name),
@@ -4038,7 +4329,11 @@ class SoukCategoryBubble extends StatelessWidget {
               decoration: BoxDecoration(
                 color: selected ? const Color(0xFFA8663A) : Colors.white,
                 borderRadius: BorderRadius.circular(selected ? 28 : 999),
-                border: Border.all(color: const Color(0xFFA8663A).withValues(alpha: selected ? 1 : 0.08)),
+                border: Border.all(
+                  color: const Color(
+                    0xFFA8663A,
+                  ).withValues(alpha: selected ? 1 : 0.08),
+                ),
               ),
               child: Align(
                 alignment: Alignment.topCenter,
@@ -4123,36 +4418,43 @@ class SoukPromoBanner extends StatelessWidget {
                   Text(
                     'WELCOME TO SOUK',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0,
-                        ),
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Everything you need, in one place.',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontFamily: 'serif',
-                          fontSize: 25,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black,
-                          height: 1.04,
-                          letterSpacing: 0,
-                        ),
+                      fontFamily: 'serif',
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                      height: 1.04,
+                      letterSpacing: 0,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Discover quality products from trusted local sellers.',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.25),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(height: 1.25),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF8F552E),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 11,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     onPressed: () {},
                     label: const Text('Shop Now'),
@@ -4177,6 +4479,260 @@ class SoukPromoBanner extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class SoukMarketplaceBanner extends StatelessWidget {
+  const SoukMarketplaceBanner({
+    super.key,
+    required this.shopCount,
+    required this.productCount,
+    required this.verifiedCount,
+  });
+
+  final int shopCount;
+  final int productCount;
+  final int verifiedCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF17382B),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            right: -8,
+            bottom: -10,
+            child: Icon(
+              Icons.store_mall_directory_outlined,
+              color: Colors.white.withValues(alpha: 0.08),
+              size: 118,
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  HeroPill(icon: Icons.storefront, label: '$shopCount stores'),
+                  HeroPill(
+                    icon: Icons.inventory_2_outlined,
+                    label: '$productCount items',
+                  ),
+                  HeroPill(
+                    icon: Icons.verified,
+                    label: '$verifiedCount verified',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Find the right store first.',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  height: 1.06,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Browse local shops, compare styles, and build one basket across Souk.',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  height: 1.25,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SoukFeaturedStoreCard extends StatelessWidget {
+  const SoukFeaturedStoreCard({
+    super.key,
+    required this.shop,
+    required this.products,
+    required this.onFollow,
+    required this.onOpenProduct,
+  });
+
+  final Shop shop;
+  final List<Product> products;
+  final VoidCallback onFollow;
+  final ValueChanged<Product> onOpenProduct;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: products.isEmpty ? null : () => onOpenProduct(products.first),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: shop.color,
+                    child: Icon(shop.icon, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                shop.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            if (shop.verified)
+                              const Icon(
+                                Icons.verified,
+                                size: 17,
+                                color: Color(0xFF1F7A4D),
+                              ),
+                          ],
+                        ),
+                        Text(
+                          '${shop.category} in ${shop.location.isEmpty ? 'Souk' : shop.location}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton.filledTonal(
+                    tooltip: 'Follow store',
+                    onPressed: onFollow,
+                    icon: const Icon(Icons.add_alert_outlined),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                shop.story,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _StoreStat(
+                    icon: Icons.star,
+                    label: shop.rating.toStringAsFixed(1),
+                  ),
+                  const SizedBox(width: 8),
+                  _StoreStat(
+                    icon: Icons.shopping_bag_outlined,
+                    label: '${shop.orderCount} orders',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Row(
+                  children: [
+                    for (var index = 0; index < 3; index += 1) ...[
+                      Expanded(
+                        child: _StoreProductPreview(
+                          product: index < products.length
+                              ? products[index]
+                              : null,
+                        ),
+                      ),
+                      if (index < 2) const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StoreStat extends StatelessWidget {
+  const _StoreStat({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F4EC),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFFE7A72E)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StoreProductPreview extends StatelessWidget {
+  const _StoreProductPreview({required this.product});
+
+  final Product? product;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = product;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        color: (current?.color ?? const Color(0xFF1F7A4D)).withValues(
+          alpha: 0.12,
+        ),
+        child: current == null
+            ? const Icon(Icons.inventory_2_outlined, color: Color(0xFF1F7A4D))
+            : productPrimaryImage(current) == null
+            ? Icon(current.icon, color: current.color, size: 32)
+            : AppNetworkImage(url: productPrimaryImage(current)!, size: 180),
       ),
     );
   }
@@ -4216,7 +4772,11 @@ class _SoukBannerIllustration extends StatelessWidget {
           ),
           const Positioned(
             bottom: 42,
-            child: Icon(Icons.local_florist_outlined, size: 98, color: Color(0xFF35523A)),
+            child: Icon(
+              Icons.local_florist_outlined,
+              size: 98,
+              color: Color(0xFF35523A),
+            ),
           ),
           Positioned(
             bottom: 12,
@@ -4229,7 +4789,10 @@ class _SoukBannerIllustration extends StatelessWidget {
                   top: Radius.circular(26),
                   bottom: Radius.circular(18),
                 ),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.34), width: 2),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.34),
+                  width: 2,
+                ),
               ),
             ),
           ),
@@ -4263,12 +4826,12 @@ class SoukSectionHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.icon,
-    required this.onViewAll,
+    this.onViewAll,
   });
 
   final String title;
   final IconData? icon;
-  final VoidCallback onViewAll;
+  final VoidCallback? onViewAll;
 
   @override
   Widget build(BuildContext context) {
@@ -4282,7 +4845,9 @@ class SoukSectionHeader extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                 ),
               ),
               if (icon != null) ...[
@@ -4292,12 +4857,15 @@ class SoukSectionHeader extends StatelessWidget {
             ],
           ),
         ),
-        TextButton.icon(
-          onPressed: onViewAll,
-          label: const Text('View all'),
-          icon: const Icon(Icons.chevron_right),
-          style: TextButton.styleFrom(foregroundColor: const Color(0xFF8F552E)),
-        ),
+        if (onViewAll != null)
+          TextButton.icon(
+            onPressed: onViewAll,
+            label: const Text('View all'),
+            icon: const Icon(Icons.chevron_right),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF8F552E),
+            ),
+          ),
       ],
     );
   }
@@ -4457,7 +5025,9 @@ class ShopperPulseTile extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: Colors.black54),
           ),
         ],
       ),
@@ -4634,12 +5204,13 @@ class _MarketplaceFilterSheetState extends State<MarketplaceFilterSheet> {
                     child: Text(
                       'Filters',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                   TextButton(
-                    onPressed: () => setState(() => _filters = const MarketplaceFilters()),
+                    onPressed: () =>
+                        setState(() => _filters = const MarketplaceFilters()),
                     child: const Text('Reset'),
                   ),
                 ],
@@ -4652,11 +5223,26 @@ class _MarketplaceFilterSheetState extends State<MarketplaceFilterSheet> {
                   prefixIcon: Icon(Icons.sort),
                 ),
                 items: const [
-                  DropdownMenuItem(value: ProductSort.featured, child: Text('Featured first')),
-                  DropdownMenuItem(value: ProductSort.newest, child: Text('Newest')),
-                  DropdownMenuItem(value: ProductSort.priceLow, child: Text('Price: low to high')),
-                  DropdownMenuItem(value: ProductSort.priceHigh, child: Text('Price: high to low')),
-                  DropdownMenuItem(value: ProductSort.rating, child: Text('Highest rated')),
+                  DropdownMenuItem(
+                    value: ProductSort.featured,
+                    child: Text('Featured first'),
+                  ),
+                  DropdownMenuItem(
+                    value: ProductSort.newest,
+                    child: Text('Newest'),
+                  ),
+                  DropdownMenuItem(
+                    value: ProductSort.priceLow,
+                    child: Text('Price: low to high'),
+                  ),
+                  DropdownMenuItem(
+                    value: ProductSort.priceHigh,
+                    child: Text('Price: high to low'),
+                  ),
+                  DropdownMenuItem(
+                    value: ProductSort.rating,
+                    child: Text('Highest rated'),
+                  ),
                 ],
                 onChanged: (value) {
                   if (value != null) {
@@ -4849,7 +5435,7 @@ class CategoryRail extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: visibleCategories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final category = visibleCategories[index];
           return FilterChip(
@@ -4914,7 +5500,9 @@ class ShopperEditorialBand extends StatelessWidget {
     final topStore = products.isEmpty
         ? 'Verified stores'
         : mostCommon(products.map((product) => product.shop.name));
-    final limitedCount = products.where((product) => product.stock > 0 && product.stock <= 5).length;
+    final limitedCount = products
+        .where((product) => product.stock > 0 && product.stock <= 5)
+        .length;
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -4946,14 +5534,18 @@ class ShopperEditorialBand extends StatelessWidget {
                       topCategory,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Curated live picks from $topStore',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
                     ),
                   ],
                 ),
@@ -4974,7 +5566,9 @@ class ShopperEditorialBand extends StatelessWidget {
               Expanded(
                 child: EditorialMetric(
                   label: 'price range',
-                  value: products.isEmpty ? '\$0' : '${money(lowestPrice(products))}+',
+                  value: products.isEmpty
+                      ? '\$0'
+                      : '${money(lowestPrice(products))}+',
                   icon: Icons.sell_outlined,
                 ),
               ),
@@ -5024,7 +5618,9 @@ class EditorialMetric extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.black54),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: Colors.black54),
                 ),
               ],
             ),
@@ -5043,10 +5639,26 @@ class MarketplaceDiscoveryPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sections = [
-      DiscoveryItem('Trending', Icons.trending_up, '${products.where((product) => product.featured).length} featured'),
-      DiscoveryItem('New arrivals', Icons.new_releases_outlined, '${products.length} live'),
-      DiscoveryItem('Best sellers', Icons.workspace_premium_outlined, 'High intent'),
-      DiscoveryItem('Local brands', Icons.location_city_outlined, '${products.map((product) => product.shop.id).toSet().length} stores'),
+      DiscoveryItem(
+        'Trending',
+        Icons.trending_up,
+        '${products.where((product) => product.featured).length} featured',
+      ),
+      DiscoveryItem(
+        'New arrivals',
+        Icons.new_releases_outlined,
+        '${products.length} live',
+      ),
+      DiscoveryItem(
+        'Best sellers',
+        Icons.workspace_premium_outlined,
+        'High intent',
+      ),
+      DiscoveryItem(
+        'Local brands',
+        Icons.location_city_outlined,
+        '${products.map((product) => product.shop.id).toSet().length} stores',
+      ),
       const DiscoveryItem('Sneakers', Icons.directions_run, 'Size filters'),
       const DiscoveryItem('Jewelry', Icons.diamond_outlined, 'Gift ready'),
     ];
@@ -5061,7 +5673,7 @@ class MarketplaceDiscoveryPanel extends StatelessWidget {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: sections.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, index) => SizedBox(
               width: 142,
               child: DiscoveryCard(item: sections[index]),
@@ -5086,7 +5698,9 @@ class ShopperGrowthPanel extends StatelessWidget {
           children: [
             Text(
               'Rewards and social shopping',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 10),
             const Wrap(
@@ -5094,13 +5708,31 @@ class ShopperGrowthPanel extends StatelessWidget {
               runSpacing: 8,
               children: [
                 FeaturePill(icon: Icons.favorite_border, label: 'Likes'),
-                FeaturePill(icon: Icons.bookmark_border, label: 'Save products'),
-                FeaturePill(icon: Icons.storefront_outlined, label: 'Follow stores'),
-                FeaturePill(icon: Icons.reviews_outlined, label: 'Verified reviews'),
+                FeaturePill(
+                  icon: Icons.bookmark_border,
+                  label: 'Save products',
+                ),
+                FeaturePill(
+                  icon: Icons.storefront_outlined,
+                  label: 'Follow stores',
+                ),
+                FeaturePill(
+                  icon: Icons.reviews_outlined,
+                  label: 'Verified reviews',
+                ),
                 FeaturePill(icon: Icons.card_giftcard, label: 'Loyalty points'),
-                FeaturePill(icon: Icons.notifications_active_outlined, label: 'Drop alerts'),
-                FeaturePill(icon: Icons.video_collection_outlined, label: 'Stories and reels'),
-                FeaturePill(icon: Icons.verified_outlined, label: 'Trust badges'),
+                FeaturePill(
+                  icon: Icons.notifications_active_outlined,
+                  label: 'Drop alerts',
+                ),
+                FeaturePill(
+                  icon: Icons.video_collection_outlined,
+                  label: 'Stories and reels',
+                ),
+                FeaturePill(
+                  icon: Icons.verified_outlined,
+                  label: 'Trust badges',
+                ),
               ],
             ),
           ],
@@ -5125,8 +5757,18 @@ class DiscoveryCard extends StatelessWidget {
           children: [
             Icon(item.icon, color: Theme.of(context).colorScheme.primary),
             const Spacer(),
-            Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)),
-            Text(item.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+            Text(
+              item.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            Text(
+              item.subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ),
       ),
@@ -5244,11 +5886,16 @@ class ProductCard extends StatelessWidget {
                     Row(
                       children: [
                         if (product.shop.verified) ...[
-                          const Icon(Icons.verified, size: 15, color: Color(0xFF1F7A4D)),
+                          const Icon(
+                            Icons.verified,
+                            size: 15,
+                            color: Color(0xFF1F7A4D),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Verified',
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
                                   color: const Color(0xFF1F7A4D),
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -5268,18 +5915,27 @@ class ProductCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          product.stock > 0 ? Icons.inventory_2_outlined : Icons.block,
+                          product.stock > 0
+                              ? Icons.inventory_2_outlined
+                              : Icons.block,
                           size: 15,
-                          color: product.stock > 0 ? Colors.black54 : Theme.of(context).colorScheme.error,
+                          color: product.stock > 0
+                              ? Colors.black54
+                              : Theme.of(context).colorScheme.error,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            product.stock > 0 ? '${product.stock} left' : 'Out of stock',
+                            product.stock > 0
+                                ? '${product.stock} left'
+                                : 'Out of stock',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: product.stock > 0 ? Colors.black54 : Theme.of(context).colorScheme.error,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: product.stock > 0
+                                      ? Colors.black54
+                                      : Theme.of(context).colorScheme.error,
                                   fontWeight: FontWeight.w700,
                                 ),
                           ),
@@ -5354,7 +6010,7 @@ class ProductArt extends StatelessWidget {
                   : AppNetworkImage(
                       url: product.imageUrl!,
                       size: 360,
-                      errorBuilder: (_, __, ___) {
+                      errorBuilder: (_, _, _) {
                         return Container(
                           width: 76,
                           height: 76,
@@ -5362,7 +6018,11 @@ class ProductArt extends StatelessWidget {
                             color: product.color,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Icon(product.icon, color: Colors.white, size: 38),
+                          child: Icon(
+                            product.icon,
+                            color: Colors.white,
+                            size: 38,
+                          ),
                         );
                       },
                     ),
@@ -5501,7 +6161,7 @@ class ShopCard extends StatelessWidget {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: products.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
                 itemBuilder: (context, index) {
                   final product = products[index];
                   return SizedBox(
@@ -5562,16 +6222,24 @@ class ProductMiniCard extends StatelessWidget {
                       product.imageUrl == null
                           ? Container(
                               color: product.color,
-                              child: Icon(product.icon, color: Colors.white, size: 34),
+                              child: Icon(
+                                product.icon,
+                                color: Colors.white,
+                                size: 34,
+                              ),
                             )
                           : AppNetworkImage(url: product.imageUrl!, size: 260),
                       Positioned(
                         right: 4,
                         top: 4,
                         child: IconButton.filledTonal(
-                          tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
+                          tooltip: isFavorite
+                              ? 'Remove favorite'
+                              : 'Save favorite',
                           onPressed: onFavorite,
-                          icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                          icon: Icon(
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                          ),
                         ),
                       ),
                     ],
@@ -5654,22 +6322,35 @@ class SoukDealCard extends StatelessWidget {
                         ? Container(
                             color: const Color(0xFFF2EAE1),
                             alignment: Alignment.center,
-                            child: Icon(product.icon, size: 54, color: const Color(0xFF8F552E)),
+                            child: Icon(
+                              product.icon,
+                              size: 54,
+                              color: const Color(0xFF8F552E),
+                            ),
                           )
-                        : AppNetworkImage(url: productPrimaryImage(product)!, size: 360),
+                        : AppNetworkImage(
+                            url: productPrimaryImage(product)!,
+                            size: 360,
+                          ),
                   ),
                   Positioned(
                     left: 10,
                     top: 10,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFA8663A),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Text(
                         '-20%',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                   ),
@@ -5679,7 +6360,9 @@ class SoukDealCard extends StatelessWidget {
                     child: IconButton.filledTonal(
                       tooltip: isFavorite ? 'Remove favorite' : 'Save favorite',
                       onPressed: onFavorite,
-                      icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border),
+                      icon: Icon(
+                        isFavorite ? Icons.favorite : Icons.favorite_border,
+                      ),
                     ),
                   ),
                 ],
@@ -5710,11 +6393,13 @@ class SoukDealCard extends StatelessWidget {
                           children: [
                             Text(
                               product.formattedPrice,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w900),
                             ),
                             Text(
                               money(oldPrice),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
                                     color: Colors.black45,
                                     decoration: TextDecoration.lineThrough,
                                   ),
@@ -5722,7 +6407,11 @@ class SoukDealCard extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const Icon(Icons.star, color: Color(0xFFE7A72E), size: 18),
+                      const Icon(
+                        Icons.star,
+                        color: Color(0xFFE7A72E),
+                        size: 18,
+                      ),
                       const SizedBox(width: 3),
                       Text(product.rating.toStringAsFixed(1)),
                     ],
@@ -5777,8 +6466,15 @@ class SoukPopularCategoryTile extends StatelessWidget {
                 width: double.infinity,
                 color: const Color(0xFFF2EAE1),
                 child: productPrimaryImage(product) == null
-                    ? Icon(categoryIcon(name), color: const Color(0xFF8F552E), size: 42)
-                    : AppNetworkImage(url: productPrimaryImage(product)!, size: 260),
+                    ? Icon(
+                        categoryIcon(name),
+                        color: const Color(0xFF8F552E),
+                        size: 42,
+                      )
+                    : AppNetworkImage(
+                        url: productPrimaryImage(product)!,
+                        size: 260,
+                      ),
               ),
             ),
             Padding(
@@ -5790,12 +6486,17 @@ class SoukPopularCategoryTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                    ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     '${products.length}+ items',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
                   ),
                 ],
               ),
@@ -5859,8 +6560,14 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
   @override
   void initState() {
     super.initState();
-    _selectedVariant = firstWhereOrNull(widget.product.variants, (variant) => variant.stock > 0) ??
-        (widget.product.variants.isEmpty ? null : widget.product.variants.first);
+    _selectedVariant =
+        firstWhereOrNull(
+          widget.product.variants,
+          (variant) => variant.stock > 0,
+        ) ??
+        (widget.product.variants.isEmpty
+            ? null
+            : widget.product.variants.first);
   }
 
   Future<void> _openWhatsApp() async {
@@ -5896,7 +6603,11 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                 child: widget.product.images.isEmpty
                     ? Container(
                         color: widget.product.color.withValues(alpha: 0.15),
-                        child: Icon(widget.product.icon, color: widget.product.color, size: 78),
+                        child: Icon(
+                          widget.product.icon,
+                          color: widget.product.color,
+                          size: 78,
+                        ),
                       )
                     : PageView(
                         children: [
@@ -5918,7 +6629,9 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                   ),
                 ),
                 IconButton.filledTonal(
-                  tooltip: widget.isFavorite ? 'Remove favorite' : 'Save favorite',
+                  tooltip: widget.isFavorite
+                      ? 'Remove favorite'
+                      : 'Save favorite',
                   onPressed: widget.onFavorite,
                   icon: Icon(
                     widget.isFavorite ? Icons.favorite : Icons.favorite_border,
@@ -5939,7 +6652,9 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                Tag(label: '${widget.product.rating.toStringAsFixed(1)} rating'),
+                Tag(
+                  label: '${widget.product.rating.toStringAsFixed(1)} rating',
+                ),
                 Tag(label: '${widget.product.stock} in stock'),
                 Tag(label: widget.product.shop.delivery),
                 const Tag(label: 'Verified store'),
@@ -5979,7 +6694,12 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
             ),
             if (widget.product.variants.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text('Variants', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900)),
+              Text(
+                'Variants',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -5988,11 +6708,15 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                   for (final variant in widget.product.variants)
                     ChoiceChip(
                       selected: _selectedVariant?.title == variant.title,
-                      onSelected: variant.stock == 0 ? null : (_) => setState(() => _selectedVariant = variant),
+                      onSelected: variant.stock == 0
+                          ? null
+                          : (_) => setState(() => _selectedVariant = variant),
                       label: Text(
                         '${variant.title} (${variant.stock})',
                         style: TextStyle(
-                          decoration: variant.stock == 0 ? TextDecoration.lineThrough : null,
+                          decoration: variant.stock == 0
+                              ? TextDecoration.lineThrough
+                              : null,
                         ),
                       ),
                     ),
@@ -6011,7 +6735,10 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                   ),
                 ),
                 FilledButton.icon(
-                  onPressed: (_selectedVariant?.stock ?? widget.product.stock) == 0 ? null : widget.onAddToCart,
+                  onPressed:
+                      (_selectedVariant?.stock ?? widget.product.stock) == 0
+                      ? null
+                      : widget.onAddToCart,
                   icon: const Icon(Icons.add_shopping_cart),
                   label: const Text('Add to basket'),
                 ),
@@ -6429,8 +7156,12 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
   final _accentColor = TextEditingController(text: '#E7A72E');
   final _instagramUrl = TextEditingController();
   final _whatsappPhone = TextEditingController();
-  final _shippingPolicy = TextEditingController(text: 'Delivery available in selected regions.');
-  final _returnPolicy = TextEditingController(text: 'Returns accepted according to store policy.');
+  final _shippingPolicy = TextEditingController(
+    text: 'Delivery available in selected regions.',
+  );
+  final _returnPolicy = TextEditingController(
+    text: 'Returns accepted according to store policy.',
+  );
   String? _logoDataUrl;
   String? _bannerDataUrl;
   bool _logoUploaded = false;
@@ -6453,7 +7184,9 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
     if (_whatsappPhone.text.trim().isNotEmpty && whatsapp == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Use a Lebanese WhatsApp number, like 03 123 456 or +961 3 123 456'),
+          content: Text(
+            'Use a Lebanese WhatsApp number, like 03 123 456 or +961 3 123 456',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -6500,12 +7233,44 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
   @override
   Widget build(BuildContext context) {
     final items = [
-      OnboardingItem('Logo and banner', Icons.image_outlined, 'Upload brand visuals', _saved && _logoUploaded && _bannerUploaded),
-      OnboardingItem('Theme colors', Icons.palette_outlined, 'Choose storefront colors', _saved && _primaryColor.text.trim().isNotEmpty && _accentColor.text.trim().isNotEmpty),
-      OnboardingItem('Social links', Icons.link, 'Instagram, TikTok, website', _saved && _instagramUrl.text.trim().isNotEmpty),
-      OnboardingItem('Shipping policy', Icons.local_shipping_outlined, widget.store.hasDelivery ? 'Delivery active' : 'Pickup setup', _saved && _shippingPolicy.text.trim().isNotEmpty),
-      OnboardingItem('Return policy', Icons.assignment_return_outlined, 'Set clear rules', _saved && _returnPolicy.text.trim().isNotEmpty),
-      OnboardingItem('WhatsApp contact', Icons.chat_outlined, 'Support and order chat', _saved && normalizeLebanesePhone(_whatsappPhone.text) != null),
+      OnboardingItem(
+        'Logo and banner',
+        Icons.image_outlined,
+        'Upload brand visuals',
+        _saved && _logoUploaded && _bannerUploaded,
+      ),
+      OnboardingItem(
+        'Theme colors',
+        Icons.palette_outlined,
+        'Choose storefront colors',
+        _saved &&
+            _primaryColor.text.trim().isNotEmpty &&
+            _accentColor.text.trim().isNotEmpty,
+      ),
+      OnboardingItem(
+        'Social links',
+        Icons.link,
+        'Instagram, TikTok, website',
+        _saved && _instagramUrl.text.trim().isNotEmpty,
+      ),
+      OnboardingItem(
+        'Shipping policy',
+        Icons.local_shipping_outlined,
+        widget.store.hasDelivery ? 'Delivery active' : 'Pickup setup',
+        _saved && _shippingPolicy.text.trim().isNotEmpty,
+      ),
+      OnboardingItem(
+        'Return policy',
+        Icons.assignment_return_outlined,
+        'Set clear rules',
+        _saved && _returnPolicy.text.trim().isNotEmpty,
+      ),
+      OnboardingItem(
+        'WhatsApp contact',
+        Icons.chat_outlined,
+        'Support and order chat',
+        _saved && normalizeLebanesePhone(_whatsappPhone.text) != null,
+      ),
     ];
 
     return Card(
@@ -6516,12 +7281,16 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
           children: [
             Text(
               'Store onboarding',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
             Text(
               'Build a mini storefront inside Souk without building a separate app.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: 12),
             for (final item in items) SetupRow(item: item),
@@ -6531,16 +7300,24 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _pickStoreImage(logo: true),
-                    icon: Icon(_logoUploaded ? Icons.check_circle : Icons.upload_file),
-                    label: Text(_logoUploaded ? 'Logo uploaded' : 'Upload logo'),
+                    icon: Icon(
+                      _logoUploaded ? Icons.check_circle : Icons.upload_file,
+                    ),
+                    label: Text(
+                      _logoUploaded ? 'Logo uploaded' : 'Upload logo',
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _pickStoreImage(logo: false),
-                    icon: Icon(_bannerUploaded ? Icons.check_circle : Icons.upload_file),
-                    label: Text(_bannerUploaded ? 'Banner uploaded' : 'Upload banner'),
+                    icon: Icon(
+                      _bannerUploaded ? Icons.check_circle : Icons.upload_file,
+                    ),
+                    label: Text(
+                      _bannerUploaded ? 'Banner uploaded' : 'Upload banner',
+                    ),
                   ),
                 ),
               ],
@@ -6649,15 +7426,6 @@ class SellerFeatureSuite extends StatelessWidget {
           title: 'Growth and monetization',
           icon: Icons.rocket_launch_outlined,
           accent: const Color(0xFFC8673A),
-          children: [
-            FeaturePill(icon: synced ? Icons.check_circle : Icons.sync, label: synced ? 'Shopify live' : 'Shopify sync'),
-            FeaturePill(icon: Icons.star_border, label: '${growthStats.placements} placements'),
-            FeaturePill(icon: Icons.ads_click, label: '${growthStats.campaigns} campaigns'),
-            const FeaturePill(icon: Icons.workspace_premium_outlined, label: 'Subscriptions'),
-            const FeaturePill(icon: Icons.verified_user_outlined, label: 'Store verification'),
-            const FeaturePill(icon: Icons.loyalty_outlined, label: 'Coupons and VIP tiers'),
-            FeaturePill(icon: Icons.percent, label: 'Conversion $conversion'),
-          ],
           actions: [
             OutlinedButton.icon(
               onPressed: () => showCampaignDialog(context, onCreateCampaign),
@@ -6665,7 +7433,8 @@ class SellerFeatureSuite extends StatelessWidget {
               label: const Text('New campaign'),
             ),
             OutlinedButton.icon(
-              onPressed: () => showAffiliateDialog(context, onCreateAffiliateLink),
+              onPressed: () =>
+                  showAffiliateDialog(context, onCreateAffiliateLink),
               icon: const Icon(Icons.group_add_outlined),
               label: const Text('Add affiliate'),
             ),
@@ -6673,13 +7442,40 @@ class SellerFeatureSuite extends StatelessWidget {
               onPressed: products.isEmpty
                   ? null
                   : () => showPlacementDialog(
-                        context,
-                        products,
-                        onCreatePlacement,
-                      ),
+                      context,
+                      products,
+                      onCreatePlacement,
+                    ),
               icon: const Icon(Icons.star_border),
               label: const Text('Buy placement'),
             ),
+          ],
+          children: [
+            FeaturePill(
+              icon: synced ? Icons.check_circle : Icons.sync,
+              label: synced ? 'Shopify live' : 'Shopify sync',
+            ),
+            FeaturePill(
+              icon: Icons.star_border,
+              label: '${growthStats.placements} placements',
+            ),
+            FeaturePill(
+              icon: Icons.ads_click,
+              label: '${growthStats.campaigns} campaigns',
+            ),
+            const FeaturePill(
+              icon: Icons.workspace_premium_outlined,
+              label: 'Subscriptions',
+            ),
+            const FeaturePill(
+              icon: Icons.verified_user_outlined,
+              label: 'Store verification',
+            ),
+            const FeaturePill(
+              icon: Icons.loyalty_outlined,
+              label: 'Coupons and VIP tiers',
+            ),
+            FeaturePill(icon: Icons.percent, label: 'Conversion $conversion'),
           ],
         ),
       ],
@@ -6688,10 +7484,7 @@ class SellerFeatureSuite extends StatelessWidget {
 }
 
 class DeliveryRulesPanel extends StatelessWidget {
-  const DeliveryRulesPanel({
-    super.key,
-    required this.onCreateDeliveryRule,
-  });
+  const DeliveryRulesPanel({super.key, required this.onCreateDeliveryRule});
 
   final ValueChanged<Map<String, dynamic>> onCreateDeliveryRule;
 
@@ -6701,17 +7494,18 @@ class DeliveryRulesPanel extends StatelessWidget {
       title: 'Delivery rules',
       icon: Icons.delivery_dining,
       accent: const Color(0xFF1F7A4D),
+      actions: [
+        OutlinedButton.icon(
+          onPressed: () =>
+              showDeliveryRuleDialog(context, onCreateDeliveryRule),
+          icon: const Icon(Icons.add),
+          label: const Text('Add delivery rule'),
+        ),
+      ],
       children: const [
         FeaturePill(icon: Icons.place_outlined, label: 'By region'),
         FeaturePill(icon: Icons.price_change_outlined, label: 'By item price'),
         FeaturePill(icon: Icons.add_circle_outline, label: 'Multiple rules'),
-      ],
-      actions: [
-        OutlinedButton.icon(
-          onPressed: () => showDeliveryRuleDialog(context, onCreateDeliveryRule),
-          icon: const Icon(Icons.add),
-          label: const Text('Add delivery rule'),
-        ),
       ],
     );
   }
@@ -6751,7 +7545,9 @@ class SellerDashboardPanel extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ],
@@ -6786,8 +7582,14 @@ class SetupRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900)),
-                Text(item.subtitle, style: Theme.of(context).textTheme.bodySmall),
+                Text(
+                  item.title,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  item.subtitle,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
@@ -6877,8 +7679,18 @@ class MiniMetric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
-          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
       ),
     );
@@ -7058,7 +7870,11 @@ class SellerMetricGrid extends StatelessWidget {
       SellerMetric('Products', productCount.toString(), Icons.inventory_2),
       SellerMetric('Collections', collectionCount.toString(), Icons.category),
       SellerMetric('Revenue', money(revenue), Icons.payments_outlined),
-      SellerMetric('Rating', rating == 0 ? 'No reviews' : rating.toStringAsFixed(1), Icons.star),
+      SellerMetric(
+        'Rating',
+        rating == 0 ? 'No reviews' : rating.toStringAsFixed(1),
+        Icons.star,
+      ),
     ];
     return GridView.builder(
       shrinkWrap: true,
@@ -7142,18 +7958,26 @@ class CollectionBrowser extends StatelessWidget {
                 )
               : ListView.separated(
                   itemCount: collections.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final collection = collections[index];
                     final selected = selectedId == collection.id;
                     return ListTile(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+                        side: BorderSide(
+                          color: Colors.black.withValues(alpha: 0.08),
+                        ),
                       ),
                       selected: selected,
-                      leading: Icon(selected ? Icons.folder_open : Icons.folder_outlined),
-                      title: Text(collection.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      leading: Icon(
+                        selected ? Icons.folder_open : Icons.folder_outlined,
+                      ),
+                      title: Text(
+                        collection.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       subtitle: Text('${collection.productCount} products'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => onSelected(collection.id),
@@ -7198,7 +8022,7 @@ class SellerInventoryTile extends StatelessWidget {
                       height: 58,
                       fit: BoxFit.cover,
                       cacheWidth: 160,
-                      errorBuilder: (_, __, ___) {
+                      errorBuilder: (_, _, _) {
                         return Container(
                           width: 58,
                           height: 58,
@@ -7255,7 +8079,9 @@ class SellerInventoryTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 IconButton(
-                  tooltip: product.featured ? 'Remove from featured' : 'Feature product',
+                  tooltip: product.featured
+                      ? 'Remove from featured'
+                      : 'Feature product',
                   onPressed: onToggleFeatured,
                   icon: Icon(product.featured ? Icons.star : Icons.star_border),
                 ),
@@ -7299,7 +8125,10 @@ class SellerOrderTile extends StatelessWidget {
             PopupMenuItem(value: 'ACCEPTED', child: Text('Accept')),
             PopupMenuItem(value: 'PACKING', child: Text('Packing')),
             PopupMenuItem(value: 'READY', child: Text('Ready')),
-            PopupMenuItem(value: 'OUT_FOR_DELIVERY', child: Text('Out for delivery')),
+            PopupMenuItem(
+              value: 'OUT_FOR_DELIVERY',
+              child: Text('Out for delivery'),
+            ),
             PopupMenuItem(value: 'DELIVERED', child: Text('Delivered')),
             PopupMenuItem(value: 'CANCELLED', child: Text('Cancel')),
           ],
@@ -7388,7 +8217,9 @@ class Shop {
       name: name,
       category: json['category'] as String? ?? 'Store',
       location: json['city'] as String? ?? '',
-      story: json['story'] as String? ?? 'Shop products directly from this Souk store.',
+      story:
+          json['story'] as String? ??
+          'Shop products directly from this Souk store.',
       rating: parseDouble(json['rating']),
       color: const Color(0xFF1F7A4D),
       icon: Icons.storefront,
@@ -7435,7 +8266,8 @@ class Product {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    final shopJson = json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final shopJson =
+        json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
     final images = (json['images'] as List<dynamic>? ?? [])
         .map((item) => item as Map<String, dynamic>)
         .map((item) => item['url'] as String? ?? '')
@@ -7457,7 +8289,9 @@ class Product {
       rating: parseDouble(json['rating']),
       stock: parseInt(json['stock']),
       imageUrl: json['imageUrl'] as String?,
-      images: images.isEmpty && json['imageUrl'] != null ? [json['imageUrl'] as String] : images,
+      images: images.isEmpty && json['imageUrl'] != null
+          ? [json['imageUrl'] as String]
+          : images,
       variants: variants,
       collectionNames: collectionNames,
       featured: json['featured'] == true,
@@ -7543,7 +8377,9 @@ class ProductVariant {
   Iterable<String> get searchableOptions sync* {
     for (final value in [title, option1, option2, option3]) {
       final normalized = value?.trim();
-      if (normalized != null && normalized.isNotEmpty && normalized.toLowerCase() != 'default title') {
+      if (normalized != null &&
+          normalized.isNotEmpty &&
+          normalized.toLowerCase() != 'default title') {
         yield normalized;
       }
     }
@@ -7615,13 +8451,17 @@ class MarketplaceFilters {
     if (maxPrice != null && product.price > maxPrice!) {
       return false;
     }
-    if (inStockOnly && product.stock <= 0 && !product.variants.any((variant) => variant.stock > 0)) {
+    if (inStockOnly &&
+        product.stock <= 0 &&
+        !product.variants.any((variant) => variant.stock > 0)) {
       return false;
     }
-    if (size != null && !product.optionTokens.any((token) => token == size!.toLowerCase())) {
+    if (size != null &&
+        !product.optionTokens.any((token) => token == size!.toLowerCase())) {
       return false;
     }
-    if (color != null && !product.optionTokens.any((token) => token == color!.toLowerCase())) {
+    if (color != null &&
+        !product.optionTokens.any((token) => token == color!.toLowerCase())) {
       return false;
     }
     return true;
@@ -7730,7 +8570,8 @@ class Order {
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
-    final shop = json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final shop =
+        json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
     final items = json['items'] as List<dynamic>? ?? const [];
     final id = json['id'] as String? ?? '';
     return Order(
@@ -7841,7 +8682,9 @@ class SellerInventoryProduct {
       price: parseDouble(json['price']),
       stock: parseInt(json['stock']),
       imageUrl: json['imageUrl'] as String?,
-      images: imageRows.isEmpty && json['imageUrl'] != null ? [json['imageUrl'] as String] : imageRows,
+      images: imageRows.isEmpty && json['imageUrl'] != null
+          ? [json['imageUrl'] as String]
+          : imageRows,
       variants: (json['variants'] as List<dynamic>? ?? [])
           .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -7970,21 +8813,34 @@ class SellerGrowthStats {
 }
 
 class SellerOrder {
-  const SellerOrder(this.id, this.customer, this.summary, this.status, this.total);
+  const SellerOrder(
+    this.id,
+    this.customer,
+    this.summary,
+    this.status,
+    this.total,
+  );
 
   factory SellerOrder.fromJson(Map<String, dynamic> json) {
-    final customer = json['customer'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final customer =
+        json['customer'] as Map<String, dynamic>? ?? const <String, dynamic>{};
     final items = json['items'] as List<dynamic>? ?? const [];
     final summary = items.isEmpty
         ? 'No items'
-        : items.map((item) {
-            final row = item as Map<String, dynamic>;
-            final product = row['product'] as Map<String, dynamic>? ?? const <String, dynamic>{};
-            return '${row['quantity'] ?? 1} x ${product['name'] ?? 'Product'}';
-          }).join(', ');
+        : items
+              .map((item) {
+                final row = item as Map<String, dynamic>;
+                final product =
+                    row['product'] as Map<String, dynamic>? ??
+                    const <String, dynamic>{};
+                return '${row['quantity'] ?? 1} x ${product['name'] ?? 'Product'}';
+              })
+              .join(', ');
     return SellerOrder(
       json['id'] as String? ?? '',
-      (customer['name'] as String?) ?? (customer['email'] as String?) ?? 'Customer',
+      (customer['name'] as String?) ??
+          (customer['email'] as String?) ??
+          'Customer',
       summary,
       json['status'] as String? ?? 'PLACED',
       parseDouble(json['total']),
@@ -8036,7 +8892,9 @@ Future<void> showCampaignDialog(
   ValueChanged<Map<String, dynamic>> onSubmit,
 ) async {
   final title = TextEditingController(text: 'New arrivals just dropped');
-  final message = TextEditingController(text: 'Shop the latest products before they sell out.');
+  final message = TextEditingController(
+    text: 'Shop the latest products before they sell out.',
+  );
   var channel = 'PUSH';
   await showDialog<void>(
     context: context,
@@ -8057,7 +8915,10 @@ Future<void> showCampaignDialog(
                     ),
                     items: const [
                       DropdownMenuItem(value: 'PUSH', child: Text('Push')),
-                      DropdownMenuItem(value: 'WHATSAPP', child: Text('WhatsApp')),
+                      DropdownMenuItem(
+                        value: 'WHATSAPP',
+                        child: Text('WhatsApp'),
+                      ),
                       DropdownMenuItem(value: 'EMAIL', child: Text('Email')),
                     ],
                     onChanged: (value) {
@@ -8144,7 +9005,10 @@ Future<void> showPlacementDialog(
                       for (final product in products.take(50))
                         DropdownMenuItem(
                           value: product.id,
-                          child: Text(product.name, overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            product.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                     ],
                     onChanged: (value) {
@@ -8163,7 +9027,10 @@ Future<void> showPlacementDialog(
                     items: const [
                       DropdownMenuItem(value: 'home', child: Text('Homepage')),
                       DropdownMenuItem(value: 'search', child: Text('Search')),
-                      DropdownMenuItem(value: 'category', child: Text('Category')),
+                      DropdownMenuItem(
+                        value: 'category',
+                        child: Text('Category'),
+                      ),
                     ],
                     onChanged: (value) {
                       if (value != null) {
@@ -8320,8 +9187,17 @@ Future<void> showDeliveryRegionDialog(
     context: context,
     title: 'Add delivery region',
     fields: [
-      DialogField(controller: name, label: 'Region', icon: Icons.place_outlined),
-      DialogField(controller: fee, label: 'Fee', icon: Icons.payments_outlined, keyboardType: TextInputType.number),
+      DialogField(
+        controller: name,
+        label: 'Region',
+        icon: Icons.place_outlined,
+      ),
+      DialogField(
+        controller: fee,
+        label: 'Fee',
+        icon: Icons.payments_outlined,
+        keyboardType: TextInputType.number,
+      ),
       DialogField(controller: eta, label: 'ETA', icon: Icons.schedule),
     ],
     onSubmit: () => onSubmit({
@@ -8360,11 +9236,20 @@ Future<void> showDeliveryRuleDialog(
                 children: [
                   SegmentedButton<String>(
                     segments: const [
-                      ButtonSegment(value: 'REGION', icon: Icon(Icons.place_outlined), label: Text('Region')),
-                      ButtonSegment(value: 'PRICE', icon: Icon(Icons.price_change_outlined), label: Text('Item price')),
+                      ButtonSegment(
+                        value: 'REGION',
+                        icon: Icon(Icons.place_outlined),
+                        label: Text('Region'),
+                      ),
+                      ButtonSegment(
+                        value: 'PRICE',
+                        icon: Icon(Icons.price_change_outlined),
+                        label: Text('Item price'),
+                      ),
                     ],
                     selected: {ruleType},
-                    onSelectionChanged: (value) => setDialogState(() => ruleType = value.first),
+                    onSelectionChanged: (value) =>
+                        setDialogState(() => ruleType = value.first),
                   ),
                   const SizedBox(height: 10),
                   if (!byPrice)
@@ -8382,7 +9267,9 @@ Future<void> showDeliveryRuleDialog(
                           child: TextField(
                             controller: minPrice,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'From price'),
+                            decoration: const InputDecoration(
+                              labelText: 'From price',
+                            ),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -8390,7 +9277,9 @@ Future<void> showDeliveryRuleDialog(
                           child: TextField(
                             controller: maxPrice,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'To price'),
+                            decoration: const InputDecoration(
+                              labelText: 'To price',
+                            ),
                           ),
                         ),
                       ],
@@ -8427,8 +9316,12 @@ Future<void> showDeliveryRuleDialog(
                     'name': byPrice
                         ? 'Price ${minPrice.text.trim()}-${maxPrice.text.trim()}'
                         : region.text.trim(),
-                    'minOrder': byPrice ? double.tryParse(minPrice.text.trim()) ?? 0 : null,
-                    'maxOrder': byPrice ? double.tryParse(maxPrice.text.trim()) ?? 0 : null,
+                    'minOrder': byPrice
+                        ? double.tryParse(minPrice.text.trim()) ?? 0
+                        : null,
+                    'maxOrder': byPrice
+                        ? double.tryParse(maxPrice.text.trim()) ?? 0
+                        : null,
                     'fee': double.tryParse(fee.text.trim()) ?? 0,
                     'eta': eta.text.trim(),
                     'active': true,
@@ -8460,8 +9353,17 @@ Future<void> showLiveEventDialog(
     context: context,
     title: 'Schedule live selling',
     fields: [
-      DialogField(controller: title, label: 'Title', icon: Icons.live_tv_outlined),
-      DialogField(controller: streamUrl, label: 'Stream URL', icon: Icons.link, keyboardType: TextInputType.url),
+      DialogField(
+        controller: title,
+        label: 'Title',
+        icon: Icons.live_tv_outlined,
+      ),
+      DialogField(
+        controller: streamUrl,
+        label: 'Stream URL',
+        icon: Icons.link,
+        keyboardType: TextInputType.url,
+      ),
     ],
     onSubmit: () => onSubmit({
       'title': title.text.trim(),
@@ -8486,10 +9388,27 @@ Future<void> showAffiliateDialog(
     context: context,
     title: 'Add affiliate',
     fields: [
-      DialogField(controller: creatorName, label: 'Creator name', icon: Icons.person_outline),
-      DialogField(controller: handle, label: 'Handle', icon: Icons.alternate_email),
-      DialogField(controller: code, label: 'Code', icon: Icons.confirmation_number_outlined),
-      DialogField(controller: commission, label: 'Commission %', icon: Icons.percent, keyboardType: TextInputType.number),
+      DialogField(
+        controller: creatorName,
+        label: 'Creator name',
+        icon: Icons.person_outline,
+      ),
+      DialogField(
+        controller: handle,
+        label: 'Handle',
+        icon: Icons.alternate_email,
+      ),
+      DialogField(
+        controller: code,
+        label: 'Code',
+        icon: Icons.confirmation_number_outlined,
+      ),
+      DialogField(
+        controller: commission,
+        label: 'Commission %',
+        icon: Icons.percent,
+        keyboardType: TextInputType.number,
+      ),
     ],
     onSubmit: () => onSubmit({
       'creatorName': creatorName.text.trim(),
@@ -8577,7 +9496,9 @@ String? normalizeLebanesePhone(String value) {
     digits = '0${digits.substring(3)}';
   }
   digits = digits.replaceAll(RegExp(r'[^0-9]'), '');
-  final valid = RegExp(r'^0(3[0-9]{6}|(70|71|76|78|79|81)[0-9]{6}|(1|4|5|6|7|8|9)[0-9]{6})$');
+  final valid = RegExp(
+    r'^0(3[0-9]{6}|(70|71|76|78|79|81)[0-9]{6}|(1|4|5|6|7|8|9)[0-9]{6})$',
+  );
   if (!valid.hasMatch(digits)) {
     return null;
   }
@@ -8598,7 +9519,9 @@ List<Product> searchSuggestions(String query, List<Product> products) {
     final name = product.name.toLowerCase();
     final shop = product.shop.name.toLowerCase();
     final category = product.category.toLowerCase();
-    final collections = product.collectionNames.map((value) => value.toLowerCase());
+    final collections = product.collectionNames.map(
+      (value) => value.toLowerCase(),
+    );
 
     if (name.startsWith(q)) {
       score += 100;
@@ -8652,7 +9575,9 @@ String? productPrimaryImage(Product? product) {
 
 IconData categoryIcon(String value) {
   final name = value.toLowerCase();
-  if (name.contains('fashion') || name.contains('clothing') || name.contains('apparel')) {
+  if (name.contains('fashion') ||
+      name.contains('clothing') ||
+      name.contains('apparel')) {
     return Icons.checkroom_outlined;
   }
   if (name.contains('electronic') || name.contains('tech')) {
@@ -8705,7 +9630,11 @@ String shopperCategoryLabel(String value) {
   }
   return cleaned
       .split(' ')
-      .map((part) => part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}')
+      .map(
+        (part) => part.isEmpty
+            ? part
+            : '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+      )
       .join(' ');
 }
 
@@ -8756,7 +9685,9 @@ double lowestPrice(List<Product> products) {
   if (products.isEmpty) {
     return 0;
   }
-  return products.map((product) => product.price).reduce((a, b) => a < b ? a : b);
+  return products
+      .map((product) => product.price)
+      .reduce((a, b) => a < b ? a : b);
 }
 
 String paymentMethodCode(String label) {
@@ -8803,10 +9734,11 @@ String optimizedImageUrl(String url, int width) {
   if (uri == null || !uri.host.contains('shopify')) {
     return url;
   }
-  return uri.replace(queryParameters: {
-    ...uri.queryParameters,
-    'width': width.toString(),
-  }).toString();
+  return uri
+      .replace(
+        queryParameters: {...uri.queryParameters, 'width': width.toString()},
+      )
+      .toString();
 }
 
 List<String> productCollectionNames(Map<String, dynamic> json) {
