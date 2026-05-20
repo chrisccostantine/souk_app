@@ -1501,6 +1501,26 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     );
   }
 
+  void _openShop(Shop shop) {
+    final shopProducts = _products
+        .where((product) => product.shop.id == shop.id)
+        .toList();
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => StorefrontPage(
+          shop: shop,
+          products: shopProducts,
+          favoriteIds: _favoriteIds,
+          onOpenProduct: _openProduct,
+          onAddToCart: _addToCart,
+          onToggleFavorite: _toggleFavorite,
+          onFollowStore: _followShop,
+        ),
+      ),
+    );
+  }
+
   Future<void> _createReview(
     Product product,
     int rating,
@@ -1772,8 +1792,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       final q = _query.trim().toLowerCase();
       final inCategory =
           _category == 'All' ||
-          product.category == _category ||
-          product.collectionNames.contains(_category);
+          product.shop.category == _category ||
+          product.category == _category;
       final inSearch =
           q.isEmpty ||
           product.name.toLowerCase().contains(q) ||
@@ -1796,8 +1816,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         loading: _catalogLoading,
         message: _catalogMessage,
         categories: {
-          for (final product in _products) product.category,
-          for (final product in _products) ...product.collectionNames,
+          for (final shop in _shops) shop.category,
         }.toList()..sort(),
         favoriteIds: _favoriteIds,
         onViewAllFeatured: () =>
@@ -1808,6 +1827,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         filterOptions: MarketplaceFilterOptions.fromProducts(_products),
         onFiltersChanged: (value) => setState(() => _filters = value),
         onOpenProduct: _openProduct,
+        onOpenShop: _openShop,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
         onFollowStore: _followShop,
@@ -1821,6 +1841,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         shops: _shops,
         products: _products,
         onOpenProduct: _openProduct,
+        onOpenShop: _openShop,
         onAddToCart: _addToCart,
         onToggleFavorite: _toggleFavorite,
         onFollowStore: _followShop,
@@ -2072,6 +2093,7 @@ class HomePage extends StatelessWidget {
     required this.filterOptions,
     required this.onFiltersChanged,
     required this.onOpenProduct,
+    required this.onOpenShop,
     required this.onAddToCart,
     required this.onToggleFavorite,
     required this.onFollowStore,
@@ -2098,6 +2120,7 @@ class HomePage extends StatelessWidget {
   final MarketplaceFilterOptions filterOptions;
   final ValueChanged<MarketplaceFilters> onFiltersChanged;
   final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Shop> onOpenShop;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
   final ValueChanged<Shop> onFollowStore;
@@ -2112,14 +2135,7 @@ class HomePage extends StatelessWidget {
           final shopProducts = allProducts
               .where((product) => product.shop.id == shop.id)
               .toList();
-          final inCategory =
-              category == 'All' ||
-              shop.category == category ||
-              shopProducts.any(
-                (product) =>
-                    product.category == category ||
-                    product.collectionNames.contains(category),
-              );
+          final inCategory = category == 'All' || shop.category == category;
           final inSearch =
               q.isEmpty ||
               shop.name.toLowerCase().contains(q) ||
@@ -2184,7 +2200,7 @@ class HomePage extends StatelessWidget {
                 SoukCategoryBubbles(
                   selected: category,
                   categories: categories,
-                  products: allProducts,
+                  shops: shops,
                   onSelected: onCategoryChanged,
                 ),
                 const SizedBox(height: 26),
@@ -2252,6 +2268,7 @@ class HomePage extends StatelessWidget {
                             shop: shop,
                             products: shopProducts,
                             onFollow: () => onFollowStore(shop),
+                            onOpen: () => onOpenShop(shop),
                             onOpenProduct: onOpenProduct,
                           ),
                         );
@@ -2274,18 +2291,14 @@ class HomePage extends StatelessWidget {
                     separatorBuilder: (_, _) => const SizedBox(width: 14),
                     itemBuilder: (context, index) {
                       final name = popularCategories[index];
-                      final categoryProducts = allProducts
-                          .where(
-                            (product) =>
-                                product.category == name ||
-                                product.collectionNames.contains(name),
-                          )
+                      final categoryStores = shops
+                          .where((shop) => shop.category == name)
                           .toList();
                       return SizedBox(
                         width: 132,
                         child: SoukPopularCategoryTile(
                           name: name,
-                          products: categoryProducts,
+                          shops: categoryStores,
                           onTap: () => onCategoryChanged(name),
                         ),
                       );
@@ -2341,6 +2354,7 @@ class StoresPage extends StatelessWidget {
     required this.shops,
     required this.products,
     required this.onOpenProduct,
+    required this.onOpenShop,
     required this.onAddToCart,
     required this.onToggleFavorite,
     required this.onFollowStore,
@@ -2354,6 +2368,7 @@ class StoresPage extends StatelessWidget {
   final List<Shop> shops;
   final List<Product> products;
   final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Shop> onOpenShop;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
   final ValueChanged<Shop> onFollowStore;
@@ -2384,6 +2399,7 @@ class StoresPage extends StatelessWidget {
                   .where((product) => product.shop.id == shop.id)
                   .toList(),
               favoriteIds: favoriteIds,
+              onOpenShop: () => onOpenShop(shop),
               onOpenProduct: onOpenProduct,
               onAddToCart: onAddToCart,
               onToggleFavorite: onToggleFavorite,
@@ -2392,6 +2408,187 @@ class StoresPage extends StatelessWidget {
             const SizedBox(height: 12),
           ],
       ],
+    );
+  }
+}
+
+class StorefrontPage extends StatelessWidget {
+  const StorefrontPage({
+    super.key,
+    required this.shop,
+    required this.products,
+    required this.favoriteIds,
+    required this.onOpenProduct,
+    required this.onAddToCart,
+    required this.onToggleFavorite,
+    required this.onFollowStore,
+  });
+
+  final Shop shop;
+  final List<Product> products;
+  final Set<String> favoriteIds;
+  final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Product> onAddToCart;
+  final ValueChanged<Product> onToggleFavorite;
+  final ValueChanged<Shop> onFollowStore;
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = {
+      for (final product in products) product.category,
+    }.toList()
+      ..sort();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(shop.name),
+        actions: [
+          IconButton.filledTonal(
+            tooltip: 'Follow store',
+            onPressed: () => onFollowStore(shop),
+            icon: const Icon(Icons.add_alert_outlined),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+        children: [
+          Container(
+            height: 148,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: shop.color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: shop.bannerUrl == null || shop.bannerUrl!.isEmpty
+                ? Stack(
+                    children: [
+                      Positioned(
+                        right: 18,
+                        bottom: 10,
+                        child: Icon(
+                          Icons.storefront,
+                          size: 92,
+                          color: shop.color.withValues(alpha: 0.18),
+                        ),
+                      ),
+                    ],
+                  )
+                : AppNetworkImage(url: shop.bannerUrl!, size: 900),
+          ),
+          Transform.translate(
+            offset: const Offset(0, -28),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8F4EC),
+                    shape: BoxShape.circle,
+                  ),
+                  child: StoreAvatar(shop: shop, size: 78),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                shop.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                              ),
+                            ),
+                            if (shop.verified)
+                              const Icon(Icons.verified, color: Color(0xFF1F7A4D)),
+                          ],
+                        ),
+                        Text(
+                          '${shop.category} in ${shop.location.isEmpty ? 'Souk' : shop.location}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.black54,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(shop.story),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Tag(label: shop.delivery),
+              Tag(label: '${shop.orderCount} orders'),
+              Tag(label: 'Min ${money(shop.minimumOrder)}'),
+              Tag(label: '${products.length} products'),
+              if (shop.verified) const Tag(label: 'Verified store'),
+            ],
+          ),
+          if (categories.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const SectionTitle(title: 'Shop categories', action: 'In this store'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final category in categories)
+                  Chip(
+                    avatar: Icon(categoryIcon(category), size: 17),
+                    label: Text(shopperCategoryLabel(category)),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 18),
+          const SectionTitle(title: 'Products', action: 'Store catalog'),
+          const SizedBox(height: 12),
+          if (products.isEmpty)
+            const EmptyState(
+              icon: Icons.inventory_2_outlined,
+              title: 'No products yet',
+              message: 'This store has not synced products yet.',
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: products.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                childAspectRatio: 0.58,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              itemBuilder: (context, index) {
+                final product = products[index];
+                return ProductCard(
+                  product: product,
+                  isFavorite: favoriteIds.contains(product.id),
+                  onOpen: () => onOpenProduct(product),
+                  onAdd: () => onAddToCart(product),
+                  onFavorite: () => onToggleFavorite(product),
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 }
@@ -4253,13 +4450,13 @@ class SoukCategoryBubbles extends StatelessWidget {
     super.key,
     required this.selected,
     required this.categories,
-    required this.products,
+    required this.shops,
     required this.onSelected,
   });
 
   final String selected;
   final List<String> categories;
-  final List<Product> products;
+  final List<Shop> shops;
   final ValueChanged<String> onSelected;
 
   @override
@@ -4276,17 +4473,14 @@ class SoukCategoryBubbles extends StatelessWidget {
           final target = name == 'More' ? 'All' : name;
           final selectedItem =
               selected == target || (selected == 'All' && name == 'All');
-          final product = firstWhereOrNull(
-            products,
-            (item) =>
-                target == 'All' ||
-                item.category == target ||
-                item.collectionNames.contains(target),
+          final shop = firstWhereOrNull(
+            shops,
+            (item) => target == 'All' || item.category == target,
           );
           return SoukCategoryBubble(
             name: shopperCategoryLabel(name),
             selected: selectedItem,
-            product: product,
+            shop: shop,
             icon: categoryIcon(name),
             onTap: () => onSelected(target),
           );
@@ -4301,14 +4495,14 @@ class SoukCategoryBubble extends StatelessWidget {
     super.key,
     required this.name,
     required this.selected,
-    required this.product,
+    required this.shop,
     required this.icon,
     required this.onTap,
   });
 
   final String name;
   final bool selected;
-  final Product? product;
+  final Shop? shop;
   final IconData icon;
   final VoidCallback onTap;
 
@@ -4342,12 +4536,11 @@ class SoukCategoryBubble extends StatelessWidget {
                     width: 60,
                     height: 60,
                     color: const Color(0xFFF4EEE7),
-                    child: productPrimaryImage(product) == null
-                        ? Icon(icon, color: const Color(0xFF3B2114), size: 30)
-                        : AppNetworkImage(
-                            url: productPrimaryImage(product)!,
-                            size: 160,
-                          ),
+                    child: StoreAvatar(
+                      shop: shop,
+                      size: 60,
+                      fallbackIcon: icon,
+                    ),
                   ),
                 ),
               ),
@@ -4568,12 +4761,14 @@ class SoukFeaturedStoreCard extends StatelessWidget {
     required this.shop,
     required this.products,
     required this.onFollow,
+    required this.onOpen,
     required this.onOpenProduct,
   });
 
   final Shop shop;
   final List<Product> products;
   final VoidCallback onFollow;
+  final VoidCallback onOpen;
   final ValueChanged<Product> onOpenProduct;
 
   @override
@@ -4581,7 +4776,7 @@ class SoukFeaturedStoreCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: products.isEmpty ? null : () => onOpenProduct(products.first),
+        onTap: onOpen,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -4589,10 +4784,7 @@ class SoukFeaturedStoreCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: shop.color,
-                    child: Icon(shop.icon, color: Colors.white),
-                  ),
+                  StoreAvatar(shop: shop, size: 42),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -6058,6 +6250,25 @@ class AppNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (url.startsWith('data:image')) {
+      final commaIndex = url.indexOf(',');
+      if (commaIndex != -1) {
+        try {
+          final bytes = base64Decode(url.substring(commaIndex + 1));
+          return Image.memory(
+            bytes,
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.cover,
+            cacheWidth: size,
+            errorBuilder: errorBuilder,
+          );
+        } catch (error, stackTrace) {
+          return errorBuilder?.call(context, error, stackTrace) ??
+              Container(color: const Color(0xFFE7F0EA));
+        }
+      }
+    }
     return Image.network(
       optimizedImageUrl(url, size),
       width: double.infinity,
@@ -6079,12 +6290,46 @@ class AppNetworkImage extends StatelessWidget {
   }
 }
 
+class StoreAvatar extends StatelessWidget {
+  const StoreAvatar({
+    super.key,
+    required this.shop,
+    required this.size,
+    this.fallbackIcon,
+  });
+
+  final Shop? shop;
+  final double size;
+  final IconData? fallbackIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = shop;
+    final logoUrl = current?.logoUrl;
+    return ClipOval(
+      child: Container(
+        width: size,
+        height: size,
+        color: current?.color ?? const Color(0xFFF4EEE7),
+        child: logoUrl == null || logoUrl.isEmpty
+            ? Icon(
+                fallbackIcon ?? current?.icon ?? Icons.storefront,
+                color: current == null ? const Color(0xFF3B2114) : Colors.white,
+                size: size * 0.48,
+              )
+            : AppNetworkImage(url: logoUrl, size: size.round() * 3),
+      ),
+    );
+  }
+}
+
 class ShopCard extends StatelessWidget {
   const ShopCard({
     super.key,
     required this.shop,
     required this.products,
     required this.favoriteIds,
+    required this.onOpenShop,
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
@@ -6094,6 +6339,7 @@ class ShopCard extends StatelessWidget {
   final Shop shop;
   final List<Product> products;
   final Set<String> favoriteIds;
+  final VoidCallback onOpenShop;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
@@ -6102,82 +6348,95 @@ class ShopCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: shop.color,
-                  child: Icon(shop.icon, color: Colors.white),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        shop.name,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                      Text(
-                        '${shop.category} in ${shop.location}',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-                Chip(
-                  avatar: const Icon(Icons.star, size: 16),
-                  label: Text(shop.rating.toStringAsFixed(1)),
-                ),
-                const SizedBox(width: 6),
-                IconButton.filledTonal(
-                  tooltip: 'Follow store',
-                  onPressed: onFollow,
-                  icon: const Icon(Icons.add_alert_outlined),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(shop.story),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Tag(label: shop.delivery),
-                Tag(label: '${shop.orderCount} orders'),
-                Tag(label: 'Min ${money(shop.minimumOrder)}'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 178,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: products.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (context, index) {
-                  final product = products[index];
-                  return SizedBox(
-                    width: 142,
-                    child: ProductMiniCard(
-                      product: product,
-                      isFavorite: favoriteIds.contains(product.id),
-                      onOpen: () => onOpenProduct(product),
-                      onAdd: () => onAddToCart(product),
-                      onFavorite: () => onToggleFavorite(product),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpenShop,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  StoreAvatar(shop: shop, size: 42),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          shop.name,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          '${shop.category} in ${shop.location}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.black54,
+                              ),
+                        ),
+                      ],
                     ),
-                  );
-                },
+                  ),
+                  Chip(
+                    avatar: const Icon(Icons.star, size: 16),
+                    label: Text(shop.rating.toStringAsFixed(1)),
+                  ),
+                  const SizedBox(width: 6),
+                  IconButton.filledTonal(
+                    tooltip: 'Follow store',
+                    onPressed: onFollow,
+                    icon: const Icon(Icons.add_alert_outlined),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              Text(shop.story),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Tag(label: shop.delivery),
+                  Tag(label: '${shop.orderCount} orders'),
+                  Tag(label: 'Min ${money(shop.minimumOrder)}'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 178,
+                child: products.isEmpty
+                    ? Container(
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8F4EC),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'No products synced yet',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      )
+                    : ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: products.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 10),
+                        itemBuilder: (context, index) {
+                          final product = products[index];
+                          return SizedBox(
+                            width: 142,
+                            child: ProductMiniCard(
+                              product: product,
+                              isFavorite: favoriteIds.contains(product.id),
+                              onOpen: () => onOpenProduct(product),
+                              onAdd: () => onAddToCart(product),
+                              onFavorite: () => onToggleFavorite(product),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -6430,17 +6689,17 @@ class SoukPopularCategoryTile extends StatelessWidget {
   const SoukPopularCategoryTile({
     super.key,
     required this.name,
-    required this.products,
+    required this.shops,
     required this.onTap,
   });
 
   final String name;
-  final List<Product> products;
+  final List<Shop> shops;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final product = products.isEmpty ? null : products.first;
+    final shop = shops.isEmpty ? null : shops.first;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
@@ -6465,16 +6724,13 @@ class SoukPopularCategoryTile extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 color: const Color(0xFFF2EAE1),
-                child: productPrimaryImage(product) == null
-                    ? Icon(
-                        categoryIcon(name),
-                        color: const Color(0xFF8F552E),
-                        size: 42,
-                      )
-                    : AppNetworkImage(
-                        url: productPrimaryImage(product)!,
-                        size: 260,
-                      ),
+                child: Center(
+                  child: StoreAvatar(
+                    shop: shop,
+                    size: 72,
+                    fallbackIcon: categoryIcon(name),
+                  ),
+                ),
               ),
             ),
             Padding(
@@ -6493,7 +6749,7 @@ class SoukPopularCategoryTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    '${products.length}+ items',
+                    '${shops.length} stores',
                     style: Theme.of(
                       context,
                     ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -8208,6 +8464,8 @@ class Shop {
     required this.orderCount,
     required this.verified,
     required this.statusLabel,
+    this.logoUrl,
+    this.bannerUrl,
   });
 
   factory Shop.fromJson(Map<String, dynamic> json) {
@@ -8228,6 +8486,8 @@ class Shop {
       orderCount: parseInt(json['orderCount']),
       verified: json['verified'] == true,
       statusLabel: json['status'] as String? ?? 'DRAFT',
+      logoUrl: json['logoUrl'] as String?,
+      bannerUrl: json['bannerUrl'] as String?,
     );
   }
 
@@ -8244,6 +8504,8 @@ class Shop {
   final int orderCount;
   final bool verified;
   final String statusLabel;
+  final String? logoUrl;
+  final String? bannerUrl;
 }
 
 class Product {
@@ -9588,6 +9850,9 @@ IconData categoryIcon(String value) {
   }
   if (name.contains('home') || name.contains('decor')) {
     return Icons.chair_outlined;
+  }
+  if (name.contains('food') || name.contains('grocery') || name.contains('bakery')) {
+    return Icons.restaurant_outlined;
   }
   if (name.contains('bag')) {
     return Icons.work_outline;
