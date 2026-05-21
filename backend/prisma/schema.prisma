@@ -123,6 +123,7 @@ model Shop {
   whatsappPhone String?
   contactEmail  String?
   storefrontCollectionIds String[] @default([])
+  shopifyMenu   Json?
   shippingPolicy String?
   returnPolicy   String?
   verified      Boolean    @default(false)

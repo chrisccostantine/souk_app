@@ -45,7 +45,13 @@ import {
 const app = express();
 const port = process.env.PORT || 8080;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
-const requiredShopifyScopes = ['read_products', 'read_inventory', 'write_inventory', 'read_locations'];
+const requiredShopifyScopes = [
+  'read_products',
+  'read_inventory',
+  'write_inventory',
+  'read_locations',
+  'read_online_store_navigation',
+];
 const shopifyScopes = requiredShopifyScopes.join(',');
 const oauthStates = new Map();
 const shopifySyncJobs = new Map();
@@ -1707,6 +1713,12 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
       lastSyncedAt: now,
     },
   });
+  if (catalog.menu) {
+    await prisma.shop.update({
+      where: { id: shopId },
+      data: { shopifyMenu: catalog.menu },
+    });
+  }
 
   return {
     syncedAt: now,

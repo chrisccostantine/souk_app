@@ -2438,6 +2438,20 @@ class StorefrontPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(shop.name),
         actions: [
+          if (shop.shopifyMenu.items.isNotEmpty)
+            IconButton(
+              tooltip: 'Store menu',
+              onPressed: () => showStorefrontMenu(
+                context,
+                shop,
+                collectionGroups,
+                favoriteIds,
+                onOpenProduct,
+                onAddToCart,
+                onToggleFavorite,
+              ),
+              icon: const Icon(Icons.menu),
+            ),
           IconButton.filledTonal(
             tooltip: 'Follow store',
             onPressed: () => onFollowStore(shop),
@@ -2537,37 +2551,6 @@ class StorefrontPage extends StatelessWidget {
               if (shop.verified) const Tag(label: 'Verified store'),
             ],
           ),
-          if (collectionGroups.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            const SectionTitle(title: 'Menu', action: 'From Shopify'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final group in collectionGroups)
-                  ActionChip(
-                    avatar: const Icon(Icons.folder_outlined, size: 17),
-                    label: Text(group.title),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (context) => StoreCollectionProductsPage(
-                            shop: shop,
-                            group: group,
-                            favoriteIds: favoriteIds,
-                            onOpenProduct: onOpenProduct,
-                            onAddToCart: onAddToCart,
-                            onToggleFavorite: onToggleFavorite,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-              ],
-            ),
-          ],
           const SizedBox(height: 18),
           if (products.isEmpty)
             const EmptyState(
@@ -2634,6 +2617,188 @@ class StorefrontPage extends StatelessWidget {
       ),
     );
   }
+}
+
+void showStorefrontMenu(
+  BuildContext context,
+  Shop shop,
+  List<StorefrontCollectionGroup> collectionGroups,
+  Set<String> favoriteIds,
+  ValueChanged<Product> onOpenProduct,
+  ValueChanged<Product> onAddToCart,
+  ValueChanged<Product> onToggleFavorite,
+) {
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+          children: [
+            Text(
+              shop.shopifyMenu.title.isEmpty ? 'Store menu' : shop.shopifyMenu.title,
+              style: Theme.of(sheetContext)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 10),
+            for (final item in shop.shopifyMenu.items)
+              StorefrontMenuItemTile(
+                item: item,
+                depth: 0,
+                onTap: (item) {
+                  Navigator.pop(sheetContext);
+                  openStorefrontMenuItem(
+                    context,
+                    shop,
+                    item,
+                    collectionGroups,
+                    favoriteIds,
+                    onOpenProduct,
+                    onAddToCart,
+                    onToggleFavorite,
+                  );
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class StorefrontMenuItemTile extends StatelessWidget {
+  const StorefrontMenuItemTile({
+    super.key,
+    required this.item,
+    required this.depth,
+    required this.onTap,
+  });
+
+  final ShopifyMenuItem item;
+  final int depth;
+  final ValueChanged<ShopifyMenuItem> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final children = item.items
+        .map(
+          (child) => StorefrontMenuItemTile(
+            item: child,
+            depth: depth + 1,
+            onTap: onTap,
+          ),
+        )
+        .toList();
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.only(left: depth * 18.0, right: 4),
+          leading: Icon(menuItemIcon(item.type)),
+          title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          trailing: item.items.isEmpty ? const Icon(Icons.chevron_right) : null,
+          onTap: () => onTap(item),
+        ),
+        ...children,
+      ],
+    );
+  }
+}
+
+IconData menuItemIcon(String type) {
+  return switch (type.toUpperCase()) {
+    'COLLECTION' => Icons.folder_outlined,
+    'PRODUCT' => Icons.shopping_bag_outlined,
+    'PAGE' => Icons.description_outlined,
+    'SEARCH' => Icons.search,
+    'CATALOG' => Icons.storefront,
+    _ => Icons.link,
+  };
+}
+
+void openStorefrontMenuItem(
+  BuildContext context,
+  Shop shop,
+  ShopifyMenuItem item,
+  List<StorefrontCollectionGroup> collectionGroups,
+  Set<String> favoriteIds,
+  ValueChanged<Product> onOpenProduct,
+  ValueChanged<Product> onAddToCart,
+  ValueChanged<Product> onToggleFavorite,
+) {
+  final group = matchingMenuCollection(item, collectionGroups);
+  if (group != null) {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => StoreCollectionProductsPage(
+          shop: shop,
+          group: group,
+          favoriteIds: favoriteIds,
+          onOpenProduct: onOpenProduct,
+          onAddToCart: onAddToCart,
+          onToggleFavorite: onToggleFavorite,
+        ),
+      ),
+    );
+    return;
+  }
+  final url = storefrontMenuUrl(shop, item);
+  if (url != null) {
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+}
+
+StorefrontCollectionGroup? matchingMenuCollection(
+  ShopifyMenuItem item,
+  List<StorefrontCollectionGroup> groups,
+) {
+  if (item.type.toUpperCase() != 'COLLECTION') {
+    return null;
+  }
+  final itemTitle = comparableMenuText(item.title);
+  final handle = menuCollectionHandle(item.url);
+  return firstWhereOrNull(
+    groups,
+    (group) =>
+        comparableMenuText(group.title) == itemTitle ||
+        (handle != null && comparableMenuText(group.title) == handle),
+  );
+}
+
+String? storefrontMenuUrl(Shop shop, ShopifyMenuItem item) {
+  final rawUrl = item.url?.trim();
+  if (rawUrl == null || rawUrl.isEmpty || rawUrl == '#') {
+    return null;
+  }
+  if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+    return rawUrl;
+  }
+  final storeUrl = shop.websiteUrl;
+  if (storeUrl == null || storeUrl.isEmpty) {
+    return null;
+  }
+  final base = storeUrl.endsWith('/') ? storeUrl.substring(0, storeUrl.length - 1) : storeUrl;
+  final path = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
+  return '$base$path';
+}
+
+String? menuCollectionHandle(String? url) {
+  if (url == null) {
+    return null;
+  }
+  final match = RegExp(r'/collections/([^/?#]+)').firstMatch(url);
+  return match?.group(1);
+}
+
+String comparableMenuText(String value) {
+  return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(
+        RegExp(r'^-+|-+$'),
+        '',
+      );
 }
 
 class StoreSocialLinks extends StatelessWidget {
@@ -8660,6 +8825,7 @@ class Shop {
     this.tiktokUrl,
     this.websiteUrl,
     this.storefrontCollectionIds = const [],
+    this.shopifyMenu = const ShopifyMenu(),
   });
 
   factory Shop.fromJson(Map<String, dynamic> json) {
@@ -8690,6 +8856,9 @@ class Shop {
               .map((item) => item.toString())
               .where((item) => item.isNotEmpty)
               .toList(),
+      shopifyMenu: ShopifyMenu.fromJson(
+        json['shopifyMenu'] as Map<String, dynamic>?,
+      ),
     );
   }
 
@@ -8712,6 +8881,68 @@ class Shop {
   final String? tiktokUrl;
   final String? websiteUrl;
   final List<String> storefrontCollectionIds;
+  final ShopifyMenu shopifyMenu;
+}
+
+class ShopifyMenu {
+  const ShopifyMenu({
+    this.id = '',
+    this.title = '',
+    this.handle = '',
+    this.items = const [],
+  });
+
+  factory ShopifyMenu.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const ShopifyMenu();
+    }
+    return ShopifyMenu(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      handle: json['handle']?.toString() ?? '',
+      items: (json['items'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ShopifyMenuItem.fromJson)
+          .toList(),
+    );
+  }
+
+  final String id;
+  final String title;
+  final String handle;
+  final List<ShopifyMenuItem> items;
+}
+
+class ShopifyMenuItem {
+  const ShopifyMenuItem({
+    required this.id,
+    required this.title,
+    required this.type,
+    this.url,
+    this.resourceId,
+    this.items = const [],
+  });
+
+  factory ShopifyMenuItem.fromJson(Map<String, dynamic> json) {
+    return ShopifyMenuItem(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Menu item',
+      type: json['type']?.toString() ?? 'HTTP',
+      url: json['url']?.toString(),
+      resourceId: json['resourceId']?.toString(),
+      items: (json['items'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(ShopifyMenuItem.fromJson)
+          .toList(),
+    );
+  }
+
+  final String id;
+  final String title;
+  final String type;
+  final String? url;
+  final String? resourceId;
+  final List<ShopifyMenuItem> items;
 }
 
 class Product {

@@ -89,6 +89,17 @@ export class ShopifyClient {
     });
   }
 
+  async graphql(query, variables = {}) {
+    return this.#request(`https://${this.shopDomain}/admin/api/${this.apiVersion}/graphql.json`, {
+      method: 'POST',
+      headers: {
+        'X-Shopify-Access-Token': this.accessToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+  }
+
   async #request(url, options, attempt = 0) {
     const result = await this.#requestWithMeta(url, options, attempt);
     return result.body;
@@ -104,6 +115,12 @@ export class ShopifyClient {
       return this.#requestWithMeta(url, options, attempt + 1);
     }
     const body = await this.#decode(response);
+    if (body.errors) {
+      const error = new Error('Shopify GraphQL request failed');
+      error.status = response.status;
+      error.details = body.errors;
+      throw error;
+    }
     return {
       body,
       nextUrl: parseNextUrl(response.headers.get('link')),
@@ -141,6 +158,7 @@ export async function fetchShopifyCatalog(connection, onProgress = () => {}) {
   const smartCollections = await client.getAll('/smart_collections.json', { limit: 250 }, 'smart_collections');
   onProgress({ progress: 48, message: `Downloaded ${smartCollections.length} smart collections` });
   const locationsResult = await client.get('/locations.json', { limit: 250 });
+  const menu = await fetchShopifyMainMenu(client, onProgress);
 
   const collections = [
     ...customCollections.map((collection) => ({
@@ -204,7 +222,81 @@ export async function fetchShopifyCatalog(connection, onProgress = () => {}) {
     collects,
     inventoryLevels,
     locations: locationsResult.locations ?? [],
+    menu,
   };
+}
+
+async function fetchShopifyMainMenu(client, onProgress) {
+  onProgress({ progress: 49, message: 'Reading Shopify navigation menu' });
+  try {
+    const result = await client.graphql(`
+      query SoukMenus {
+        menus(first: 20, sortKey: TITLE) {
+          nodes {
+            id
+            title
+            handle
+            isDefault
+            items {
+              id
+              title
+              type
+              url
+              resourceId
+              items {
+                id
+                title
+                type
+                url
+                resourceId
+                items {
+                  id
+                  title
+                  type
+                  url
+                  resourceId
+                }
+              }
+            }
+          }
+        }
+      }
+    `);
+    const menus = result.data?.menus?.nodes ?? [];
+    const menu =
+      menus.find((item) => item.handle === 'main-menu') ??
+      menus.find((item) => item.isDefault) ??
+      menus.find((item) => item.handle?.includes('main')) ??
+      menus[0] ??
+      null;
+    return menu ? normalizeShopifyMenu(menu) : null;
+  } catch (error) {
+    onProgress({
+      progress: 49,
+      message: 'Products will sync, but Shopify menu needs navigation permission',
+    });
+    return null;
+  }
+}
+
+function normalizeShopifyMenu(menu) {
+  return {
+    id: menu.id,
+    title: menu.title,
+    handle: menu.handle,
+    items: normalizeShopifyMenuItems(menu.items ?? []),
+  };
+}
+
+function normalizeShopifyMenuItems(items) {
+  return items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    type: item.type,
+    url: item.url,
+    resourceId: item.resourceId,
+    items: normalizeShopifyMenuItems(item.items ?? []),
+  }));
 }
 
 export async function adjustShopifyInventory({ connection, inventoryItemId, locationId, quantity }) {
