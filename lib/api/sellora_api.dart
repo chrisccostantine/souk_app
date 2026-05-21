@@ -89,6 +89,11 @@ class SelloraApi {
     return _post('/api/shops/$shopId/follow', payload);
   }
 
+  Future<List<dynamic>> fetchCustomerFollows(String email) async {
+    final body = await _get('/api/customers/${Uri.encodeComponent(email)}/follows');
+    return body['follows'] as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> trackShopAnalytics(String shopId, Map<String, dynamic> payload) async {
     return _post('/api/shops/$shopId/analytics', payload);
   }

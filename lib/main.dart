@@ -1344,6 +1344,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   MarketplaceFilters _filters = const MarketplaceFilters();
   final List<CartLine> _cart = [];
   final Set<String> _favoriteIds = {};
+  final Set<String> _followedShopIds = {};
   final List<Order> _orders = [];
   List<Shop> _shops = [];
   List<Product> _products = [];
@@ -1364,6 +1365,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     super.initState();
     _loadCatalog();
     _loadCustomerOrders();
+    _loadCustomerFollows();
   }
 
   @override
@@ -1446,6 +1448,34 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     }
   }
 
+  Future<void> _loadCustomerFollows() async {
+    if (selloraApiUrl.isEmpty) {
+      return;
+    }
+    try {
+      final rows = await SelloraApi(
+        baseUrl: selloraApiUrl,
+      ).fetchCustomerFollows(widget.session.email);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _followedShopIds
+          ..clear()
+          ..addAll(
+            rows
+                .map((item) => item as Map<String, dynamic>)
+                .map((item) => item['shop'] as Map<String, dynamic>?)
+                .whereType<Map<String, dynamic>>()
+                .map((shop) => shop['id']?.toString() ?? '')
+                .where((id) => id.isNotEmpty),
+          );
+      });
+    } catch (_) {
+      // Following state will update locally when the user follows a store.
+    }
+  }
+
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1514,21 +1544,43 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   Future<void> _followShop(Shop shop) async {
+    if (_followedShopIds.contains(shop.id)) {
+      _showSnack('Already following ${shop.name}');
+      return;
+    }
     if (selloraApiUrl.isEmpty || shop.id.isEmpty) {
       _showSnack('SELLORA_API_URL is required to follow stores');
       return;
     }
     try {
+      setState(() => _followedShopIds.add(shop.id));
       await SelloraApi(baseUrl: selloraApiUrl).followShop(shop.id, {
         'email': widget.session.email,
         'name': widget.session.name,
       });
       _showSnack('Following ${shop.name}');
     } on SelloraApiException catch (error) {
+      setState(() => _followedShopIds.remove(shop.id));
       _showSnack(error.message);
     } catch (_) {
+      setState(() => _followedShopIds.remove(shop.id));
       _showSnack('Could not follow store');
     }
+  }
+
+  void _openFollowingStores() {
+    final followedShops = _shops
+        .where((shop) => _followedShopIds.contains(shop.id))
+        .toList();
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (context) => FollowingStoresPage(
+          shops: followedShops,
+          onOpenShop: _openShop,
+        ),
+      ),
+    );
   }
 
   void _openProduct(Product product) {
@@ -1567,6 +1619,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           shop: shop,
           products: shopProducts,
           favoriteIds: _favoriteIds,
+          isFollowing: _followedShopIds.contains(shop.id),
           onOpenProduct: _openProduct,
           onAddToCart: _addToCart,
           onToggleFavorite: _toggleFavorite,
@@ -1874,6 +1927,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           for (final shop in _shops) shop.category,
         }.toList()..sort(),
         favoriteIds: _favoriteIds,
+        followedShopIds: _followedShopIds,
         onViewAllFeatured: () =>
             setState(() => _showAllFeatured = !_showAllFeatured),
         onQueryChanged: _setSearchDraft,
@@ -1893,6 +1947,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         session: widget.session,
         onLogout: widget.onLogout,
         favoriteIds: _favoriteIds,
+        followedShopIds: _followedShopIds,
         shops: _shops,
         products: _products,
         onOpenProduct: _openProduct,
@@ -1925,7 +1980,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         session: widget.session,
         onLogout: widget.onLogout,
         favoriteCount: _favoriteIds.length,
+        followingCount: _followedShopIds.length,
         orderCount: _orders.length,
+        onFollowingTap: _openFollowingStores,
         onChangePassword: _changePassword,
         cartCount: _cartCount,
         onCartTap: _openCartSheet,
@@ -2141,6 +2198,7 @@ class HomePage extends StatelessWidget {
     required this.message,
     required this.categories,
     required this.favoriteIds,
+    required this.followedShopIds,
     required this.onViewAllFeatured,
     required this.onQueryChanged,
     required this.onCategoryChanged,
@@ -2168,6 +2226,7 @@ class HomePage extends StatelessWidget {
   final String? message;
   final List<String> categories;
   final Set<String> favoriteIds;
+  final Set<String> followedShopIds;
   final VoidCallback onViewAllFeatured;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onCategoryChanged;
@@ -2322,6 +2381,7 @@ class HomePage extends StatelessWidget {
                           child: SelloraFeaturedStoreCard(
                             shop: shop,
                             products: shopProducts,
+                            isFollowing: followedShopIds.contains(shop.id),
                             onFollow: () => onFollowStore(shop),
                             onOpen: () => onOpenShop(shop),
                             onOpenProduct: onOpenProduct,
@@ -2406,6 +2466,7 @@ class StoresPage extends StatelessWidget {
     required this.session,
     required this.onLogout,
     required this.favoriteIds,
+    required this.followedShopIds,
     required this.shops,
     required this.products,
     required this.onOpenProduct,
@@ -2420,6 +2481,7 @@ class StoresPage extends StatelessWidget {
   final AppSession session;
   final VoidCallback onLogout;
   final Set<String> favoriteIds;
+  final Set<String> followedShopIds;
   final List<Shop> shops;
   final List<Product> products;
   final ValueChanged<Product> onOpenProduct;
@@ -2450,6 +2512,7 @@ class StoresPage extends StatelessWidget {
           for (final shop in shops) ...[
             ShopCard(
               shop: shop,
+              isFollowing: followedShopIds.contains(shop.id),
               onOpenShop: () => onOpenShop(shop),
               onFollow: () => onFollowStore(shop),
             ),
@@ -2466,6 +2529,7 @@ class StorefrontPage extends StatelessWidget {
     required this.shop,
     required this.products,
     required this.favoriteIds,
+    required this.isFollowing,
     required this.onOpenProduct,
     required this.onAddToCart,
     required this.onToggleFavorite,
@@ -2475,6 +2539,7 @@ class StorefrontPage extends StatelessWidget {
   final Shop shop;
   final List<Product> products;
   final Set<String> favoriteIds;
+  final bool isFollowing;
   final ValueChanged<Product> onOpenProduct;
   final ValueChanged<Product> onAddToCart;
   final ValueChanged<Product> onToggleFavorite;
@@ -2508,9 +2573,13 @@ class StorefrontPage extends StatelessWidget {
               icon: const Icon(Icons.menu),
             ),
           IconButton.filledTonal(
-            tooltip: 'Follow store',
+            tooltip: isFollowing ? 'Following store' : 'Follow store',
             onPressed: () => onFollowStore(shop),
-            icon: const Icon(Icons.add_alert_outlined),
+            icon: Icon(
+              isFollowing
+                  ? Icons.notifications_active
+                  : Icons.add_alert_outlined,
+            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -3251,8 +3320,10 @@ class ProfilePage extends StatelessWidget {
     required this.session,
     required this.onLogout,
     required this.favoriteCount,
+    required this.followingCount,
     required this.orderCount,
     required this.onChangePassword,
+    required this.onFollowingTap,
     required this.cartCount,
     required this.onCartTap,
   });
@@ -3260,8 +3331,10 @@ class ProfilePage extends StatelessWidget {
   final AppSession session;
   final VoidCallback onLogout;
   final int favoriteCount;
+  final int followingCount;
   final int orderCount;
   final VoidCallback onChangePassword;
+  final VoidCallback onFollowingTap;
   final int cartCount;
   final VoidCallback onCartTap;
 
@@ -3284,6 +3357,15 @@ class ProfilePage extends StatelessWidget {
                 icon: Icons.favorite_border,
                 value: favoriteCount.toString(),
                 label: 'Saved',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ProfileStatTile(
+                icon: Icons.notifications_active_outlined,
+                value: followingCount.toString(),
+                label: 'Following',
+                onTap: onFollowingTap,
               ),
             ),
             const SizedBox(width: 12),
@@ -3313,17 +3395,25 @@ class ProfileStatTile extends StatelessWidget {
     required this.icon,
     required this.value,
     required this.label,
+    this.onTap,
   });
 
   final IconData icon;
   final String value;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
@@ -3334,30 +3424,81 @@ class ProfileStatTile extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Icon(icon, color: const Color(0xFF8F552E)),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                ),
-              ),
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              Icon(icon, color: const Color(0xFF8F552E)),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
+    );
+  }
+}
+
+class FollowingStoresPage extends StatelessWidget {
+  const FollowingStoresPage({
+    super.key,
+    required this.shops,
+    required this.onOpenShop,
+  });
+
+  final List<Shop> shops;
+  final ValueChanged<Shop> onOpenShop;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Following')),
+      body: shops.isEmpty
+          ? const EmptyState(
+              icon: Icons.notifications_none,
+              title: 'No followed stores yet',
+              message: 'Follow stores to see them here and receive updates.',
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+              itemCount: shops.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final shop = shops[index];
+                return ListTile(
+                  tileColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  leading: StoreAvatar(shop: shop, size: 42),
+                  title: Text(
+                    shop.name,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  subtitle: Text(shop.category),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onOpenShop(shop);
+                  },
+                );
+              },
+            ),
     );
   }
 }
@@ -4140,6 +4281,9 @@ class _SellerHubPageState extends State<SellerHubPage>
         baseUrl: selloraApiUrl,
       ).createCampaign(shopId, payload);
       await _loadSellerGrowth();
+      if (!mounted) {
+        return;
+      }
       final delivery = result['delivery'] as Map<String, dynamic>?;
       final delivered = delivery?['delivered'];
       final audienceSize = delivery?['audienceSize'];
@@ -4149,8 +4293,14 @@ class _SellerHubPageState extends State<SellerHubPage>
             : 'Campaign sent to $delivered of $audienceSize follower devices',
       );
     } on SelloraApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
       _showSellerSnack(error.message);
     } catch (_) {
+      if (!mounted) {
+        return;
+      }
       _showSellerSnack('Could not create campaign');
     }
   }
@@ -5232,6 +5382,7 @@ class SelloraFeaturedStoreCard extends StatelessWidget {
     super.key,
     required this.shop,
     required this.products,
+    required this.isFollowing,
     required this.onFollow,
     required this.onOpen,
     required this.onOpenProduct,
@@ -5239,6 +5390,7 @@ class SelloraFeaturedStoreCard extends StatelessWidget {
 
   final Shop shop;
   final List<Product> products;
+  final bool isFollowing;
   final VoidCallback onFollow;
   final VoidCallback onOpen;
   final ValueChanged<Product> onOpenProduct;
@@ -5293,9 +5445,13 @@ class SelloraFeaturedStoreCard extends StatelessWidget {
                     ),
                   ),
                   IconButton.filledTonal(
-                    tooltip: 'Follow store',
+                    tooltip: isFollowing ? 'Following store' : 'Follow store',
                     onPressed: onFollow,
-                    icon: const Icon(Icons.add_alert_outlined),
+                    icon: Icon(
+                      isFollowing
+                          ? Icons.notifications_active
+                          : Icons.add_alert_outlined,
+                    ),
                   ),
                 ],
               ),
@@ -6800,11 +6956,13 @@ class ShopCard extends StatelessWidget {
   const ShopCard({
     super.key,
     required this.shop,
+    required this.isFollowing,
     required this.onOpenShop,
     required this.onFollow,
   });
 
   final Shop shop;
+  final bool isFollowing;
   final VoidCallback onOpenShop;
   final VoidCallback onFollow;
 
@@ -6846,9 +7004,13 @@ class ShopCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   IconButton.filledTonal(
-                    tooltip: 'Follow store',
+                    tooltip: isFollowing ? 'Following store' : 'Follow store',
                     onPressed: onFollow,
-                    icon: const Icon(Icons.add_alert_outlined),
+                    icon: Icon(
+                      isFollowing
+                          ? Icons.notifications_active
+                          : Icons.add_alert_outlined,
+                    ),
                   ),
                 ],
               ),
@@ -8133,7 +8295,7 @@ class SellerFeatureSuite extends StatelessWidget {
   final SellerGrowthStats growthStats;
   final bool synced;
   final List<SellerInventoryProduct> products;
-  final ValueChanged<Map<String, dynamic>> onCreateCampaign;
+  final Future<void> Function(Map<String, dynamic>) onCreateCampaign;
   final ValueChanged<Map<String, dynamic>> onCreatePlacement;
   final ValueChanged<Map<String, dynamic>> onCreateAffiliateLink;
 
@@ -9744,14 +9906,14 @@ class OnboardingItem {
 
 Future<void> showCampaignDialog(
   BuildContext context,
-  ValueChanged<Map<String, dynamic>> onSubmit,
+  Future<void> Function(Map<String, dynamic>) onSubmit,
 ) async {
   final title = TextEditingController(text: 'New arrivals just dropped');
   final message = TextEditingController(
     text: 'Shop the latest products before they sell out.',
   );
   var channel = 'PUSH';
-  await showDialog<void>(
+  final payload = await showDialog<Map<String, dynamic>>(
     context: context,
     builder: (context) {
       return StatefulBuilder(
@@ -9806,13 +9968,12 @@ Future<void> showCampaignDialog(
               ),
               FilledButton(
                 onPressed: () {
-                  onSubmit({
+                  Navigator.pop(context, {
                     'channel': channel,
                     'title': title.text.trim(),
                     'message': message.text.trim(),
                     'audience': 'followers',
                   });
-                  Navigator.pop(context);
                 },
                 child: const Text('Create'),
               ),
@@ -9824,6 +9985,9 @@ Future<void> showCampaignDialog(
   );
   title.dispose();
   message.dispose();
+  if (payload != null) {
+    await onSubmit(payload);
+  }
 }
 
 Future<void> showPlacementDialog(

@@ -791,10 +791,11 @@ app.post('/api/shops/:id/follow', async (req, res, next) => {
   try {
     const input = validate(followStoreSchema, req.body);
     const shopId = String(req.params.id);
+    const email = input.email.toLowerCase();
     const user = await prisma.user.upsert({
-      where: { email: input.email },
+      where: { email },
       update: { name: input.name },
-      create: { email: input.email, name: input.name, role: 'CUSTOMER' },
+      create: { email, name: input.name, role: 'CUSTOMER' },
     });
     const [follow, loyalty] = await prisma.$transaction([
       prisma.storeFollow.upsert({
@@ -814,6 +815,20 @@ app.post('/api/shops/:id/follow', async (req, res, next) => {
       }),
     ]);
     res.status(201).json({ follow, loyalty });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/customers/:email/follows', async (req, res, next) => {
+  try {
+    const email = String(req.params.email).toLowerCase();
+    const follows = await prisma.storeFollow.findMany({
+      where: { user: { email } },
+      include: { shop: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ follows });
   } catch (error) {
     next(error);
   }
