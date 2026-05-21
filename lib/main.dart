@@ -2572,6 +2572,8 @@ class StorefrontPage extends StatelessWidget {
                       group: StorefrontCollectionGroup(
                         id: 'all',
                         title: 'All products',
+                        shopifyCollectionId: null,
+                        handle: null,
                         products: products,
                       ),
                       favoriteIds: favoriteIds,
@@ -2746,6 +2748,14 @@ void openStorefrontMenuItem(
     );
     return;
   }
+  if (item.type.toUpperCase() == 'COLLECTION') {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Sync Shopify again to open this collection inside Souk.'),
+      ),
+    );
+    return;
+  }
   final url = storefrontMenuUrl(shop, item);
   if (url != null) {
     launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -2761,9 +2771,13 @@ StorefrontCollectionGroup? matchingMenuCollection(
   }
   final itemTitle = comparableMenuText(item.title);
   final handle = menuCollectionHandle(item.url);
+  final shopifyCollectionId = shopifyNumericId(item.resourceId);
   return firstWhereOrNull(
     groups,
     (group) =>
+        (shopifyCollectionId != null &&
+            group.shopifyCollectionId == shopifyCollectionId) ||
+        (handle != null && group.handle == handle) ||
         comparableMenuText(group.title) == itemTitle ||
         (handle != null && comparableMenuText(group.title) == handle),
   );
@@ -2792,6 +2806,13 @@ String? menuCollectionHandle(String? url) {
   }
   final match = RegExp(r'/collections/([^/?#]+)').firstMatch(url);
   return match?.group(1);
+}
+
+String? shopifyNumericId(String? value) {
+  if (value == null || value.isEmpty) {
+    return null;
+  }
+  return RegExp(r'(\d+)$').firstMatch(value)?.group(1);
 }
 
 String comparableMenuText(String value) {
@@ -2962,11 +2983,15 @@ class StorefrontCollectionGroup {
   const StorefrontCollectionGroup({
     required this.id,
     required this.title,
+    required this.shopifyCollectionId,
+    required this.handle,
     required this.products,
   });
 
   final String id;
   final String title;
+  final String? shopifyCollectionId;
+  final String? handle;
   final List<Product> products;
 }
 
@@ -8962,6 +8987,7 @@ class Product {
     required this.variants,
     required this.collectionNames,
     required this.collectionIds,
+    required this.collectionShopifyIds,
     required this.featured,
     this.imageUrl,
   });
@@ -8979,6 +9005,7 @@ class Product {
         .toList();
     final collectionNames = productCollectionNames(json);
     final collectionIds = productCollectionIds(json);
+    final collectionShopifyIds = productCollectionShopifyIds(json);
     return Product(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Product',
@@ -8998,6 +9025,7 @@ class Product {
       variants: variants,
       collectionNames: collectionNames,
       collectionIds: collectionIds,
+      collectionShopifyIds: collectionShopifyIds,
       featured: json['featured'] == true,
     );
   }
@@ -9018,6 +9046,7 @@ class Product {
   final List<ProductVariant> variants;
   final List<String> collectionNames;
   final List<String> collectionIds;
+  final List<String> collectionShopifyIds;
   final bool featured;
 
   int get effectiveStock {
@@ -10565,6 +10594,16 @@ List<String> productCollectionIds(Map<String, dynamic> json) {
       .toList();
 }
 
+List<String> productCollectionShopifyIds(Map<String, dynamic> json) {
+  final rows = json['collections'] as List<dynamic>? ?? const [];
+  return rows
+      .map((item) => item as Map<String, dynamic>)
+      .map((item) => item['collection'] as Map<String, dynamic>?)
+      .whereType<Map<String, dynamic>>()
+      .map((collection) => collection['shopifyCollectionId']?.toString() ?? '')
+      .toList();
+}
+
 List<StorefrontCollectionGroup> storefrontCollectionGroups(
   Shop shop,
   List<Product> products,
@@ -10576,10 +10615,17 @@ List<StorefrontCollectionGroup> storefrontCollectionGroups(
       final title = index < product.collectionNames.length
           ? product.collectionNames[index]
           : 'Collection';
+      final shopifyCollectionId = index < product.collectionShopifyIds.length
+          ? product.collectionShopifyIds[index]
+          : null;
       final existing = byId[id];
       byId[id] = StorefrontCollectionGroup(
         id: id,
         title: existing?.title ?? title,
+        shopifyCollectionId:
+            existing?.shopifyCollectionId ??
+            (shopifyCollectionId?.isEmpty == true ? null : shopifyCollectionId),
+        handle: existing?.handle ?? comparableMenuText(title),
         products: [...?existing?.products, product],
       );
     }
