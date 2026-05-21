@@ -11,7 +11,9 @@ import 'api/sellora_api.dart';
 
 void main() => runApp(const SelloraApp());
 
-const selloraApiUrl = String.fromEnvironment('SELLORA_API_URL');
+const _selloraApiUrl = String.fromEnvironment('SELLORA_API_URL');
+const _legacyApiUrl = String.fromEnvironment('SOUK_API_URL');
+const selloraApiUrl = _selloraApiUrl == '' ? _legacyApiUrl : _selloraApiUrl;
 const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 const appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID');
 const appleRedirectUri = String.fromEnvironment('APPLE_REDIRECT_URI');
