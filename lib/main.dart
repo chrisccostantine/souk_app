@@ -127,7 +127,8 @@ Future<void> registerNotificationDevice(AppSession session) async {
         'platform': notificationPlatformLabel(),
       });
     });
-  } catch (_) {
+  } catch (error) {
+    debugPrint('Push notification registration skipped: $error');
     // Firebase config can be added later; login must not depend on push setup.
   }
 }
@@ -1544,40 +1545,62 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   Future<void> _followShop(Shop shop) async {
-    if (_followedShopIds.contains(shop.id)) {
-      _showSnack('Already following ${shop.name}');
-      return;
-    }
     if (selloraApiUrl.isEmpty || shop.id.isEmpty) {
       _showSnack('SELLORA_API_URL is required to follow stores');
       return;
     }
+    final wasFollowing = _followedShopIds.contains(shop.id);
+    setState(() {
+      if (wasFollowing) {
+        _followedShopIds.remove(shop.id);
+      } else {
+        _followedShopIds.add(shop.id);
+      }
+    });
     try {
-      setState(() => _followedShopIds.add(shop.id));
-      await SelloraApi(baseUrl: selloraApiUrl).followShop(shop.id, {
+      final payload = {
         'email': widget.session.email,
         'name': widget.session.name,
-      });
-      _showSnack('Following ${shop.name}');
+      };
+      if (wasFollowing) {
+        await SelloraApi(baseUrl: selloraApiUrl).unfollowShop(shop.id, payload);
+        _showSnack('Unfollowed ${shop.name}');
+      } else {
+        await SelloraApi(baseUrl: selloraApiUrl).followShop(shop.id, payload);
+        _showSnack('Following ${shop.name}');
+      }
     } on SelloraApiException catch (error) {
-      setState(() => _followedShopIds.remove(shop.id));
+      setState(() {
+        if (wasFollowing) {
+          _followedShopIds.add(shop.id);
+        } else {
+          _followedShopIds.remove(shop.id);
+        }
+      });
       _showSnack(error.message);
     } catch (_) {
-      setState(() => _followedShopIds.remove(shop.id));
-      _showSnack('Could not follow store');
+      setState(() {
+        if (wasFollowing) {
+          _followedShopIds.add(shop.id);
+        } else {
+          _followedShopIds.remove(shop.id);
+        }
+      });
+      _showSnack(
+        wasFollowing ? 'Could not unfollow store' : 'Could not follow store',
+      );
     }
   }
 
   void _openFollowingStores() {
-    final followedShops = _shops
-        .where((shop) => _followedShopIds.contains(shop.id))
-        .toList();
     Navigator.push(
       context,
       MaterialPageRoute<void>(
         builder: (context) => FollowingStoresPage(
-          shops: followedShops,
+          shops: _shops,
+          followedShopIds: _followedShopIds,
           onOpenShop: _openShop,
+          onToggleFollow: _followShop,
         ),
       ),
     );
@@ -3458,17 +3481,24 @@ class FollowingStoresPage extends StatelessWidget {
   const FollowingStoresPage({
     super.key,
     required this.shops,
+    required this.followedShopIds,
     required this.onOpenShop,
+    required this.onToggleFollow,
   });
 
   final List<Shop> shops;
+  final Set<String> followedShopIds;
   final ValueChanged<Shop> onOpenShop;
+  final ValueChanged<Shop> onToggleFollow;
 
   @override
   Widget build(BuildContext context) {
+    final followedShops = shops
+        .where((shop) => followedShopIds.contains(shop.id))
+        .toList();
     return Scaffold(
       appBar: AppBar(title: const Text('Following')),
-      body: shops.isEmpty
+      body: followedShops.isEmpty
           ? const EmptyState(
               icon: Icons.notifications_none,
               title: 'No followed stores yet',
@@ -3476,10 +3506,10 @@ class FollowingStoresPage extends StatelessWidget {
             )
           : ListView.separated(
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-              itemCount: shops.length,
+              itemCount: followedShops.length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
-                final shop = shops[index];
+                final shop = followedShops[index];
                 return ListTile(
                   tileColor: Colors.white,
                   shape: RoundedRectangleBorder(
@@ -3491,7 +3521,11 @@ class FollowingStoresPage extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                   subtitle: Text(shop.category),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: IconButton(
+                    tooltip: 'Unfollow store',
+                    onPressed: () => onToggleFollow(shop),
+                    icon: const Icon(Icons.notifications_active),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     onOpenShop(shop);
@@ -4285,13 +4319,7 @@ class _SellerHubPageState extends State<SellerHubPage>
         return;
       }
       final delivery = result['delivery'] as Map<String, dynamic>?;
-      final delivered = delivery?['delivered'];
-      final audienceSize = delivery?['audienceSize'];
-      _showSellerSnack(
-        delivery == null
-            ? 'Campaign created'
-            : 'Campaign sent to $delivered of $audienceSize follower devices',
-      );
+      _showSellerSnack(campaignDeliveryMessage(delivery));
     } on SelloraApiException catch (error) {
       if (!mounted) {
         return;
@@ -10501,6 +10529,22 @@ class DialogField {
 String? nullableText(String value) {
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+String campaignDeliveryMessage(Map<String, dynamic>? delivery) {
+  if (delivery == null) {
+    return 'Campaign created';
+  }
+  final followers = parseInt(delivery['followerCount']);
+  final devices = parseInt(delivery['deviceCount']);
+  final delivered = parseInt(delivery['delivered']);
+  if (followers == 0) {
+    return 'Campaign created, but this store has no followers yet';
+  }
+  if (devices == 0) {
+    return 'Campaign created for $followers followers, but none have notifications enabled yet';
+  }
+  return 'Campaign sent to $delivered of $devices follower devices';
 }
 
 enum SocialPlatform { instagram, tiktok, website }

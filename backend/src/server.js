@@ -820,6 +820,24 @@ app.post('/api/shops/:id/follow', async (req, res, next) => {
   }
 });
 
+app.delete('/api/shops/:id/follow', async (req, res, next) => {
+  try {
+    const input = validate(followStoreSchema, req.body);
+    const shopId = String(req.params.id);
+    const email = input.email.toLowerCase();
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      return res.json({ unfollowed: false });
+    }
+    await prisma.storeFollow.deleteMany({
+      where: { userId: user.id, shopId },
+    });
+    res.json({ unfollowed: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/customers/:email/follows', async (req, res, next) => {
   try {
     const email = String(req.params.email).toLowerCase();
@@ -1825,7 +1843,8 @@ async function sendCampaignPush(campaign) {
   });
   return {
     campaign: updatedCampaign,
-    audienceSize: tokens.length,
+    followerCount: follows.length,
+    deviceCount: tokens.length,
     delivered: result.delivered,
     failed: result.failed,
   };

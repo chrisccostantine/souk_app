@@ -89,6 +89,10 @@ class SelloraApi {
     return _post('/api/shops/$shopId/follow', payload);
   }
 
+  Future<Map<String, dynamic>> unfollowShop(String shopId, Map<String, dynamic> payload) async {
+    return _delete('/api/shops/$shopId/follow', payload);
+  }
+
   Future<List<dynamic>> fetchCustomerFollows(String email) async {
     final body = await _get('/api/customers/${Uri.encodeComponent(email)}/follows');
     return body['follows'] as List<dynamic>;
@@ -216,6 +220,14 @@ class SelloraApi {
 
   Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> payload) async {
     final request = await _client.patchUrl(_uri(path));
+    request.headers.contentType = ContentType.json;
+    request.write(jsonEncode(payload));
+    final response = await request.close().timeout(_requestTimeout);
+    return _decode(response);
+  }
+
+  Future<Map<String, dynamic>> _delete(String path, Map<String, dynamic> payload) async {
+    final request = await _client.deleteUrl(_uri(path));
     request.headers.contentType = ContentType.json;
     request.write(jsonEncode(payload));
     final response = await request.close().timeout(_requestTimeout);
