@@ -21,6 +21,7 @@ export const updateShopProfileSchema = z.object({
   websiteUrl: z.string().url().optional().nullable(),
   whatsappPhone: z.string().regex(/^\+961(3\d{6}|(70|71|76|78|79|81)\d{6}|(1|4|5|6|7|8|9)\d{6})$/).optional().nullable(),
   contactEmail: z.string().email().optional().nullable(),
+  storefrontCollectionIds: z.array(z.string().min(1)).max(5).optional(),
   shippingPolicy: z.string().min(2).optional().nullable(),
   returnPolicy: z.string().min(2).optional().nullable(),
   deliveryLabel: z.string().min(2).optional(),
@@ -163,6 +164,7 @@ export const createProductSchema = z.object({
   category: z.string().min(2),
   description: z.string().min(10),
   price: z.coerce.number().positive(),
+  compareAtPrice: z.coerce.number().positive().optional(),
   stock: z.coerce.number().int().min(0),
   imageUrl: z.string().url().optional(),
 });

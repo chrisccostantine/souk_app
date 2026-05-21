@@ -122,6 +122,7 @@ model Shop {
   websiteUrl    String?
   whatsappPhone String?
   contactEmail  String?
+  storefrontCollectionIds String[] @default([])
   shippingPolicy String?
   returnPolicy   String?
   verified      Boolean    @default(false)
@@ -153,6 +154,7 @@ model Product {
   category    String
   description String
   price       Decimal
+  compareAtPrice Decimal?
   stock       Int         @default(0)
   active      Boolean     @default(true)
   featured    Boolean     @default(false)
@@ -196,6 +198,7 @@ model ProductVariant {
   productId              String
   title                  String
   price                  Decimal
+  compareAtPrice         Decimal?
   stock                  Int      @default(0)
   sku                    String?
   option1                String?

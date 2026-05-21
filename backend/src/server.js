@@ -1008,6 +1008,7 @@ app.post('/api/products', async (req, res, next) => {
         category: input.category,
         description: input.description,
         price: input.price,
+        compareAtPrice: input.compareAtPrice,
         stock: input.stock,
         imageUrl: input.imageUrl,
       },
@@ -1580,6 +1581,23 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
       });
       continue;
     }
+    const variantRows = (shopifyProduct.variants ?? []).map((currentVariant) => {
+      const variantInventoryLevel = inventoryByItemId.get(String(currentVariant.inventory_item_id));
+      return {
+        id: crypto.randomUUID(),
+        title: currentVariant.title || 'Default',
+        price: Number(currentVariant.price ?? 0),
+        compareAtPrice: currentVariant.compare_at_price ? Number(currentVariant.compare_at_price) : null,
+        stock: Number(variantInventoryLevel?.available ?? currentVariant.inventory_quantity ?? 0),
+        sku: currentVariant.sku || null,
+        option1: currentVariant.option1 || null,
+        option2: currentVariant.option2 || null,
+        option3: currentVariant.option3 || null,
+        shopifyVariantId: String(currentVariant.id),
+        shopifyInventoryItemId: String(currentVariant.inventory_item_id),
+      };
+    });
+    const productStock = variantRows.reduce((sum, currentVariant) => sum + currentVariant.stock, 0);
     const inventoryLevel = inventoryByItemId.get(String(variant.inventory_item_id));
     const product = await prisma.product.upsert({
       where: {
@@ -1593,7 +1611,8 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
         category: shopifyProduct.product_type || 'Shopify',
         description: stripHtml(shopifyProduct.body_html ?? ''),
         price: Number(variant.price ?? 0),
-        stock: Number(inventoryLevel?.available ?? variant.inventory_quantity ?? 0),
+        compareAtPrice: variant.compare_at_price ? Number(variant.compare_at_price) : null,
+        stock: productStock,
         imageUrl: shopifyProduct.image?.src,
         active: shopifyProduct.status === 'active',
         shopifyProductId: String(shopifyProduct.id),
@@ -1610,7 +1629,8 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
         category: shopifyProduct.product_type || 'Shopify',
         description: stripHtml(shopifyProduct.body_html ?? ''),
         price: Number(variant.price ?? 0),
-        stock: Number(inventoryLevel?.available ?? variant.inventory_quantity ?? 0),
+        compareAtPrice: variant.compare_at_price ? Number(variant.compare_at_price) : null,
+        stock: productStock,
         imageUrl: shopifyProduct.image?.src,
         active: shopifyProduct.status === 'active',
         shopifyProductId: String(shopifyProduct.id),
@@ -1641,25 +1661,12 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
     }
 
     await prisma.productVariant.deleteMany({ where: { productId: product.id } });
-    const variantRows = (shopifyProduct.variants ?? []).map((currentVariant) => {
-      const variantInventoryLevel = inventoryByItemId.get(String(currentVariant.inventory_item_id));
-      return {
-        id: crypto.randomUUID(),
-        productId: product.id,
-        title: currentVariant.title || 'Default',
-        price: Number(currentVariant.price ?? 0),
-        stock: Number(variantInventoryLevel?.available ?? currentVariant.inventory_quantity ?? 0),
-        sku: currentVariant.sku || null,
-        option1: currentVariant.option1 || null,
-        option2: currentVariant.option2 || null,
-        option3: currentVariant.option3 || null,
-        shopifyVariantId: String(currentVariant.id),
-        shopifyInventoryItemId: String(currentVariant.inventory_item_id),
-      };
-    });
     if (variantRows.length > 0) {
       await prisma.productVariant.createMany({
-        data: variantRows,
+        data: variantRows.map((currentVariant) => ({
+          ...currentVariant,
+          productId: product.id,
+        })),
         skipDuplicates: true,
       });
     }

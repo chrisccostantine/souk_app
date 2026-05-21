@@ -2395,14 +2395,7 @@ class StoresPage extends StatelessWidget {
           for (final shop in shops) ...[
             ShopCard(
               shop: shop,
-              products: products
-                  .where((product) => product.shop.id == shop.id)
-                  .toList(),
-              favoriteIds: favoriteIds,
               onOpenShop: () => onOpenShop(shop),
-              onOpenProduct: onOpenProduct,
-              onAddToCart: onAddToCart,
-              onToggleFavorite: onToggleFavorite,
               onFollow: () => onFollowStore(shop),
             ),
             const SizedBox(height: 12),
@@ -2434,10 +2427,13 @@ class StorefrontPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final categories = {
-      for (final product in products) product.category,
-    }.toList()
-      ..sort();
+    final collectionGroups = storefrontCollectionGroups(shop, products);
+    final featuredGroups = shop.storefrontCollectionIds.isEmpty
+        ? collectionGroups.take(5).toList()
+        : collectionGroups
+              .where((group) => shop.storefrontCollectionIds.contains(group.id))
+              .take(5)
+              .toList();
     return Scaffold(
       appBar: AppBar(
         title: Text(shop.name),
@@ -2527,6 +2523,7 @@ class StorefrontPage extends StatelessWidget {
               ],
             ),
           ),
+          StoreSocialLinks(shop: shop),
           Text(shop.story),
           const SizedBox(height: 12),
           Wrap(
@@ -2540,57 +2537,272 @@ class StorefrontPage extends StatelessWidget {
               if (shop.verified) const Tag(label: 'Verified store'),
             ],
           ),
-          if (categories.isNotEmpty) ...[
+          if (collectionGroups.isNotEmpty) ...[
             const SizedBox(height: 18),
-            const SectionTitle(title: 'Shop categories', action: 'In this store'),
+            const SectionTitle(title: 'Menu', action: 'From Shopify'),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final category in categories)
-                  Chip(
-                    avatar: Icon(categoryIcon(category), size: 17),
-                    label: Text(shopperCategoryLabel(category)),
+                for (final group in collectionGroups)
+                  ActionChip(
+                    avatar: const Icon(Icons.folder_outlined, size: 17),
+                    label: Text(group.title),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (context) => StoreCollectionProductsPage(
+                            shop: shop,
+                            group: group,
+                            favoriteIds: favoriteIds,
+                            onOpenProduct: onOpenProduct,
+                            onAddToCart: onAddToCart,
+                            onToggleFavorite: onToggleFavorite,
+                          ),
+                        ),
+                      );
+                    },
                   ),
               ],
             ),
           ],
           const SizedBox(height: 18),
-          const SectionTitle(title: 'Products', action: 'Store catalog'),
-          const SizedBox(height: 12),
           if (products.isEmpty)
             const EmptyState(
               icon: Icons.inventory_2_outlined,
               title: 'No products yet',
               message: 'This store has not synced products yet.',
             )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: products.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                childAspectRatio: 0.58,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              itemBuilder: (context, index) {
-                final product = products[index];
-                return ProductCard(
-                  product: product,
-                  isFavorite: favoriteIds.contains(product.id),
-                  onOpen: () => onOpenProduct(product),
-                  onAdd: () => onAddToCart(product),
-                  onFavorite: () => onToggleFavorite(product),
+          else if (featuredGroups.isEmpty)
+            StoreProductCarousel(
+              title: 'Products',
+              products: products.take(5).toList(),
+              favoriteIds: favoriteIds,
+              onViewAll: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (context) => StoreCollectionProductsPage(
+                      shop: shop,
+                      group: StorefrontCollectionGroup(
+                        id: 'all',
+                        title: 'All products',
+                        products: products,
+                      ),
+                      favoriteIds: favoriteIds,
+                      onOpenProduct: onOpenProduct,
+                      onAddToCart: onAddToCart,
+                      onToggleFavorite: onToggleFavorite,
+                    ),
+                  ),
                 );
               },
+              onOpenProduct: onOpenProduct,
+              onAddToCart: onAddToCart,
+              onToggleFavorite: onToggleFavorite,
+            )
+          else
+            for (final group in featuredGroups) ...[
+              StoreProductCarousel(
+                title: group.title,
+                products: group.products.take(5).toList(),
+                favoriteIds: favoriteIds,
+                onViewAll: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (context) => StoreCollectionProductsPage(
+                        shop: shop,
+                        group: group,
+                        favoriteIds: favoriteIds,
+                        onOpenProduct: onOpenProduct,
+                        onAddToCart: onAddToCart,
+                        onToggleFavorite: onToggleFavorite,
+                      ),
+                    ),
+                  );
+                },
+                onOpenProduct: onOpenProduct,
+                onAddToCart: onAddToCart,
+                onToggleFavorite: onToggleFavorite,
+              ),
+              const SizedBox(height: 18),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+class StoreSocialLinks extends StatelessWidget {
+  const StoreSocialLinks({super.key, required this.shop});
+
+  final Shop shop;
+
+  @override
+  Widget build(BuildContext context) {
+    final links = [
+      if (shop.instagramUrl != null && shop.instagramUrl!.isNotEmpty)
+        _StoreSocialLink('Instagram', Icons.alternate_email, shop.instagramUrl!),
+      if (shop.tiktokUrl != null && shop.tiktokUrl!.isNotEmpty)
+        _StoreSocialLink('TikTok', Icons.music_note_outlined, shop.tiktokUrl!),
+      if (shop.websiteUrl != null && shop.websiteUrl!.isNotEmpty)
+        _StoreSocialLink('Website', Icons.language_outlined, shop.websiteUrl!),
+    ];
+    if (links.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final link in links)
+            IconButton.filledTonal(
+              tooltip: link.label,
+              onPressed: () => launchUrl(
+                Uri.parse(link.url),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: Icon(link.icon),
             ),
         ],
       ),
     );
   }
+}
+
+class _StoreSocialLink {
+  const _StoreSocialLink(this.label, this.icon, this.url);
+
+  final String label;
+  final IconData icon;
+  final String url;
+}
+
+class StoreProductCarousel extends StatelessWidget {
+  const StoreProductCarousel({
+    super.key,
+    required this.title,
+    required this.products,
+    required this.favoriteIds,
+    required this.onViewAll,
+    required this.onOpenProduct,
+    required this.onAddToCart,
+    required this.onToggleFavorite,
+  });
+
+  final String title;
+  final List<Product> products;
+  final Set<String> favoriteIds;
+  final VoidCallback onViewAll;
+  final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Product> onAddToCart;
+  final ValueChanged<Product> onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    if (products.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SectionTitle(
+          title: title,
+          action: '',
+          actionButton: TextButton.icon(
+            onPressed: onViewAll,
+            icon: const Icon(Icons.chevron_right),
+            label: const Text('View all'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 286,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: products.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return SizedBox(
+                width: 168,
+                child: ProductCard(
+                  product: product,
+                  isFavorite: favoriteIds.contains(product.id),
+                  onOpen: () => onOpenProduct(product),
+                  onAdd: () => onAddToCart(product),
+                  onFavorite: () => onToggleFavorite(product),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class StoreCollectionProductsPage extends StatelessWidget {
+  const StoreCollectionProductsPage({
+    super.key,
+    required this.shop,
+    required this.group,
+    required this.favoriteIds,
+    required this.onOpenProduct,
+    required this.onAddToCart,
+    required this.onToggleFavorite,
+  });
+
+  final Shop shop;
+  final StorefrontCollectionGroup group;
+  final Set<String> favoriteIds;
+  final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Product> onAddToCart;
+  final ValueChanged<Product> onToggleFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(group.title)),
+      body: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+        itemCount: group.products.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.58,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        itemBuilder: (context, index) {
+          final product = group.products[index];
+          return ProductCard(
+            product: product,
+            isFavorite: favoriteIds.contains(product.id),
+            onOpen: () => onOpenProduct(product),
+            onAdd: () => onAddToCart(product),
+            onFavorite: () => onToggleFavorite(product),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class StorefrontCollectionGroup {
+  const StorefrontCollectionGroup({
+    required this.id,
+    required this.title,
+    required this.products,
+  });
+
+  final String id;
+  final String title;
+  final List<Product> products;
 }
 
 class ActivityPage extends StatelessWidget {
@@ -2948,7 +3160,7 @@ class SoukBottomNav extends StatelessWidget {
               child: SoukBottomNavItem(
                 icon: Icons.grid_view_outlined,
                 selectedIcon: Icons.grid_view,
-                label: 'Categories',
+                label: 'Stores',
                 selected: selectedIndex == 1,
                 onTap: () => onSelected(1),
               ),
@@ -3609,6 +3821,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
     try {
       await SoukApi(baseUrl: soukApiUrl).updateShopProfile(shopId, payload);
+      await _refreshSellerStore();
       setState(() => _sellerSection = SellerMenuSection.productSync);
       _showSellerSnack('Store profile saved');
     } on SoukApiException catch (error) {
@@ -3870,7 +4083,7 @@ class _SellerHubPageState extends State<SellerHubPage>
       revenue: dashboardRevenue,
     );
     final visibleSyncedProducts = _selectedCollectionId == null
-        ? _syncedProducts.take(80).toList()
+        ? <SellerInventoryProduct>[]
         : _syncedProducts
               .where(
                 (product) =>
@@ -3915,7 +4128,11 @@ class _SellerHubPageState extends State<SellerHubPage>
         SellerStoreCard(store: store, ownerName: widget.session.name),
         const SizedBox(height: 16),
         if (_sellerSection == SellerMenuSection.settings)
-          StoreOnboardingPanel(store: store, onSave: _saveStoreProfile),
+          StoreOnboardingPanel(
+            store: store,
+            collections: _syncedCollections,
+            onSave: _saveStoreProfile,
+          ),
         if (_sellerSection == SellerMenuSection.productSync) ...[
           ShopifySyncCard(
             shopifyStore: _shopifyStore,
@@ -3960,9 +4177,9 @@ class _SellerHubPageState extends State<SellerHubPage>
             ),
           const SizedBox(height: 16),
           SectionTitle(
-            title: selectedCollection?.title ?? 'Inventory',
+            title: selectedCollection?.title ?? 'Products by collection',
             action: _selectedCollectionId == null
-                ? '$productCount products'
+                ? 'Choose a collection'
                 : '${visibleSyncedProducts.length} products',
           ),
           const SizedBox(height: 10),
@@ -3972,6 +4189,13 @@ class _SellerHubPageState extends State<SellerHubPage>
               title: 'Inventory unavailable',
               message: _inventoryMessage!,
             )
+          else if (_selectedCollectionId == null)
+            const EmptyState(
+              icon: Icons.touch_app_outlined,
+              title: 'Choose a collection',
+              message:
+                  'Products are shown after selecting a collection, keeping this page fast even with large catalogs.',
+            )
           else if (visibleSyncedProducts.isEmpty)
             const EmptyState(
               icon: Icons.inventory_2_outlined,
@@ -3979,12 +4203,6 @@ class _SellerHubPageState extends State<SellerHubPage>
               message: 'Choose another collection or sync Shopify again.',
             )
           else ...[
-            if (_selectedCollectionId == null &&
-                _syncedProducts.length > visibleSyncedProducts.length)
-              Text(
-                'Showing first ${visibleSyncedProducts.length} products. Choose a collection to narrow the list.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
             for (final product in visibleSyncedProducts)
               SellerInventoryTile(
                 product: product,
@@ -5693,7 +5911,7 @@ class ShopperEditorialBand extends StatelessWidget {
         ? 'Verified stores'
         : mostCommon(products.map((product) => product.shop.name));
     final limitedCount = products
-        .where((product) => product.stock > 0 && product.stock <= 5)
+        .where((product) => product.effectiveStock > 0 && product.effectiveStock <= 5)
         .length;
 
     return Container(
@@ -6041,6 +6259,7 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final stock = product.effectiveStock;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -6107,25 +6326,25 @@ class ProductCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          product.stock > 0
+                          stock > 0
                               ? Icons.inventory_2_outlined
                               : Icons.block,
                           size: 15,
-                          color: product.stock > 0
+                          color: stock > 0
                               ? Colors.black54
                               : Theme.of(context).colorScheme.error,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            product.stock > 0
-                                ? '${product.stock} left'
+                            stock > 0
+                                ? '$stock left'
                                 : 'Out of stock',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(
-                                  color: product.stock > 0
+                                  color: stock > 0
                                       ? Colors.black54
                                       : Theme.of(context).colorScheme.error,
                                   fontWeight: FontWeight.w700,
@@ -6146,7 +6365,7 @@ class ProductCard extends StatelessWidget {
                         ),
                         IconButton.filled(
                           tooltip: 'Add to basket',
-                          onPressed: product.stock <= 0 ? null : onAdd,
+                          onPressed: stock <= 0 ? null : onAdd,
                           constraints: const BoxConstraints.tightFor(
                             width: 40,
                             height: 40,
@@ -6327,22 +6546,12 @@ class ShopCard extends StatelessWidget {
   const ShopCard({
     super.key,
     required this.shop,
-    required this.products,
-    required this.favoriteIds,
     required this.onOpenShop,
-    required this.onOpenProduct,
-    required this.onAddToCart,
-    required this.onToggleFavorite,
     required this.onFollow,
   });
 
   final Shop shop;
-  final List<Product> products;
-  final Set<String> favoriteIds;
   final VoidCallback onOpenShop;
-  final ValueChanged<Product> onOpenProduct;
-  final ValueChanged<Product> onAddToCart;
-  final ValueChanged<Product> onToggleFavorite;
   final VoidCallback onFollow;
 
   @override
@@ -6369,7 +6578,7 @@ class ShopCard extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w900),
                         ),
                         Text(
-                          '${shop.category} in ${shop.location}',
+                          shop.category,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: Colors.black54,
                               ),
@@ -6388,52 +6597,6 @@ class ShopCard extends StatelessWidget {
                     icon: const Icon(Icons.add_alert_outlined),
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              Text(shop.story),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Tag(label: shop.delivery),
-                  Tag(label: '${shop.orderCount} orders'),
-                  Tag(label: 'Min ${money(shop.minimumOrder)}'),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 178,
-                child: products.isEmpty
-                    ? Container(
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8F4EC),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'No products synced yet',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      )
-                    : ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: products.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 10),
-                        itemBuilder: (context, index) {
-                          final product = products[index];
-                          return SizedBox(
-                            width: 142,
-                            child: ProductMiniCard(
-                              product: product,
-                              isFavorite: favoriteIds.contains(product.id),
-                              onOpen: () => onOpenProduct(product),
-                              onAdd: () => onAddToCart(product),
-                              onFavorite: () => onToggleFavorite(product),
-                            ),
-                          );
-                        },
-                      ),
               ),
             ],
           ),
@@ -6553,7 +6716,8 @@ class SoukDealCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final oldPrice = product.price * 1.25;
+    final compareAtPrice = product.compareAtPrice;
+    final discountPercent = product.discountPercent;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onOpen,
@@ -6592,27 +6756,28 @@ class SoukDealCard extends StatelessWidget {
                             size: 360,
                           ),
                   ),
-                  Positioned(
-                    left: 10,
-                    top: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFA8663A),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: const Text(
-                        '-20%',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
+                  if (discountPercent != null)
+                    Positioned(
+                      left: 10,
+                      top: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFA8663A),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '-$discountPercent%',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),
-                  ),
                   Positioned(
                     right: 8,
                     top: 8,
@@ -6655,14 +6820,15 @@ class SoukDealCard extends StatelessWidget {
                               style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(fontWeight: FontWeight.w900),
                             ),
-                            Text(
-                              money(oldPrice),
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Colors.black45,
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
-                            ),
+                            if (compareAtPrice != null)
+                              Text(
+                                money(compareAtPrice),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Colors.black45,
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                              ),
                           ],
                         ),
                       ),
@@ -6826,20 +6992,13 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
             : widget.product.variants.first);
   }
 
-  Future<void> _openWhatsApp() async {
-    final message = Uri.encodeComponent(
-      'Hi ${widget.product.shop.name}, I am interested in ${widget.product.name} on Souk.',
-    );
-    final url = Uri.parse('https://wa.me/?text=$message');
-    await launchUrl(url, mode: LaunchMode.externalApplication);
-  }
-
   void _openReviewDialog() {
     showReviewDialog(context, widget.onReview);
   }
 
   @override
   Widget build(BuildContext context) {
+    final stock = widget.product.effectiveStock;
     return SafeArea(
       child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
@@ -6911,31 +7070,20 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                 Tag(
                   label: '${widget.product.rating.toStringAsFixed(1)} rating',
                 ),
-                Tag(label: '${widget.product.stock} in stock'),
+                Tag(label: '$stock in stock'),
                 Tag(label: widget.product.shop.delivery),
                 const Tag(label: 'Verified store'),
                 const Tag(label: 'Authenticity badge'),
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _openWhatsApp,
-                    icon: const Icon(Icons.chat_outlined),
-                    label: const Text('WhatsApp'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {},
-                    icon: const Icon(Icons.ios_share),
-                    label: const Text('Share'),
-                  ),
-                ),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {},
+                icon: const Icon(Icons.ios_share),
+                label: const Text('Share'),
+              ),
             ),
             const SizedBox(height: 12),
             const TrustAndReviewStrip(),
@@ -6992,7 +7140,7 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                 ),
                 FilledButton.icon(
                   onPressed:
-                      (_selectedVariant?.stock ?? widget.product.stock) == 0
+                      (_selectedVariant?.stock ?? stock) == 0
                       ? null
                       : widget.onAddToCart,
                   icon: const Icon(Icons.add_shopping_cart),
@@ -7397,10 +7545,12 @@ class StoreOnboardingPanel extends StatefulWidget {
   const StoreOnboardingPanel({
     super.key,
     required this.store,
+    required this.collections,
     required this.onSave,
   });
 
   final ShopDraft store;
+  final List<SellerInventoryCollection> collections;
   final Future<void> Function(Map<String, dynamic> payload) onSave;
 
   @override
@@ -7408,10 +7558,9 @@ class StoreOnboardingPanel extends StatefulWidget {
 }
 
 class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
-  final _primaryColor = TextEditingController(text: '#1F7A4D');
-  final _accentColor = TextEditingController(text: '#E7A72E');
   final _instagramUrl = TextEditingController();
-  final _whatsappPhone = TextEditingController();
+  final _tiktokUrl = TextEditingController();
+  final _websiteUrl = TextEditingController();
   final _shippingPolicy = TextEditingController(
     text: 'Delivery available in selected regions.',
   );
@@ -7423,38 +7572,39 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
   bool _logoUploaded = false;
   bool _bannerUploaded = false;
   bool _saved = false;
+  late Set<String> _storefrontCollectionIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _logoDataUrl = widget.store.logoUrl;
+    _bannerDataUrl = widget.store.bannerUrl;
+    _logoUploaded = _logoDataUrl != null && _logoDataUrl!.isNotEmpty;
+    _bannerUploaded = _bannerDataUrl != null && _bannerDataUrl!.isNotEmpty;
+    _instagramUrl.text = widget.store.instagramUrl ?? '';
+    _tiktokUrl.text = widget.store.tiktokUrl ?? '';
+    _websiteUrl.text = widget.store.websiteUrl ?? '';
+    _storefrontCollectionIds = widget.store.storefrontCollectionIds.toSet();
+  }
 
   @override
   void dispose() {
-    _primaryColor.dispose();
-    _accentColor.dispose();
     _instagramUrl.dispose();
-    _whatsappPhone.dispose();
+    _tiktokUrl.dispose();
+    _websiteUrl.dispose();
     _shippingPolicy.dispose();
     _returnPolicy.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    final whatsapp = normalizeLebanesePhone(_whatsappPhone.text);
-    if (_whatsappPhone.text.trim().isNotEmpty && whatsapp == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Use a Lebanese WhatsApp number, like 03 123 456 or +961 3 123 456',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
     await widget.onSave({
       'logoUrl': _logoDataUrl,
       'bannerUrl': _bannerDataUrl,
-      'primaryColor': nullableText(_primaryColor.text),
-      'accentColor': nullableText(_accentColor.text),
       'instagramUrl': nullableText(_instagramUrl.text),
-      'whatsappPhone': whatsapp,
+      'tiktokUrl': nullableText(_tiktokUrl.text),
+      'websiteUrl': nullableText(_websiteUrl.text),
+      'storefrontCollectionIds': _storefrontCollectionIds.toList(),
       'shippingPolicy': nullableText(_shippingPolicy.text),
       'returnPolicy': nullableText(_returnPolicy.text),
     });
@@ -7496,18 +7646,19 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
         _saved && _logoUploaded && _bannerUploaded,
       ),
       OnboardingItem(
-        'Theme colors',
-        Icons.palette_outlined,
-        'Choose storefront colors',
-        _saved &&
-            _primaryColor.text.trim().isNotEmpty &&
-            _accentColor.text.trim().isNotEmpty,
-      ),
-      OnboardingItem(
         'Social links',
         Icons.link,
         'Instagram, TikTok, website',
-        _saved && _instagramUrl.text.trim().isNotEmpty,
+        _saved &&
+            (_instagramUrl.text.trim().isNotEmpty ||
+                _tiktokUrl.text.trim().isNotEmpty ||
+                _websiteUrl.text.trim().isNotEmpty),
+      ),
+      OnboardingItem(
+        'Storefront collections',
+        Icons.view_carousel_outlined,
+        'Choose up to 5 sections',
+        _saved && _storefrontCollectionIds.isNotEmpty,
       ),
       OnboardingItem(
         'Shipping policy',
@@ -7520,12 +7671,6 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
         Icons.assignment_return_outlined,
         'Set clear rules',
         _saved && _returnPolicy.text.trim().isNotEmpty,
-      ),
-      OnboardingItem(
-        'WhatsApp contact',
-        Icons.chat_outlined,
-        'Support and order chat',
-        _saved && normalizeLebanesePhone(_whatsappPhone.text) != null,
       ),
     ];
 
@@ -7579,18 +7724,6 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
               ],
             ),
             const SizedBox(height: 10),
-            ColorSwatchPicker(
-              label: 'Primary color',
-              controller: _primaryColor,
-              onChanged: () => setState(() {}),
-            ),
-            const SizedBox(height: 10),
-            ColorSwatchPicker(
-              label: 'Accent color',
-              controller: _accentColor,
-              onChanged: () => setState(() {}),
-            ),
-            const SizedBox(height: 10),
             TextField(
               controller: _instagramUrl,
               keyboardType: TextInputType.url,
@@ -7602,15 +7735,64 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
             ),
             const SizedBox(height: 10),
             TextField(
-              controller: _whatsappPhone,
-              keyboardType: TextInputType.phone,
+              controller: _tiktokUrl,
+              keyboardType: TextInputType.url,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                labelText: 'Lebanese WhatsApp number',
-                hintText: '+961 3 123 456',
-                prefixIcon: Icon(Icons.chat_outlined),
+                labelText: 'TikTok URL',
+                prefixIcon: Icon(Icons.music_note_outlined),
               ),
             ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _websiteUrl,
+              keyboardType: TextInputType.url,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Website URL',
+                prefixIcon: Icon(Icons.language_outlined),
+              ),
+            ),
+            if (widget.collections.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Storefront collections',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final collection in widget.collections)
+                    FilterChip(
+                      selected: _storefrontCollectionIds.contains(collection.id),
+                      showCheckmark: false,
+                      label: Text(collection.title),
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            if (_storefrontCollectionIds.length < 5) {
+                              _storefrontCollectionIds.add(collection.id);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Choose up to 5 storefront collections.'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          } else {
+                            _storefrontCollectionIds.remove(collection.id);
+                          }
+                        });
+                      },
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 10),
             TextField(
               controller: _shippingPolicy,
@@ -7855,69 +8037,6 @@ class SetupRow extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class ColorSwatchPicker extends StatelessWidget {
-  const ColorSwatchPicker({
-    super.key,
-    required this.label,
-    required this.controller,
-    required this.onChanged,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final VoidCallback onChanged;
-
-  static const swatches = {
-    '#1F7A4D': Color(0xFF1F7A4D),
-    '#E7A72E': Color(0xFFE7A72E),
-    '#C8673A': Color(0xFFC8673A),
-    '#357C83': Color(0xFF357C83),
-    '#17211B': Color(0xFF17211B),
-    '#8B2F5A': Color(0xFF8B2F5A),
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final entry in swatches.entries)
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: () {
-                  controller.text = entry.key;
-                  onChanged();
-                },
-                child: CircleAvatar(
-                  radius: 18,
-                  backgroundColor: entry.value,
-                  child: controller.text == entry.key
-                      ? const Icon(Icons.check, color: Colors.white, size: 18)
-                      : null,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          onChanged: (_) => onChanged(),
-          decoration: InputDecoration(
-            labelText: '$label number',
-            prefixIcon: const Icon(Icons.tag),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -8258,6 +8377,7 @@ class SellerInventoryTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final stock = product.effectiveStock;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -8301,7 +8421,7 @@ class SellerInventoryTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${product.stock} in stock - ${product.category}',
+                    '$stock in stock - ${product.category}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   if (product.variants.isNotEmpty) ...[
@@ -8311,7 +8431,7 @@ class SellerInventoryTile extends StatelessWidget {
                       runSpacing: 6,
                       children: [
                         for (final variant in product.variants.take(3))
-                          Tag(label: variant.title),
+                          Tag(label: '${variant.title}: ${variant.stock}'),
                       ],
                     ),
                   ],
@@ -8466,6 +8586,10 @@ class Shop {
     required this.statusLabel,
     this.logoUrl,
     this.bannerUrl,
+    this.instagramUrl,
+    this.tiktokUrl,
+    this.websiteUrl,
+    this.storefrontCollectionIds = const [],
   });
 
   factory Shop.fromJson(Map<String, dynamic> json) {
@@ -8488,6 +8612,14 @@ class Shop {
       statusLabel: json['status'] as String? ?? 'DRAFT',
       logoUrl: json['logoUrl'] as String?,
       bannerUrl: json['bannerUrl'] as String?,
+      instagramUrl: json['instagramUrl'] as String?,
+      tiktokUrl: json['tiktokUrl'] as String?,
+      websiteUrl: json['websiteUrl'] as String?,
+      storefrontCollectionIds:
+          (json['storefrontCollectionIds'] as List<dynamic>? ?? const [])
+              .map((item) => item.toString())
+              .where((item) => item.isNotEmpty)
+              .toList(),
     );
   }
 
@@ -8506,6 +8638,10 @@ class Shop {
   final String statusLabel;
   final String? logoUrl;
   final String? bannerUrl;
+  final String? instagramUrl;
+  final String? tiktokUrl;
+  final String? websiteUrl;
+  final List<String> storefrontCollectionIds;
 }
 
 class Product {
@@ -8514,6 +8650,7 @@ class Product {
     required this.name,
     required this.category,
     required this.price,
+    this.compareAtPrice,
     required this.shop,
     required this.color,
     required this.icon,
@@ -8523,6 +8660,7 @@ class Product {
     required this.images,
     required this.variants,
     required this.collectionNames,
+    required this.collectionIds,
     required this.featured,
     this.imageUrl,
   });
@@ -8539,11 +8677,13 @@ class Product {
         .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
         .toList();
     final collectionNames = productCollectionNames(json);
+    final collectionIds = productCollectionIds(json);
     return Product(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Product',
       category: json['category'] as String? ?? 'Shopify',
       price: parseDouble(json['price']),
+      compareAtPrice: nullableDouble(json['compareAtPrice']),
       shop: Shop.fromJson(shopJson),
       color: const Color(0xFF1F7A4D),
       icon: Icons.inventory_2,
@@ -8556,6 +8696,7 @@ class Product {
           : images,
       variants: variants,
       collectionNames: collectionNames,
+      collectionIds: collectionIds,
       featured: json['featured'] == true,
     );
   }
@@ -8564,6 +8705,7 @@ class Product {
   final String name;
   final String category;
   final double price;
+  final double? compareAtPrice;
   final Shop shop;
   final Color color;
   final IconData icon;
@@ -8574,7 +8716,19 @@ class Product {
   final List<String> images;
   final List<ProductVariant> variants;
   final List<String> collectionNames;
+  final List<String> collectionIds;
   final bool featured;
+
+  int get effectiveStock {
+    if (variants.isEmpty) {
+      return stock;
+    }
+    final variantTotal = variants.fold<int>(
+      0,
+      (sum, variant) => sum + variant.stock,
+    );
+    return variantTotal > 0 ? variantTotal : stock;
+  }
 
   Set<String> get optionTokens {
     final tokens = <String>{};
@@ -8592,6 +8746,14 @@ class Product {
   }
 
   String get formattedPrice => money(price);
+
+  int? get discountPercent {
+    final compareAt = compareAtPrice;
+    if (compareAt == null || compareAt <= price || compareAt <= 0) {
+      return null;
+    }
+    return (((compareAt - price) / compareAt) * 100).round();
+  }
 }
 
 class CartLine {
@@ -8609,6 +8771,7 @@ class ProductVariant {
   const ProductVariant({
     required this.title,
     required this.price,
+    this.compareAtPrice,
     required this.stock,
     this.option1,
     this.option2,
@@ -8620,6 +8783,7 @@ class ProductVariant {
     return ProductVariant(
       title: json['title'] as String? ?? 'Variant',
       price: parseDouble(json['price']),
+      compareAtPrice: nullableDouble(json['compareAtPrice']),
       stock: parseInt(json['stock']),
       option1: json['option1'] as String?,
       option2: json['option2'] as String?,
@@ -8630,6 +8794,7 @@ class ProductVariant {
 
   final String title;
   final double price;
+  final double? compareAtPrice;
   final int stock;
   final String? option1;
   final String? option2;
@@ -8713,9 +8878,7 @@ class MarketplaceFilters {
     if (maxPrice != null && product.price > maxPrice!) {
       return false;
     }
-    if (inStockOnly &&
-        product.stock <= 0 &&
-        !product.variants.any((variant) => variant.stock > 0)) {
+    if (inStockOnly && product.effectiveStock <= 0) {
       return false;
     }
     if (size != null &&
@@ -8877,6 +9040,12 @@ class ShopDraft {
     required this.hasDelivery,
     this.verified = false,
     this.status = 'DRAFT',
+    this.logoUrl,
+    this.bannerUrl,
+    this.instagramUrl,
+    this.tiktokUrl,
+    this.websiteUrl,
+    this.storefrontCollectionIds = const [],
   });
 
   factory ShopDraft.fromJson(Map<String, dynamic> json) {
@@ -8888,6 +9057,16 @@ class ShopDraft {
       hasDelivery: (json['deliveryLabel']?.toString() ?? '').isNotEmpty,
       verified: json['verified'] == true,
       status: json['status']?.toString() ?? 'DRAFT',
+      logoUrl: json['logoUrl']?.toString(),
+      bannerUrl: json['bannerUrl']?.toString(),
+      instagramUrl: json['instagramUrl']?.toString(),
+      tiktokUrl: json['tiktokUrl']?.toString(),
+      websiteUrl: json['websiteUrl']?.toString(),
+      storefrontCollectionIds:
+          (json['storefrontCollectionIds'] as List<dynamic>? ?? const [])
+              .map((item) => item.toString())
+              .where((item) => item.isNotEmpty)
+              .toList(),
     );
   }
 
@@ -8898,6 +9077,12 @@ class ShopDraft {
   final bool hasDelivery;
   final bool verified;
   final String status;
+  final String? logoUrl;
+  final String? bannerUrl;
+  final String? instagramUrl;
+  final String? tiktokUrl;
+  final String? websiteUrl;
+  final List<String> storefrontCollectionIds;
 
   bool get isActive => status.toUpperCase() == 'ACTIVE' && verified;
 
@@ -8916,6 +9101,7 @@ class SellerInventoryProduct {
     required this.name,
     required this.category,
     required this.price,
+    this.compareAtPrice,
     required this.stock,
     required this.collections,
     required this.collectionIds,
@@ -8942,6 +9128,7 @@ class SellerInventoryProduct {
       name: json['name'] as String? ?? 'Product',
       category: json['category'] as String? ?? 'Shopify',
       price: parseDouble(json['price']),
+      compareAtPrice: nullableDouble(json['compareAtPrice']),
       stock: parseInt(json['stock']),
       imageUrl: json['imageUrl'] as String?,
       images: imageRows.isEmpty && json['imageUrl'] != null
@@ -8965,6 +9152,7 @@ class SellerInventoryProduct {
   final String name;
   final String category;
   final double price;
+  final double? compareAtPrice;
   final int stock;
   final String? imageUrl;
   final List<String> images;
@@ -8972,6 +9160,17 @@ class SellerInventoryProduct {
   final bool featured;
   final List<String> collections;
   final List<String> collectionIds;
+
+  int get effectiveStock {
+    if (variants.isEmpty) {
+      return stock;
+    }
+    final variantTotal = variants.fold<int>(
+      0,
+      (sum, variant) => sum + variant.stock,
+    );
+    return variantTotal > 0 ? variantTotal : stock;
+  }
 }
 
 class SellerInventoryCollection {
@@ -9177,10 +9376,6 @@ Future<void> showCampaignDialog(
                     ),
                     items: const [
                       DropdownMenuItem(value: 'PUSH', child: Text('Push')),
-                      DropdownMenuItem(
-                        value: 'WHATSAPP',
-                        child: Text('WhatsApp'),
-                      ),
                       DropdownMenuItem(value: 'EMAIL', child: Text('Email')),
                     ],
                     onChanged: (value) {
@@ -9987,6 +10182,20 @@ double parseDouble(Object? value) {
   return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
+double? nullableDouble(Object? value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  final text = value.toString().trim();
+  if (text.isEmpty) {
+    return null;
+  }
+  return double.tryParse(text);
+}
+
 int parseInt(Object? value) {
   if (value is num) {
     return value.toInt();
@@ -10015,6 +10224,51 @@ List<String> productCollectionNames(Map<String, dynamic> json) {
       .map((collection) => collection['title'] as String? ?? '')
       .where((title) => title.isNotEmpty)
       .toList();
+}
+
+List<String> productCollectionIds(Map<String, dynamic> json) {
+  final rows = json['collections'] as List<dynamic>? ?? const [];
+  return rows
+      .map((item) => item as Map<String, dynamic>)
+      .map((item) => item['collection'] as Map<String, dynamic>?)
+      .whereType<Map<String, dynamic>>()
+      .map((collection) => collection['id'] as String? ?? '')
+      .where((id) => id.isNotEmpty)
+      .toList();
+}
+
+List<StorefrontCollectionGroup> storefrontCollectionGroups(
+  Shop shop,
+  List<Product> products,
+) {
+  final byId = <String, StorefrontCollectionGroup>{};
+  for (final product in products) {
+    for (var index = 0; index < product.collectionIds.length; index += 1) {
+      final id = product.collectionIds[index];
+      final title = index < product.collectionNames.length
+          ? product.collectionNames[index]
+          : 'Collection';
+      final existing = byId[id];
+      byId[id] = StorefrontCollectionGroup(
+        id: id,
+        title: existing?.title ?? title,
+        products: [...?existing?.products, product],
+      );
+    }
+  }
+  final allGroups = byId.values.toList()
+    ..sort((a, b) => a.title.compareTo(b.title));
+  final preferred = <StorefrontCollectionGroup>[];
+  for (final id in shop.storefrontCollectionIds.take(5)) {
+    final group = byId[id];
+    if (group != null) {
+      preferred.add(group);
+    }
+  }
+  final remaining = allGroups
+      .where((group) => !preferred.any((item) => item.id == group.id))
+      .toList();
+  return [...preferred, ...remaining];
 }
 
 T? firstWhereOrNull<T>(Iterable<T> items, bool Function(T item) test) {
