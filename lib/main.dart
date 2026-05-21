@@ -7601,9 +7601,18 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
     await widget.onSave({
       'logoUrl': _logoDataUrl,
       'bannerUrl': _bannerDataUrl,
-      'instagramUrl': nullableText(_instagramUrl.text),
-      'tiktokUrl': nullableText(_tiktokUrl.text),
-      'websiteUrl': nullableText(_websiteUrl.text),
+      'instagramUrl': normalizeSocialUrl(
+        _instagramUrl.text,
+        SocialPlatform.instagram,
+      ),
+      'tiktokUrl': normalizeSocialUrl(
+        _tiktokUrl.text,
+        SocialPlatform.tiktok,
+      ),
+      'websiteUrl': normalizeSocialUrl(
+        _websiteUrl.text,
+        SocialPlatform.website,
+      ),
       'storefrontCollectionIds': _storefrontCollectionIds.toList(),
       'shippingPolicy': nullableText(_shippingPolicy.text),
       'returnPolicy': nullableText(_returnPolicy.text),
@@ -10004,6 +10013,33 @@ class DialogField {
 String? nullableText(String value) {
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+enum SocialPlatform { instagram, tiktok, website }
+
+String? normalizeSocialUrl(String value, SocialPlatform platform) {
+  var trimmed = value.trim();
+  if (trimmed.isEmpty) {
+    return null;
+  }
+  if (trimmed.startsWith('@')) {
+    trimmed = trimmed.substring(1);
+  }
+  final lower = trimmed.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) {
+    return trimmed;
+  }
+  if (platform == SocialPlatform.instagram &&
+      !lower.contains('.') &&
+      !lower.contains('/')) {
+    return 'https://instagram.com/$trimmed';
+  }
+  if (platform == SocialPlatform.tiktok &&
+      !lower.contains('.') &&
+      !lower.contains('/')) {
+    return 'https://www.tiktok.com/@$trimmed';
+  }
+  return 'https://$trimmed';
 }
 
 String? normalizeLebanesePhone(String value) {

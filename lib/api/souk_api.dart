@@ -226,10 +226,48 @@ class SoukApi {
       );
     }
     if (response.statusCode >= 400) {
-      final message = body['error'] ?? body['message'] ?? body['details'] ?? response.reasonPhrase;
+      final details = body['details'];
+      final detailMessage = _formatErrorDetails(details);
+      final errorMessage = body['error']?.toString();
+      final message =
+          (errorMessage == 'Validation failed' ? detailMessage : null) ??
+          errorMessage ??
+          body['message'] ??
+          detailMessage ??
+          response.reasonPhrase;
       throw SoukApiException(response.statusCode, 'HTTP ${response.statusCode}: $message');
     }
     return body;
+  }
+
+  String? _formatErrorDetails(dynamic details) {
+    if (details is Map) {
+      final fieldErrors = details['fieldErrors'];
+      if (fieldErrors is Map) {
+        final rows = fieldErrors.entries
+            .where(
+              (entry) =>
+                  entry.value is List && (entry.value as List).isNotEmpty,
+            )
+            .map((entry) => '${entry.key}: ${(entry.value as List).join(', ')}')
+            .toList();
+        if (rows.isNotEmpty) {
+          return rows.join('; ');
+        }
+      }
+      final formErrors = details['formErrors'];
+      if (formErrors is List && formErrors.isNotEmpty) {
+        return formErrors.join(', ');
+      }
+      return details.toString();
+    }
+    if (details is List && details.isNotEmpty) {
+      return details.join(', ');
+    }
+    if (details is String && details.isNotEmpty) {
+      return details;
+    }
+    return null;
   }
 }
 
