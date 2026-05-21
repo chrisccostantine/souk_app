@@ -3466,10 +3466,6 @@ class _SellerHubPageState extends State<SellerHubPage>
       final refreshedStore = ShopDraft.fromJson(row);
       setState(() {
         _liveStore = refreshedStore;
-        if (refreshedStore.isActive &&
-            _sellerSection == SellerMenuSection.settings) {
-          _sellerSection = SellerMenuSection.productSync;
-        }
       });
     } catch (_) {
       // The session store remains usable if status refresh is unavailable.
@@ -3820,9 +3816,13 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukApi(baseUrl: soukApiUrl).updateShopProfile(shopId, payload);
-      await _refreshSellerStore();
-      setState(() => _sellerSection = SellerMenuSection.productSync);
+      final shop = await SoukApi(baseUrl: soukApiUrl).updateShopProfile(shopId, payload);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _liveStore = ShopDraft.fromJson(shop);
+      });
       _showSellerSnack('Store profile saved');
     } on SoukApiException catch (error) {
       _showSellerSnack(error.message);
@@ -7617,8 +7617,8 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: logo ? 512 : 1400,
-      imageQuality: 70,
+      maxWidth: logo ? 384 : 960,
+      imageQuality: logo ? 70 : 58,
     );
     if (image == null) {
       return;
@@ -7696,6 +7696,27 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
             const SizedBox(height: 12),
             for (final item in items) SetupRow(item: item),
             const SizedBox(height: 8),
+            if (_logoDataUrl != null || _bannerDataUrl != null) ...[
+              Row(
+                children: [
+                  StoreMediaPreview(
+                    label: 'Logo',
+                    imageUrl: _logoDataUrl,
+                    icon: Icons.storefront,
+                    compact: true,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StoreMediaPreview(
+                      label: 'Banner',
+                      imageUrl: _bannerDataUrl,
+                      icon: Icons.image_outlined,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 Expanded(
@@ -8037,6 +8058,46 @@ class SetupRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class StoreMediaPreview extends StatelessWidget {
+  const StoreMediaPreview({
+    super.key,
+    required this.label,
+    required this.imageUrl,
+    required this.icon,
+    this.compact = false,
+  });
+
+  final String label;
+  final String? imageUrl;
+  final IconData icon;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = compact ? 72.0 : 96.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(compact ? 999 : 8),
+          child: SizedBox(
+            width: compact ? size : double.infinity,
+            height: compact ? size : 96,
+            child: imageUrl == null || imageUrl!.isEmpty
+                ? Container(
+                    color: const Color(0xFFE7F0EA),
+                    child: Icon(icon, color: const Color(0xFF1F7A4D)),
+                  )
+                : AppNetworkImage(url: imageUrl!, size: 360),
+          ),
+        ),
+      ],
     );
   }
 }
