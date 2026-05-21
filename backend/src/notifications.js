@@ -42,8 +42,26 @@ export async function sendPushToTokens({ tokens, title, body, data = {} }) {
       tokens: batch,
       notification: { title, body },
       data: Object.fromEntries(
-        Object.entries(data).map(([key, value]) => [key, String(value ?? '')]),
+        Object.entries({ ...data, title, body }).map(([key, value]) => [
+          key,
+          String(value ?? ''),
+        ]),
       ),
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'sellora_campaigns',
+          priority: 'high',
+          defaultSound: true,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
     });
     delivered += response.successCount;
     failed += response.failureCount;

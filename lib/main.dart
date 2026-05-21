@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -12,7 +13,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'api/sellora_api.dart';
 
-void main() => runApp(const SelloraApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await setupPushNotifications();
+  runApp(const SelloraApp());
+}
 
 const _selloraApiUrl = String.fromEnvironment('SELLORA_API_URL');
 const _legacyApiUrl = String.fromEnvironment('SOUK_API_URL');
@@ -20,6 +25,83 @@ const selloraApiUrl = _selloraApiUrl == '' ? _legacyApiUrl : _selloraApiUrl;
 const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 const appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID');
 const appleRedirectUri = String.fromEnvironment('APPLE_REDIRECT_URI');
+const selloraNotificationChannel = AndroidNotificationChannel(
+  'sellora_campaigns',
+  'Store campaigns',
+  description: 'Campaign updates from stores you follow',
+  importance: Importance.high,
+);
+final localNotifications = FlutterLocalNotificationsPlugin();
+bool pushNotificationsReady = false;
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp();
+  }
+}
+
+Future<void> setupPushNotifications() async {
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+    if (pushNotificationsReady) {
+      return;
+    }
+    pushNotificationsReady = true;
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    final androidNotifications = localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await androidNotifications?.createNotificationChannel(
+      selloraNotificationChannel,
+    );
+    await localNotifications.initialize(
+      const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(),
+      ),
+    );
+    await androidNotifications?.requestNotificationsPermission();
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+    FirebaseMessaging.onMessage.listen(showForegroundPushNotification);
+  } catch (error) {
+    debugPrint('Push notification setup skipped: $error');
+  }
+}
+
+void showForegroundPushNotification(RemoteMessage message) {
+  final notification = message.notification;
+  final android = notification?.android;
+  final title = notification?.title ?? message.data['title']?.toString();
+  final body = notification?.body ?? message.data['body']?.toString();
+  if (title == null && body == null) {
+    return;
+  }
+  localNotifications.show(
+    message.hashCode,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        selloraNotificationChannel.id,
+        selloraNotificationChannel.name,
+        channelDescription: selloraNotificationChannel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+        icon: android?.smallIcon,
+      ),
+      iOS: const DarwinNotificationDetails(),
+    ),
+  );
+}
 
 class SelloraApp extends StatelessWidget {
   const SelloraApp({super.key});
