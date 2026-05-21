@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
@@ -94,6 +97,52 @@ class AppSession {
   final ShopDraft? store;
 }
 
+Future<void> registerNotificationDevice(AppSession session) async {
+  if (selloraApiUrl.isEmpty || !selloraApiUrl.startsWith('https://')) {
+    return;
+  }
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+    final messaging = FirebaseMessaging.instance;
+    final settings = await messaging.requestPermission();
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      return;
+    }
+    final token = await messaging.getToken();
+    if (token == null || token.isEmpty) {
+      return;
+    }
+    final api = SelloraApi(baseUrl: selloraApiUrl);
+    await api.registerDevice({
+      'email': session.email,
+      'token': token,
+      'platform': notificationPlatformLabel(),
+    });
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+      api.registerDevice({
+        'email': session.email,
+        'token': newToken,
+        'platform': notificationPlatformLabel(),
+      });
+    });
+  } catch (_) {
+    // Firebase config can be added later; login must not depend on push setup.
+  }
+}
+
+String notificationPlatformLabel() {
+  return switch (defaultTargetPlatform) {
+    TargetPlatform.android => 'android',
+    TargetPlatform.iOS => 'ios',
+    TargetPlatform.macOS => 'macos',
+    TargetPlatform.windows => 'windows',
+    TargetPlatform.linux => 'linux',
+    TargetPlatform.fuchsia => 'fuchsia',
+  };
+}
+
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -104,13 +153,17 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   AppSession? _session;
 
+  Future<void> _setSession(AppSession nextSession) async {
+    setState(() => _session = nextSession);
+    await registerNotificationDevice(nextSession);
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = _session;
     if (session == null) {
       return AccountEntryPage(
-        onAuthenticated: (nextSession) =>
-            setState(() => _session = nextSession),
+        onAuthenticated: (nextSession) => _setSession(nextSession),
       );
     }
 
@@ -4083,9 +4136,18 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).createCampaign(shopId, payload);
+      final result = await SelloraApi(
+        baseUrl: selloraApiUrl,
+      ).createCampaign(shopId, payload);
       await _loadSellerGrowth();
-      _showSellerSnack('Campaign created');
+      final delivery = result['delivery'] as Map<String, dynamic>?;
+      final delivered = delivery?['delivered'];
+      final audienceSize = delivery?['audienceSize'];
+      _showSellerSnack(
+        delivery == null
+            ? 'Campaign created'
+            : 'Campaign sent to $delivered of $audienceSize follower devices',
+      );
     } on SelloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {

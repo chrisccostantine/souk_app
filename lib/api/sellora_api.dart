@@ -48,6 +48,10 @@ class SelloraApi {
     return _post('/api/auth/social', payload);
   }
 
+  Future<Map<String, dynamic>> registerDevice(Map<String, dynamic> payload) async {
+    return _post('/api/devices/register', payload);
+  }
+
   Future<Map<String, dynamic>> changePassword(Map<String, dynamic> payload) async {
     return _post('/api/auth/change-password', payload);
   }
@@ -90,8 +94,7 @@ class SelloraApi {
   }
 
   Future<Map<String, dynamic>> createCampaign(String shopId, Map<String, dynamic> payload) async {
-    final body = await _post('/api/shops/$shopId/campaigns', payload);
-    return body['campaign'] as Map<String, dynamic>;
+    return _post('/api/shops/$shopId/campaigns', payload);
   }
 
   Future<Map<String, dynamic>> createPlacement(String shopId, Map<String, dynamic> payload) async {

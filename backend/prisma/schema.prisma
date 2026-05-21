@@ -85,6 +85,7 @@ model User {
   favorites    Favorite[]
   storeFollows  StoreFollow[]
   loyaltyAccounts LoyaltyAccount[]
+  deviceTokens DeviceToken[]
 }
 
 model Address {
@@ -345,8 +346,25 @@ model NotificationCampaign {
   audience  String          @default("followers")
   scheduledAt DateTime?
   sentAt    DateTime?
+  deliveredCount Int        @default(0)
+  failedCount Int           @default(0)
   createdAt DateTime        @default(now())
   shop      Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String?
+  enabled   Boolean  @default(true)
+  lastSeenAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([enabled])
 }
 
 model SponsoredPlacement {

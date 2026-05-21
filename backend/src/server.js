@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import nodemailer from 'nodemailer';
 import { prisma } from './db.js';
+import { sendPushToTokens } from './notifications.js';
 import {
   adjustShopifyInventory,
   fetchShopifyCatalog,
@@ -31,6 +32,7 @@ import {
   createShopSchema,
   followStoreSchema,
   loginSchema,
+  registerDeviceTokenSchema,
   slugify,
   socialAuthSchema,
   signupSchema,
@@ -860,7 +862,42 @@ app.post('/api/shops/:id/campaigns', async (req, res, next) => {
     const campaign = await prisma.notificationCampaign.create({
       data: { ...input, shopId: String(req.params.id) },
     });
-    res.status(201).json({ campaign });
+    if (campaign.channel === 'PUSH' && !campaign.scheduledAt) {
+      const delivery = await sendCampaignPush(campaign);
+      return res.status(201).json({ campaign: delivery.campaign, delivery });
+    }
+    res.status(201).json({ campaign, delivery: null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/devices/register', async (req, res, next) => {
+  try {
+    const input = validate(registerDeviceTokenSchema, req.body);
+    const user = await prisma.user.findUnique({
+      where: { email: input.email.toLowerCase() },
+    });
+    if (!user) {
+      const error = new Error('User not found for device token');
+      error.status = 404;
+      throw error;
+    }
+    const device = await prisma.deviceToken.upsert({
+      where: { token: input.token },
+      update: {
+        userId: user.id,
+        platform: input.platform,
+        enabled: true,
+        lastSeenAt: new Date(),
+      },
+      create: {
+        userId: user.id,
+        token: input.token,
+        platform: input.platform,
+      },
+    });
+    res.status(201).json({ device });
   } catch (error) {
     next(error);
   }
@@ -1724,6 +1761,58 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
     syncedAt: now,
     products: productByShopifyId.size,
     collections: catalog.collections.length,
+  };
+}
+
+async function sendCampaignPush(campaign) {
+  const follows = await prisma.storeFollow.findMany({
+    where: { shopId: campaign.shopId },
+    include: {
+      user: {
+        include: {
+          deviceTokens: {
+            where: { enabled: true },
+          },
+        },
+      },
+    },
+  });
+  const tokens = [
+    ...new Set(
+      follows.flatMap((follow) =>
+        follow.user.deviceTokens.map((device) => device.token),
+      ),
+    ),
+  ];
+  const result = await sendPushToTokens({
+    tokens,
+    title: campaign.title,
+    body: campaign.message,
+    data: {
+      type: 'campaign',
+      campaignId: campaign.id,
+      shopId: campaign.shopId,
+    },
+  });
+  if (result.invalidTokens.length > 0) {
+    await prisma.deviceToken.updateMany({
+      where: { token: { in: result.invalidTokens } },
+      data: { enabled: false },
+    });
+  }
+  const updatedCampaign = await prisma.notificationCampaign.update({
+    where: { id: campaign.id },
+    data: {
+      sentAt: new Date(),
+      deliveredCount: result.delivered,
+      failedCount: result.failed,
+    },
+  });
+  return {
+    campaign: updatedCampaign,
+    audienceSize: tokens.length,
+    delivered: result.delivered,
+    failed: result.failed,
   };
 }
 

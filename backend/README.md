@@ -80,6 +80,17 @@ RESEND_API_KEY=re_...
 RESEND_FROM=Sellora <onboarding@resend.dev>
 ```
 
+Push notifications use Firebase Cloud Messaging. Set either:
+
+```bash
+FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+```
+
+or mount a service account file and set `GOOGLE_APPLICATION_CREDENTIALS`.
+Stores create push campaigns from the seller dashboard; immediate push
+campaigns are sent to customers who follow that store and have registered a
+device token.
+
 SMTP is also supported as a fallback:
 
 ```text

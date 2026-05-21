@@ -48,6 +48,12 @@ export const createCampaignSchema = z.object({
   scheduledAt: z.coerce.date().optional(),
 });
 
+export const registerDeviceTokenSchema = z.object({
+  email: z.string().email(),
+  token: z.string().min(20),
+  platform: z.string().min(2).optional(),
+});
+
 export const createPlacementSchema = z.object({
   productId: z.string().optional(),
   title: z.string().min(2),

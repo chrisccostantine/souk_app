@@ -29,6 +29,11 @@ flutter run --dart-define=SELLORA_API_URL=https://your-railway-service.up.railwa
 
 `SELLORA_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
 
+For push notifications, add Firebase to the Flutter app (`google-services.json`
+for Android and `GoogleService-Info.plist` for iOS), then run `flutter pub get`.
+The backend sends pushes through Firebase Cloud Messaging after
+`FIREBASE_SERVICE_ACCOUNT_JSON` is set in Railway.
+
 For Shopify, store owners enter only their Shopify store URL in the seller dashboard. Their Shopify credentials are entered on Shopify's login page.
 
 If `flutter` hangs on this machine, fix the local Flutter SDK first. The app code itself lives in `lib/main.dart` and does not depend on remote packages beyond the default Flutter SDK setup.
