@@ -1,6 +1,6 @@
-# Souk Backend
+# Sellora Backend
 
-Railway-ready API for the Souk marketplace app.
+Railway-ready API for the Sellora marketplace app.
 
 ## Stack
 
@@ -77,7 +77,7 @@ Forgot-password codes can be emailed through Resend over HTTPS. This avoids SMTP
 
 ```text
 RESEND_API_KEY=re_...
-RESEND_FROM=Souk <onboarding@resend.dev>
+RESEND_FROM=Sellora <onboarding@resend.dev>
 ```
 
 SMTP is also supported as a fallback:
@@ -88,7 +88,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
-SMTP_FROM=Souk <your-email@gmail.com>
+SMTP_FROM=Sellora <your-email@gmail.com>
 ```
 
 For Gmail, `SMTP_PASS` must be an app password, not your normal Gmail password.
@@ -129,7 +129,7 @@ POST /api/shopify/oauth/start
 Content-Type: application/json
 
 {
-  "shopId": "souk-shop-id"
+  "shopId": "sellora-shop-id"
 }
 ```
 
@@ -144,12 +144,12 @@ The mobile app asks only for the Shopify store URL, for example `merchant-store.
 After OAuth succeeds, the callback page tries to reopen the app with:
 
 ```text
-souk://shopify-connected
+sellora://shopify-connected
 ```
 
 The mobile app also checks `/api/shopify/status` whenever it returns from the browser, so it can mark the store as connected even if the browser cannot auto-open the app.
 
-Shopify now requires expiring offline access tokens for Admin API calls. If an older connection shows a non-expiring token error, reconnect the Shopify store once so Souk can store the refresh token.
+Shopify now requires expiring offline access tokens for Admin API calls. If an older connection shows a non-expiring token error, reconnect the Shopify store once so Sellora can store the refresh token.
 
 Sync catalog, collections, images, descriptions, prices, and inventory:
 
@@ -158,14 +158,14 @@ POST /api/shopify/sync
 Content-Type: application/json
 
 {
-  "shopId": "souk-shop-id"
+  "shopId": "sellora-shop-id"
 }
 ```
 
 For two-way inventory:
 
-- Souk orders call Shopify inventory adjustment for synced products.
-- Shopify inventory webhooks update Souk product stock.
+- Sellora orders call Shopify inventory adjustment for synced products.
+- Shopify inventory webhooks update Sellora product stock.
 - Add `SHOPIFY_WEBHOOK_SECRET` in Railway if webhook signature verification is enabled.
 
 Recommended Shopify webhook topics:

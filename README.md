@@ -1,6 +1,6 @@
-# Souk
+# Sellora
 
-Souk is a Flutter marketplace app for iOS and Android where independent shops can create mobile storefronts and customers can discover products, add them to one basket, and check out directly.
+Sellora is a Flutter marketplace app for iOS and Android where independent shops can create mobile storefronts and customers can discover products, add them to one basket, and check out directly.
 
 ## Built so far
 
@@ -24,10 +24,10 @@ flutter run
 Run the app against your Railway backend:
 
 ```powershell
-flutter run --dart-define=SOUK_API_URL=https://your-railway-service.up.railway.app
+flutter run --dart-define=SELLORA_API_URL=https://your-railway-service.up.railway.app
 ```
 
-`SOUK_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
+`SELLORA_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
 
 For Shopify, store owners enter only their Shopify store URL in the seller dashboard. Their Shopify credentials are entered on Shopify's login page.
 

@@ -1,4 +1,4 @@
-package com.example.souk_app
+package com.example.sellora_app
 
 import io.flutter.embedding.android.FlutterActivity
 

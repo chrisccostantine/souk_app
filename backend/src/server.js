@@ -72,7 +72,7 @@ app.use(morgan('tiny'));
 app.get('/health', async (_req, res, next) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ ok: true, service: 'souk-backend' });
+    res.json({ ok: true, service: 'sellora-backend' });
   } catch (error) {
     next(error);
   }
@@ -106,13 +106,13 @@ function requireResetEmailConfig() {
 }
 
 function resetEmailText(name, resetCode) {
-  return `Hi ${name || 'there'},\n\nYour Souk password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`;
+  return `Hi ${name || 'there'},\n\nYour Sellora password reset code is ${resetCode}.\n\nThis code expires in 10 minutes. If you did not request this, you can ignore this email.`;
 }
 
 function resetEmailHtml(name, resetCode) {
   return `
     <div style="font-family:Arial,sans-serif;line-height:1.5;color:#17211B">
-      <h2>Your Souk reset code</h2>
+      <h2>Your Sellora reset code</h2>
       <p>Hi ${name || 'there'},</p>
       <p>Use this code to reset your password:</p>
       <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:16px 0">${resetCode}</div>
@@ -159,7 +159,7 @@ async function sendPasswordResetEmailWithResend({ to, name, resetCode }) {
       body: JSON.stringify({
         from: process.env.RESEND_FROM,
         to,
-        subject: 'Your Souk password reset code',
+        subject: 'Your Sellora password reset code',
         text: resetEmailText(name, resetCode),
         html: resetEmailHtml(name, resetCode),
       }),
@@ -214,7 +214,7 @@ async function sendPasswordResetEmail({ to, name, resetCode }) {
       transporter.sendMail({
         from: smtpFrom,
         to,
-        subject: 'Your Souk password reset code',
+        subject: 'Your Sellora password reset code',
         text: resetEmailText(name, resetCode),
         html: resetEmailHtml(name, resetCode),
       }),
@@ -1097,7 +1097,7 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
         apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
     });
-    const deepLink = `souk://shopify-connected?shopId=${encodeURIComponent(stateData.shopId)}`;
+    const deepLink = `sellora://shopify-connected?shopId=${encodeURIComponent(stateData.shopId)}`;
     res.type('html').send(`<!doctype html>
 <html>
   <head>
@@ -1113,8 +1113,8 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
   </head>
   <body>
     <h1>Shopify connected</h1>
-    <p>You can return to Souk and sync products.</p>
-    <a href="${deepLink}">Open Souk</a>
+    <p>You can return to Sellora and sync products.</p>
+    <a href="${deepLink}">Open Sellora</a>
   </body>
 </html>`);
   } catch (error) {
@@ -1281,7 +1281,7 @@ app.post('/api/orders', async (req, res, next) => {
       });
     });
 
-    const shopifyUpdates = await syncSoukOrderToShopifyInventory(input.shopId, order.items);
+    const shopifyUpdates = await syncSelloraOrderToShopifyInventory(input.shopId, order.items);
     const day = new Date();
     day.setHours(0, 0, 0, 0);
     await prisma.$transaction([
@@ -1386,7 +1386,7 @@ app.post('/api/ai/product-copy', (req, res, next) => {
     res.json({
       description:
         `${input.productName} brings a ${input.tone} feel to ${input.category}.` +
-        `${keywords} Easy to style, simple to order, and ready for local delivery through Souk.`,
+        `${keywords} Easy to style, simple to order, and ready for local delivery through Sellora.`,
     });
   } catch (error) {
     next(error);
@@ -1398,7 +1398,7 @@ app.post('/api/ai/ad-copy', (req, res, next) => {
     const input = validate(aiAdCopySchema, req.body);
     const prefix = input.channel === 'whatsapp' ? 'Hi! ' : '';
     res.json({
-      caption: `${prefix}${input.storeName} just launched: ${input.offer}. Shop now on Souk before it is gone.`,
+      caption: `${prefix}${input.storeName} just launched: ${input.offer}. Shop now on Sellora before it is gone.`,
       headline: `${input.offer} at ${input.storeName}`,
     });
   } catch (error) {
@@ -1506,7 +1506,7 @@ async function runShopifySyncJob(jobId) {
     });
     updateShopifySyncJob(jobId, {
       progress: 72,
-      message: 'Saving Shopify catalog into Souk',
+      message: 'Saving Shopify catalog into Sellora',
     });
     const result = await upsertShopifyCatalog(job.shopId, freshConnection, catalog, (progress) => {
       updateShopifySyncJob(jobId, progress);
@@ -1731,7 +1731,7 @@ function stripHtml(value) {
   return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-async function syncSoukOrderToShopifyInventory(shopId, orderItems) {
+async function syncSelloraOrderToShopifyInventory(shopId, orderItems) {
   const connection = await prisma.shopifyConnection.findUnique({ where: { shopId } });
   if (!connection) {
     return { updated: [], failed: [] };
@@ -1792,5 +1792,5 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(port, () => {
-  console.log(`Souk API listening on port ${port}`);
+  console.log(`Sellora API listening on port ${port}`);
 });
