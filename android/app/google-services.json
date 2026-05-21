@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "550360978486",
+    "project_id": "sellora-50cb5",
+    "storage_bucket": "sellora-50cb5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:550360978486:android:71a964877089e6af22b497",
+        "android_client_info": {
+          "package_name": "com.example.sellora_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBvoP0XwvN7Y3cfOPvCSe9FLE2eNCYq9NA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
