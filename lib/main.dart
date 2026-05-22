@@ -2384,6 +2384,7 @@ class HomePage extends StatelessWidget {
           return b.rating.compareTo(a.rating);
         });
     final featuredShops = visibleShops.take(8).toList();
+    final nearbyShops = visibleShops.take(showAllFeatured ? 16 : 8).toList();
     final chosenFeatured = products
         .where((product) => product.featured)
         .toList();
@@ -2403,7 +2404,9 @@ class HomePage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
-                const SizedBox(height: 24),
+                const SizedBox(height: 14),
+                const SoukloraDeliveryStrip(),
+                const SizedBox(height: 18),
                 SoukloraSearchRow(
                   value: query,
                   filters: filters,
@@ -2418,26 +2421,19 @@ class HomePage extends StatelessWidget {
                     onSelected: onOpenProduct,
                   ),
                 ],
-                const SizedBox(height: 22),
+                const SizedBox(height: 18),
                 SoukloraCategoryBubbles(
                   selected: category,
                   categories: categories,
                   shops: shops,
                   onSelected: onCategoryChanged,
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 20),
                 SoukloraMarketplaceBanner(
                   shopCount: shops.length,
                   productCount: allProducts.length,
                   verifiedCount: shops.where((shop) => shop.verified).length,
                 ),
-                if (featuredShops.isNotEmpty) ...[
-                  const SizedBox(height: 26),
-                  SoukloraSectionHeader(
-                    title: 'Featured Stores',
-                    icon: Icons.storefront,
-                  ),
-                ],
               ],
             ),
           ),
@@ -2470,13 +2466,83 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (featuredShops.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+                  child: SoukloraSectionHeader(
+                    title: 'Shop by Category',
+                    onViewAll: () => onCategoryChanged('All'),
+                  ),
+                ),
+                SizedBox(
+                  height: 142,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: popularCategories.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 14),
+                    itemBuilder: (context, index) {
+                      final name = popularCategories[index];
+                      final categoryStores = shops
+                          .where((shop) => shop.category == name)
+                          .toList();
+                      return SizedBox(
+                        width: 148,
+                        child: SoukloraServiceTile(
+                          name: name,
+                          storeCount: categoryStores.length,
+                          icon: categoryIcon(name),
+                          onTap: () => onCategoryChanged(name),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                if (nearbyShops.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+                    child: SoukloraSectionHeader(
+                      title: category == 'All'
+                          ? 'Stores Near You'
+                          : '$category Stores',
+                      icon: Icons.storefront,
+                      onViewAll: onViewAllFeatured,
+                    ),
+                  ),
+                  ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: nearbyShops.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final shop = nearbyShops[index];
+                      final shopProducts = allProducts
+                          .where((product) => product.shop.id == shop.id)
+                          .toList();
+                      return SoukloraStoreRowCard(
+                        shop: shop,
+                        productCount: shopProducts.length,
+                        isFollowing: followedShopIds.contains(shop.id),
+                        onFollow: () => onFollowStore(shop),
+                        onOpen: () => onOpenShop(shop),
+                      );
+                    },
+                  ),
+                ],
+                if (featuredShops.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                    child: SoukloraSectionHeader(
+                      title: 'Featured Partners',
+                      icon: Icons.verified_outlined,
+                    ),
+                  ),
                   SizedBox(
-                    height: 254,
+                    height: 244,
                     child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                       scrollDirection: Axis.horizontal,
-                      itemCount: featuredShops.length,
+                      itemCount: featuredShops.take(6).length,
                       separatorBuilder: (_, _) => const SizedBox(width: 14),
                       itemBuilder: (context, index) {
                         final shop = featuredShops[index];
@@ -2498,41 +2564,12 @@ class HomePage extends StatelessWidget {
                       },
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-                  child: SoukloraSectionHeader(
-                    title: 'Popular Categories',
-                    onViewAll: () => onCategoryChanged('All'),
-                  ),
-                ),
-                SizedBox(
-                  height: 212,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: popularCategories.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 14),
-                    itemBuilder: (context, index) {
-                      final name = popularCategories[index];
-                      final categoryStores = shops
-                          .where((shop) => shop.category == name)
-                          .toList();
-                      return SizedBox(
-                        width: 132,
-                        child: SoukloraPopularCategoryTile(
-                          name: name,
-                          shops: categoryStores,
-                          onTap: () => onCategoryChanged(name),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                ],
                 if (arrivalProducts.isNotEmpty) ...[
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
                     child: SoukloraSectionHeader(
-                      title: 'New Across Souklora',
+                      title: 'Fresh Picks',
                       icon: Icons.new_releases_outlined,
                       onViewAll: onViewAllFeatured,
                     ),
@@ -4925,14 +4962,27 @@ class SoukloraShopperTopBar extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(
-            'Souklora',
-            style: Theme.of(context).textTheme.displaySmall?.copyWith(
-              fontFamily: 'serif',
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF3B2114),
-              letterSpacing: 0,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F7A4D),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.shopping_bag, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Souklora',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF17211B),
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
           ),
         ),
         IconButton(
@@ -4950,6 +5000,66 @@ class SoukloraShopperTopBar extends StatelessWidget {
             backgroundColor: const Color(0xFFA8663A),
             child: const Icon(Icons.shopping_cart_outlined, size: 30),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class SoukloraDeliveryStrip extends StatelessWidget {
+  const SoukloraDeliveryStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F3EC),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.location_on_outlined,
+            color: Color(0xFF1F7A4D),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Delivering to',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      'Your current area',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  const Icon(Icons.keyboard_arrow_down, size: 20),
+                ],
+              ),
+            ],
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () {},
+          icon: const Icon(Icons.schedule, size: 18),
+          label: const Text('Now'),
         ),
       ],
     );
@@ -4974,6 +5084,70 @@ class SoukloraSearchRow extends StatefulWidget {
 
   @override
   State<SoukloraSearchRow> createState() => _SoukloraSearchRowState();
+}
+
+class SoukloraServiceTile extends StatelessWidget {
+  const SoukloraServiceTile({
+    super.key,
+    required this.name,
+    required this.storeCount,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String name;
+  final int storeCount;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.07)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F4EC),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: const Color(0xFF1F7A4D)),
+              ),
+              const Spacer(),
+              Text(
+                shopperCategoryLabel(name),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                storeCount == 1 ? '1 store' : '$storeCount stores',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
@@ -5428,63 +5602,269 @@ class SoukloraMarketplaceBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF17382B),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.07)),
       ),
-      child: Stack(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Positioned(
-            right: -8,
-            bottom: -10,
-            child: Icon(
-              Icons.store_mall_directory_outlined,
-              color: Colors.white.withValues(alpha: 0.08),
-              size: 118,
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  HeroPill(icon: Icons.storefront, label: '$shopCount stores'),
-                  HeroPill(
-                    icon: Icons.inventory_2_outlined,
-                    label: '$productCount items',
-                  ),
-                  HeroPill(
-                    icon: Icons.verified,
-                    label: '$verifiedCount verified',
-                  ),
-                ],
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F7A4D),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.bolt, color: Colors.white),
               ),
-              const SizedBox(height: 18),
-              Text(
-                'Find the right store first.',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                  height: 1.06,
-                  letterSpacing: 0,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'One basket, many local stores',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Browse stores first, then shop their collections.',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                'Browse local shops, compare styles, and build one basket across Souklora.',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.white.withValues(alpha: 0.78),
-                  height: 1.25,
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _MarketplaceMetric(
+                  value: '$shopCount',
+                  label: 'stores',
+                  icon: Icons.storefront,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MarketplaceMetric(
+                  value: '$verifiedCount',
+                  label: 'verified',
+                  icon: Icons.verified_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MarketplaceMetric(
+                  value: '$productCount',
+                  label: 'items',
+                  icon: Icons.inventory_2_outlined,
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MarketplaceMetric extends StatelessWidget {
+  const _MarketplaceMetric({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
+
+  final String value;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F4EC),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF1F7A4D)),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SoukloraStoreRowCard extends StatelessWidget {
+  const SoukloraStoreRowCard({
+    super.key,
+    required this.shop,
+    required this.productCount,
+    required this.isFollowing,
+    required this.onFollow,
+    required this.onOpen,
+  });
+
+  final Shop shop;
+  final int productCount;
+  final bool isFollowing;
+  final VoidCallback onFollow;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: Colors.black54);
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  StoreAvatar(shop: shop, size: 68),
+                  if (shop.verified)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Icon(
+                          Icons.verified,
+                          color: Color(0xFF1F7A4D),
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            shop.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: isFollowing
+                              ? 'Following store'
+                              : 'Follow store',
+                          onPressed: onFollow,
+                          icon: Icon(
+                            isFollowing
+                                ? Icons.notifications_active
+                                : Icons.notifications_none,
+                            color: isFollowing
+                                ? const Color(0xFF1F7A4D)
+                                : Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      [
+                        shop.category,
+                        if (shop.location.isNotEmpty) shop.location,
+                      ].join(' - '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: muted,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _StoreStat(
+                          icon: Icons.star,
+                          label: shop.rating.toStringAsFixed(1),
+                        ),
+                        _StoreStat(
+                          icon: Icons.inventory_2_outlined,
+                          label: productCount == 1
+                              ? '1 item'
+                              : '$productCount items',
+                        ),
+                        _StoreStat(
+                          icon: Icons.delivery_dining,
+                          label: shop.delivery,
+                        ),
+                      ],
+                    ),
+                    if (shop.story.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        shop.story,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: muted,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
