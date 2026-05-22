@@ -1,6 +1,6 @@
 {
-    "name": "sellora_app",
-    "short_name": "sellora_app",
+    "name": "souklora_app",
+    "short_name": "souklora_app",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

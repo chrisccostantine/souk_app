@@ -11,22 +11,25 @@ import 'package:image_picker/image_picker.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'api/sellora_api.dart';
+import 'api/souklora_api.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await setupPushNotifications();
-  runApp(const SelloraApp());
+  runApp(const SoukloraApp());
 }
 
+const _soukloraApiUrl = String.fromEnvironment('SOUKLORA_API_URL');
 const _selloraApiUrl = String.fromEnvironment('SELLORA_API_URL');
 const _legacyApiUrl = String.fromEnvironment('SOUK_API_URL');
-const selloraApiUrl = _selloraApiUrl == '' ? _legacyApiUrl : _selloraApiUrl;
+const soukloraApiUrl = _soukloraApiUrl == ''
+    ? (_selloraApiUrl == '' ? _legacyApiUrl : _selloraApiUrl)
+    : _soukloraApiUrl;
 const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 const appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID');
 const appleRedirectUri = String.fromEnvironment('APPLE_REDIRECT_URI');
-const selloraNotificationChannel = AndroidNotificationChannel(
-  'sellora_campaigns',
+const soukloraNotificationChannel = AndroidNotificationChannel(
+  'souklora_campaigns',
   'Store campaigns',
   description: 'Campaign updates from stores you follow',
   importance: Importance.high,
@@ -56,7 +59,7 @@ Future<void> setupPushNotifications() async {
           AndroidFlutterLocalNotificationsPlugin
         >();
     await androidNotifications?.createNotificationChannel(
-      selloraNotificationChannel,
+      soukloraNotificationChannel,
     );
     await localNotifications.initialize(
       const InitializationSettings(
@@ -91,9 +94,9 @@ void showForegroundPushNotification(RemoteMessage message) {
     body,
     NotificationDetails(
       android: AndroidNotificationDetails(
-        selloraNotificationChannel.id,
-        selloraNotificationChannel.name,
-        channelDescription: selloraNotificationChannel.description,
+        soukloraNotificationChannel.id,
+        soukloraNotificationChannel.name,
+        channelDescription: soukloraNotificationChannel.description,
         importance: Importance.high,
         priority: Priority.high,
         icon: android?.smallIcon,
@@ -103,8 +106,8 @@ void showForegroundPushNotification(RemoteMessage message) {
   );
 }
 
-class SelloraApp extends StatelessWidget {
-  const SelloraApp({super.key});
+class SoukloraApp extends StatelessWidget {
+  const SoukloraApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +127,7 @@ class SelloraApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Sellora',
+      title: 'Souklora',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: scheme,
@@ -180,7 +183,7 @@ class AppSession {
 }
 
 Future<void> registerNotificationDevice(AppSession session) async {
-  if (selloraApiUrl.isEmpty || !selloraApiUrl.startsWith('https://')) {
+  if (soukloraApiUrl.isEmpty || !soukloraApiUrl.startsWith('https://')) {
     return;
   }
   try {
@@ -196,7 +199,7 @@ Future<void> registerNotificationDevice(AppSession session) async {
     if (token == null || token.isEmpty) {
       return;
     }
-    final api = SelloraApi(baseUrl: selloraApiUrl);
+    final api = SoukloraApi(baseUrl: soukloraApiUrl);
     await api.registerDevice({
       'email': session.email,
       'token': token,
@@ -330,17 +333,17 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       return;
     }
 
-    if (selloraApiUrl.isEmpty) {
+    if (soukloraApiUrl.isEmpty) {
       setState(() {
         _authError =
-            'Backend is not configured. Run with SELLORA_API_URL set to your Railway API URL.';
+            'Backend is not configured. Run with SOUKLORA_API_URL set to your Railway API URL.';
       });
       return;
     }
-    if (!selloraApiUrl.startsWith('https://')) {
+    if (!soukloraApiUrl.startsWith('https://')) {
       setState(() {
         _authError =
-            'SELLORA_API_URL must start with https:// and point to your Railway public domain.';
+            'SOUKLORA_API_URL must start with https:// and point to your Railway public domain.';
       });
       return;
     }
@@ -351,7 +354,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     });
 
     try {
-      final api = SelloraApi(baseUrl: selloraApiUrl);
+      final api = SoukloraApi(baseUrl: soukloraApiUrl);
       final response = _signup
           ? await api.signup(_signupPayload())
           : await api.login(_loginPayload());
@@ -359,10 +362,10 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
         return;
       }
       widget.onAuthenticated(_sessionFromAuthResponse(response));
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       setState(() => _authError = error.message);
     } catch (error) {
-      setState(() => _authError = 'Could not reach Sellora: $error');
+      setState(() => _authError = 'Could not reach Souklora: $error');
     } finally {
       if (mounted) {
         setState(() => _authLoading = false);
@@ -382,7 +385,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
         'name': _storeName.text.trim(),
         'category': _storeCategory.text.trim(),
         'city': _storeCity.text.trim(),
-        'story': '${_storeName.text.trim()} is selling on Sellora.',
+        'story': '${_storeName.text.trim()} is selling on Souklora.',
         'minimumOrder': 0,
         'deliveryLabel': 'Delivery available',
       };
@@ -420,9 +423,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       );
       return;
     }
-    if (selloraApiUrl.isEmpty || !selloraApiUrl.startsWith('https://')) {
+    if (soukloraApiUrl.isEmpty || !soukloraApiUrl.startsWith('https://')) {
       setState(
-        () => _authError = 'SELLORA_API_URL must point to your Railway backend.',
+        () => _authError = 'SOUKLORA_API_URL must point to your Railway backend.',
       );
       return;
     }
@@ -437,12 +440,12 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       if (payload == null) {
         return;
       }
-      final response = await SelloraApi(baseUrl: selloraApiUrl).socialLogin(payload);
+      final response = await SoukloraApi(baseUrl: soukloraApiUrl).socialLogin(payload);
       if (!mounted) {
         return;
       }
       widget.onAuthenticated(_sessionFromAuthResponse(response));
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       if (mounted) {
         setState(() => _authError = authFriendlyError(error));
       }
@@ -551,8 +554,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 safeSetDialogState(() => error = 'Enter your account email.');
                 return;
               }
-              if (selloraApiUrl.isEmpty) {
-                safeSetDialogState(() => error = 'SELLORA_API_URL is required.');
+              if (soukloraApiUrl.isEmpty) {
+                safeSetDialogState(() => error = 'SOUKLORA_API_URL is required.');
                 return;
               }
               safeSetDialogState(() {
@@ -560,7 +563,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 error = null;
               });
               try {
-                final api = SelloraApi(baseUrl: selloraApiUrl);
+                final api = SoukloraApi(baseUrl: soukloraApiUrl);
                 if (!codeRequested) {
                   final response = await api.forgotPassword({'email': email});
                   final nextCode = response['resetCode']?.toString();
@@ -595,7 +598,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                     Navigator.pop(dialogContext, newPasswordController.text);
                   }
                 }
-              } on SelloraApiException catch (apiError) {
+              } on SoukloraApiException catch (apiError) {
                 safeSetDialogState(() => error = authFriendlyError(apiError));
               } on TimeoutException {
                 safeSetDialogState(
@@ -794,7 +797,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                             ? (_role == AccountRole.seller
                                   ? 'Register Store'
                                   : 'Create Account')
-                            : 'Login to Sellora',
+                            : 'Login to Souklora',
                         style: Theme.of(context).textTheme.headlineSmall
                             ?.copyWith(
                               color: const Color(0xFF164A36),
@@ -806,8 +809,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                       const SizedBox(height: 8),
                       Text(
                         _signup
-                            ? 'Create your account and continue into Sellora.'
-                            : 'Choose where you want to enter Sellora.',
+                            ? 'Create your account and continue into Souklora.'
+                            : 'Choose where you want to enter Souklora.',
                         style: Theme.of(
                           context,
                         ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
@@ -1032,7 +1035,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
             const SizedBox(height: 24),
             Center(
               child: Text(
-                'Powered by Sellora • Shopify Sync',
+                'Powered by Souklora • Shopify Sync',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -1083,7 +1086,7 @@ class AuthBrandHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Sellora',
+                'Souklora',
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
                   fontFamily: 'serif',
                   color: const Color(0xFF164A36),
@@ -1156,7 +1159,7 @@ class AuthHeroPanel extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'Welcome to Sellora',
+                    'Welcome to Souklora',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontFamily: 'serif',
                       color: const Color(0xFF164A36),
@@ -1469,9 +1472,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   Future<void> _loadCatalog() async {
-    if (selloraApiUrl.isEmpty) {
+    if (soukloraApiUrl.isEmpty) {
       setState(() {
-        _catalogMessage = 'Run the app with SELLORA_API_URL to load live stores.';
+        _catalogMessage = 'Run the app with SOUKLORA_API_URL to load live stores.';
       });
       return;
     }
@@ -1480,7 +1483,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       _catalogMessage = null;
     });
     try {
-      final api = SelloraApi(baseUrl: selloraApiUrl);
+      final api = SoukloraApi(baseUrl: soukloraApiUrl);
       final shopRows = await api.fetchShops();
       final productRows = await api.fetchProducts();
       final shops = shopRows
@@ -1503,18 +1506,18 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       }
       setState(() {
         _catalogLoading = false;
-        _catalogMessage = 'Could not load live catalog from Sellora.';
+        _catalogMessage = 'Could not load live catalog from Souklora.';
       });
     }
   }
 
   Future<void> _loadCustomerOrders() async {
-    if (selloraApiUrl.isEmpty) {
+    if (soukloraApiUrl.isEmpty) {
       return;
     }
     try {
-      final rows = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchOrders(customerEmail: widget.session.email);
       if (!mounted) {
         return;
@@ -1532,12 +1535,12 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   Future<void> _loadCustomerFollows() async {
-    if (selloraApiUrl.isEmpty) {
+    if (soukloraApiUrl.isEmpty) {
       return;
     }
     try {
-      final rows = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchCustomerFollows(widget.session.email);
       if (!mounted) {
         return;
@@ -1613,11 +1616,11 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   Future<void> _persistFavorite(Product product) async {
-    if (selloraApiUrl.isEmpty || product.id.isEmpty) {
+    if (soukloraApiUrl.isEmpty || product.id.isEmpty) {
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).favoriteProduct(product.id, {
+      await SoukloraApi(baseUrl: soukloraApiUrl).favoriteProduct(product.id, {
         'customerEmail': widget.session.email,
         'customerName': widget.session.name,
       });
@@ -1627,8 +1630,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   Future<void> _followShop(Shop shop) async {
-    if (selloraApiUrl.isEmpty || shop.id.isEmpty) {
-      _showSnack('SELLORA_API_URL is required to follow stores');
+    if (soukloraApiUrl.isEmpty || shop.id.isEmpty) {
+      _showSnack('SOUKLORA_API_URL is required to follow stores');
       return;
     }
     final wasFollowing = _followedShopIds.contains(shop.id);
@@ -1645,13 +1648,13 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         'name': widget.session.name,
       };
       if (wasFollowing) {
-        await SelloraApi(baseUrl: selloraApiUrl).unfollowShop(shop.id, payload);
+        await SoukloraApi(baseUrl: soukloraApiUrl).unfollowShop(shop.id, payload);
         _showSnack('Unfollowed ${shop.name}');
       } else {
-        await SelloraApi(baseUrl: selloraApiUrl).followShop(shop.id, payload);
+        await SoukloraApi(baseUrl: soukloraApiUrl).followShop(shop.id, payload);
         _showSnack('Following ${shop.name}');
       }
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       setState(() {
         if (wasFollowing) {
           _followedShopIds.add(shop.id);
@@ -1739,12 +1742,12 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     int rating,
     String comment,
   ) async {
-    if (selloraApiUrl.isEmpty || product.shop.id.isEmpty) {
-      _showSnack('SELLORA_API_URL is required to review stores');
+    if (soukloraApiUrl.isEmpty || product.shop.id.isEmpty) {
+      _showSnack('SOUKLORA_API_URL is required to review stores');
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).createReview(product.shop.id, {
+      await SoukloraApi(baseUrl: soukloraApiUrl).createReview(product.shop.id, {
         'customerEmail': widget.session.email,
         'customerName': widget.session.name,
         'rating': rating,
@@ -1752,7 +1755,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       });
       _loadCatalog();
       _showSnack('Review submitted');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSnack(error.message);
     } catch (_) {
       _showSnack('Could not submit review');
@@ -1760,10 +1763,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 
   void _trackShopEvent(Product product, String event) {
-    if (selloraApiUrl.isEmpty || product.shop.id.isEmpty) {
+    if (soukloraApiUrl.isEmpty || product.shop.id.isEmpty) {
       return;
     }
-    SelloraApi(baseUrl: selloraApiUrl)
+    SoukloraApi(baseUrl: soukloraApiUrl)
         .trackShopAnalytics(product.shop.id, {
           'event': event,
           'bestProductId': product.id,
@@ -1776,8 +1779,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     if (_cart.isEmpty) {
       return;
     }
-    if (selloraApiUrl.isEmpty) {
-      _showSnack('SELLORA_API_URL is required for checkout');
+    if (soukloraApiUrl.isEmpty) {
+      _showSnack('SOUKLORA_API_URL is required for checkout');
       return;
     }
     try {
@@ -1786,7 +1789,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         groupedLines.putIfAbsent(line.product.shop.id, () => []).add(line);
       }
       final placedOrders = <Order>[];
-      final api = SelloraApi(baseUrl: selloraApiUrl);
+      final api = SoukloraApi(baseUrl: soukloraApiUrl);
 
       for (final entry in groupedLines.entries) {
         final lines = entry.value;
@@ -1840,7 +1843,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             ? 'Order ${placedOrders.first.id} placed'
             : '${placedOrders.length} store orders placed',
       );
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSnack(error.message);
     } catch (_) {
       _showSnack('Could not place order');
@@ -1868,8 +1871,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
                 setDialogState(() => error = 'Passwords do not match.');
                 return;
               }
-              if (selloraApiUrl.isEmpty) {
-                setDialogState(() => error = 'SELLORA_API_URL is required.');
+              if (soukloraApiUrl.isEmpty) {
+                setDialogState(() => error = 'SOUKLORA_API_URL is required.');
                 return;
               }
               setDialogState(() {
@@ -1877,7 +1880,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
                 error = null;
               });
               try {
-                await SelloraApi(baseUrl: selloraApiUrl).changePassword({
+                await SoukloraApi(baseUrl: soukloraApiUrl).changePassword({
                   'email': widget.session.email,
                   'currentPassword': currentPassword.text,
                   'newPassword': newPassword.text,
@@ -1885,7 +1888,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
                 if (dialogContext.mounted) {
                   Navigator.pop(dialogContext, true);
                 }
-              } on SelloraApiException catch (apiError) {
+              } on SoukloraApiException catch (apiError) {
                 setDialogState(() => error = apiError.message);
               } catch (submitError) {
                 setDialogState(
@@ -2096,7 +2099,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
 
     return Scaffold(
       body: SafeArea(child: pages[_tabIndex]),
-      bottomNavigationBar: SelloraBottomNav(
+      bottomNavigationBar: SoukloraBottomNav(
         selectedIndex: _tabIndex,
         onSelected: (index) => setState(() => _tabIndex = index),
       ),
@@ -2158,8 +2161,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Future<void> _loadShops() async {
-    if (selloraApiUrl.isEmpty) {
-      setState(() => _message = 'SELLORA_API_URL is required for admin review.');
+    if (soukloraApiUrl.isEmpty) {
+      setState(() => _message = 'SOUKLORA_API_URL is required for admin review.');
       return;
     }
     setState(() {
@@ -2167,8 +2170,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       _message = null;
     });
     try {
-      final rows = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchShops(includeAll: true);
       if (!mounted) {
         return;
@@ -2192,7 +2195,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _reviewShop(Shop shop, bool approved) async {
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).verifyShop(shop.id, {
+      await SoukloraApi(baseUrl: soukloraApiUrl).verifyShop(shop.id, {
         'verified': approved,
         'verificationNote': approved
             ? 'Approved by Scalora admin'
@@ -2210,7 +2213,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.message),
@@ -2399,9 +2402,9 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SelloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+                SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
                 const SizedBox(height: 24),
-                SelloraSearchRow(
+                SoukloraSearchRow(
                   value: query,
                   filters: filters,
                   options: filterOptions,
@@ -2410,27 +2413,27 @@ class HomePage extends StatelessWidget {
                 ),
                 if (suggestions.isNotEmpty) ...[
                   const SizedBox(height: 12),
-                  SelloraSearchSuggestions(
+                  SoukloraSearchSuggestions(
                     products: suggestions,
                     onSelected: onOpenProduct,
                   ),
                 ],
                 const SizedBox(height: 22),
-                SelloraCategoryBubbles(
+                SoukloraCategoryBubbles(
                   selected: category,
                   categories: categories,
                   shops: shops,
                   onSelected: onCategoryChanged,
                 ),
                 const SizedBox(height: 26),
-                SelloraMarketplaceBanner(
+                SoukloraMarketplaceBanner(
                   shopCount: shops.length,
                   productCount: allProducts.length,
                   verifiedCount: shops.where((shop) => shop.verified).length,
                 ),
                 if (featuredShops.isNotEmpty) ...[
                   const SizedBox(height: 26),
-                  SelloraSectionHeader(
+                  SoukloraSectionHeader(
                     title: 'Featured Stores',
                     icon: Icons.storefront,
                   ),
@@ -2483,7 +2486,7 @@ class HomePage extends StatelessWidget {
                             .toList();
                         return SizedBox(
                           width: 282,
-                          child: SelloraFeaturedStoreCard(
+                          child: SoukloraFeaturedStoreCard(
                             shop: shop,
                             products: shopProducts,
                             isFollowing: followedShopIds.contains(shop.id),
@@ -2497,7 +2500,7 @@ class HomePage extends StatelessWidget {
                   ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-                  child: SelloraSectionHeader(
+                  child: SoukloraSectionHeader(
                     title: 'Popular Categories',
                     onViewAll: () => onCategoryChanged('All'),
                   ),
@@ -2516,7 +2519,7 @@ class HomePage extends StatelessWidget {
                           .toList();
                       return SizedBox(
                         width: 132,
-                        child: SelloraPopularCategoryTile(
+                        child: SoukloraPopularCategoryTile(
                           name: name,
                           shops: categoryStores,
                           onTap: () => onCategoryChanged(name),
@@ -2528,8 +2531,8 @@ class HomePage extends StatelessWidget {
                 if (arrivalProducts.isNotEmpty) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
-                    child: SelloraSectionHeader(
-                      title: 'New Across Sellora',
+                    child: SoukloraSectionHeader(
+                      title: 'New Across Souklora',
                       icon: Icons.new_releases_outlined,
                       onViewAll: onViewAllFeatured,
                     ),
@@ -2545,7 +2548,7 @@ class HomePage extends StatelessWidget {
                         final product = arrivalProducts[index];
                         return SizedBox(
                           width: 178,
-                          child: SelloraDealCard(
+                          child: SoukloraDealCard(
                             product: product,
                             isFavorite: favoriteIds.contains(product.id),
                             onOpen: () => onOpenProduct(product),
@@ -2602,7 +2605,7 @@ class StoresPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        SelloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+        SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
         const SizedBox(height: 18),
         const SectionTitle(title: 'Local shops', action: 'Verified sellers'),
         const SizedBox(height: 12),
@@ -2752,7 +2755,7 @@ class StorefrontPage extends StatelessWidget {
                           ],
                         ),
                         Text(
-                          '${shop.category} in ${shop.location.isEmpty ? 'Sellora' : shop.location}',
+                          '${shop.category} in ${shop.location.isEmpty ? 'Souklora' : shop.location}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -2980,7 +2983,7 @@ void openStorefrontMenuItem(
   if (item.type.toUpperCase() == 'COLLECTION') {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Sync Shopify again to open this collection inside Sellora.'),
+        content: Text('Sync Shopify again to open this collection inside Souklora.'),
       ),
     );
     return;
@@ -3254,7 +3257,7 @@ class ActivityPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
-        SelloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+        SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
         const SizedBox(height: 18),
         AccountSecurityCard(
           session: session,
@@ -3369,7 +3372,7 @@ class SellEntryPage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
-        SelloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+        SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
         const SizedBox(height: 24),
         Container(
           padding: const EdgeInsets.all(22),
@@ -3383,7 +3386,7 @@ class SellEntryPage extends StatelessWidget {
               const Icon(Icons.storefront, color: Colors.white, size: 42),
               const SizedBox(height: 18),
               Text(
-                'Sell on Sellora',
+                'Sell on Souklora',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   color: Colors.white,
                   fontFamily: 'serif',
@@ -3448,7 +3451,7 @@ class ProfilePage extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
-        SelloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+        SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
         const SizedBox(height: 24),
         AccountSecurityCard(
           session: session,
@@ -3619,8 +3622,8 @@ class FollowingStoresPage extends StatelessWidget {
   }
 }
 
-class SelloraBottomNav extends StatelessWidget {
-  const SelloraBottomNav({
+class SoukloraBottomNav extends StatelessWidget {
+  const SoukloraBottomNav({
     super.key,
     required this.selectedIndex,
     required this.onSelected,
@@ -3650,7 +3653,7 @@ class SelloraBottomNav extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: SelloraBottomNavItem(
+              child: SoukloraBottomNavItem(
                 icon: Icons.home_outlined,
                 selectedIcon: Icons.home,
                 label: 'Home',
@@ -3659,7 +3662,7 @@ class SelloraBottomNav extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: SelloraBottomNavItem(
+              child: SoukloraBottomNavItem(
                 icon: Icons.grid_view_outlined,
                 selectedIcon: Icons.grid_view,
                 label: 'Stores',
@@ -3711,7 +3714,7 @@ class SelloraBottomNav extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: SelloraBottomNavItem(
+              child: SoukloraBottomNavItem(
                 icon: Icons.receipt_long_outlined,
                 selectedIcon: Icons.receipt_long,
                 label: 'Orders',
@@ -3720,7 +3723,7 @@ class SelloraBottomNav extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: SelloraBottomNavItem(
+              child: SoukloraBottomNavItem(
                 icon: Icons.person_outline,
                 selectedIcon: Icons.person,
                 label: 'Profile',
@@ -3735,8 +3738,8 @@ class SelloraBottomNav extends StatelessWidget {
   }
 }
 
-class SelloraBottomNavItem extends StatelessWidget {
-  const SelloraBottomNavItem({
+class SoukloraBottomNavItem extends StatelessWidget {
+  const SoukloraBottomNavItem({
     super.key,
     required this.icon,
     required this.selectedIcon,
@@ -3951,12 +3954,12 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _refreshSellerStore() async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       return;
     }
     try {
-      final rows = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchShops(includeAll: true);
       final row = firstWhereOrNull(
         rows.whereType<Map<String, dynamic>>(),
@@ -3976,14 +3979,14 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _connectShopify() async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       await showDialog<void>(
         context: context,
         builder: (context) {
           return AlertDialog(
             title: const Text('Shopify connection is not configured'),
             content: const Text(
-              'Login with a real store account and run the app with SELLORA_API_URL set to your Railway API URL.',
+              'Login with a real store account and run the app with SOUKLORA_API_URL set to your Railway API URL.',
             ),
             actions: [
               TextButton(
@@ -4007,7 +4010,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
 
     try {
-      final api = SelloraApi(baseUrl: selloraApiUrl);
+      final api = SoukloraApi(baseUrl: soukloraApiUrl);
       final installUrl = await api.startShopifyOAuth({
         'shopId': shopId,
         'shopDomain': _shopifyStore.text.trim(),
@@ -4028,7 +4031,7 @@ class _SellerHubPageState extends State<SellerHubPage>
         );
         return;
       }
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.message),
@@ -4050,7 +4053,7 @@ class _SellerHubPageState extends State<SellerHubPage>
       _shopifyPending = true;
       _shopifySynced = false;
       _shopifyMessage =
-          'Opening Shopify login. Approve access there, then return to Sellora.';
+          'Opening Shopify login. Approve access there, then return to Souklora.';
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -4062,12 +4065,12 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _refreshShopifyStatus() async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       return;
     }
     try {
-      final status = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final status = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchShopifyStatus(shopId);
       if (!mounted) {
         return;
@@ -4103,18 +4106,18 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       return;
     }
     _startShopifySyncProgress();
     try {
-      final result = await SelloraApi(baseUrl: selloraApiUrl).syncShopify(shopId);
+      final result = await SoukloraApi(baseUrl: soukloraApiUrl).syncShopify(shopId);
       if (!mounted) {
         return;
       }
       final jobId = result['jobId'] as String?;
       if (jobId == null) {
-        throw const SelloraApiException(500, 'Sync job was not created');
+        throw const SoukloraApiException(500, 'Sync job was not created');
       }
       setState(() {
         _shopifySyncJobId = jobId;
@@ -4122,7 +4125,7 @@ class _SellerHubPageState extends State<SellerHubPage>
             result['message'] as String? ?? 'Shopify sync started';
       });
       _pollShopifySyncJob(jobId);
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.message),
@@ -4157,8 +4160,8 @@ class _SellerHubPageState extends State<SellerHubPage>
     _shopifySyncTimer?.cancel();
     _shopifySyncTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       try {
-        final job = await SelloraApi(
-          baseUrl: selloraApiUrl,
+        final job = await SoukloraApi(
+          baseUrl: soukloraApiUrl,
         ).fetchShopifySyncJob(jobId);
         if (!mounted || _shopifySyncJobId != jobId) {
           return;
@@ -4221,7 +4224,7 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _loadSellerInventory() async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       return;
     }
     setState(() {
@@ -4229,8 +4232,8 @@ class _SellerHubPageState extends State<SellerHubPage>
       _inventoryMessage = null;
     });
     try {
-      final data = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final data = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchShopInventory(shopId);
       final products = (data['products'] as List<dynamic>? ?? [])
           .map(
@@ -4272,12 +4275,12 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _loadSellerOrders() async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       return;
     }
     try {
-      final rows = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).fetchOrders(shopId: shopId);
       if (!mounted) {
         return;
@@ -4295,11 +4298,11 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _loadSellerGrowth() async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       return;
     }
     try {
-      final data = await SelloraApi(baseUrl: selloraApiUrl).fetchShopGrowth(shopId);
+      final data = await SoukloraApi(baseUrl: soukloraApiUrl).fetchShopGrowth(shopId);
       if (!mounted) {
         return;
       }
@@ -4313,12 +4316,12 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _saveStoreProfile(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       _showSellerSnack('Connect the backend before saving store settings.');
       return;
     }
     try {
-      final shop = await SelloraApi(baseUrl: selloraApiUrl).updateShopProfile(shopId, payload);
+      final shop = await SoukloraApi(baseUrl: soukloraApiUrl).updateShopProfile(shopId, payload);
       if (!mounted) {
         return;
       }
@@ -4326,7 +4329,7 @@ class _SellerHubPageState extends State<SellerHubPage>
         _liveStore = ShopDraft.fromJson(shop);
       });
       _showSellerSnack('Store profile saved');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not save store profile');
@@ -4388,13 +4391,13 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _createCampaign(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       _showSellerSnack('Connect the backend before creating campaigns.');
       return;
     }
     try {
-      final result = await SelloraApi(
-        baseUrl: selloraApiUrl,
+      final result = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).createCampaign(shopId, payload);
       await _loadSellerGrowth();
       if (!mounted) {
@@ -4402,7 +4405,7 @@ class _SellerHubPageState extends State<SellerHubPage>
       }
       final delivery = result['delivery'] as Map<String, dynamic>?;
       _showSellerSnack(campaignDeliveryMessage(delivery));
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       if (!mounted) {
         return;
       }
@@ -4417,15 +4420,15 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _createPlacement(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       _showSellerSnack('Connect the backend before creating placements.');
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).createPlacement(shopId, payload);
+      await SoukloraApi(baseUrl: soukloraApiUrl).createPlacement(shopId, payload);
       await _loadSellerGrowth();
       _showSellerSnack('Featured placement created');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not create placement');
@@ -4436,15 +4439,15 @@ class _SellerHubPageState extends State<SellerHubPage>
     SellerOrder order,
     String status,
   ) async {
-    if (selloraApiUrl.isEmpty || order.id.isEmpty) {
+    if (soukloraApiUrl.isEmpty || order.id.isEmpty) {
       _showSellerSnack('Connect the backend before updating orders.');
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).updateOrderStatus(order.id, status);
+      await SoukloraApi(baseUrl: soukloraApiUrl).updateOrderStatus(order.id, status);
       await _loadSellerOrders();
       _showSellerSnack('Order updated to $status');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not update order');
@@ -4453,12 +4456,12 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _generateProductCopy() async {
     final product = _syncedProducts.isEmpty ? null : _syncedProducts.first;
-    if (selloraApiUrl.isEmpty || product == null) {
+    if (soukloraApiUrl.isEmpty || product == null) {
       _showSellerSnack('Sync products first, then generate product copy.');
       return;
     }
     try {
-      final copy = await SelloraApi(baseUrl: selloraApiUrl).generateProductCopy({
+      final copy = await SoukloraApi(baseUrl: soukloraApiUrl).generateProductCopy({
         'productName': product.name,
         'category': product.category,
         'tone': 'premium and local',
@@ -4474,12 +4477,12 @@ class _SellerHubPageState extends State<SellerHubPage>
   }
 
   Future<void> _generateAdCopy() async {
-    if (selloraApiUrl.isEmpty) {
+    if (soukloraApiUrl.isEmpty) {
       _showSellerSnack('Connect the backend before generating ads.');
       return;
     }
     try {
-      final copy = await SelloraApi(baseUrl: selloraApiUrl).generateAdCopy({
+      final copy = await SoukloraApi(baseUrl: soukloraApiUrl).generateAdCopy({
         'storeName': widget.session.store?.name ?? 'Your store',
         'offer': 'new arrivals and limited stock',
         'channel': 'instagram',
@@ -4499,14 +4502,14 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _createDeliveryRegion(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       _showSellerSnack('Connect the backend before adding delivery regions.');
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).createDeliveryRegion(shopId, payload);
+      await SoukloraApi(baseUrl: soukloraApiUrl).createDeliveryRegion(shopId, payload);
       _showSellerSnack('Delivery region saved');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not save delivery region');
@@ -4515,14 +4518,14 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _createLiveEvent(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       _showSellerSnack('Connect the backend before scheduling live selling.');
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).createLiveEvent(shopId, payload);
+      await SoukloraApi(baseUrl: soukloraApiUrl).createLiveEvent(shopId, payload);
       _showSellerSnack('Live selling event scheduled');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not schedule live event');
@@ -4531,14 +4534,14 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _createAffiliateLink(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
-    if (selloraApiUrl.isEmpty || shopId == null) {
+    if (soukloraApiUrl.isEmpty || shopId == null) {
       _showSellerSnack('Connect the backend before adding affiliates.');
       return;
     }
     try {
-      await SelloraApi(baseUrl: selloraApiUrl).createAffiliateLink(shopId, payload);
+      await SoukloraApi(baseUrl: soukloraApiUrl).createAffiliateLink(shopId, payload);
       _showSellerSnack('Affiliate link created');
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not create affiliate link');
@@ -4556,11 +4559,11 @@ class _SellerHubPageState extends State<SellerHubPage>
 
   Future<void> _toggleFeaturedProduct(SellerInventoryProduct product) async {
     try {
-      await SelloraApi(
-        baseUrl: selloraApiUrl,
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
       ).setProductFeatured(product.id, !product.featured);
       await _loadSellerInventory();
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       if (!mounted) {
         return;
       }
@@ -4579,7 +4582,7 @@ class _SellerHubPageState extends State<SellerHubPage>
         _liveStore ??
         widget.session.store ??
         const ShopDraft(
-          name: 'My Sellora Store',
+          name: 'My Souklora Store',
           category: 'Store',
           city: 'Beirut',
           hasDelivery: true,
@@ -4792,7 +4795,7 @@ class HeaderBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Sellora',
+                'Souklora',
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
@@ -4907,8 +4910,8 @@ class SellerMenuTile extends StatelessWidget {
   }
 }
 
-class SelloraShopperTopBar extends StatelessWidget {
-  const SelloraShopperTopBar({
+class SoukloraShopperTopBar extends StatelessWidget {
+  const SoukloraShopperTopBar({
     super.key,
     required this.cartCount,
     required this.onCartTap,
@@ -4923,7 +4926,7 @@ class SelloraShopperTopBar extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            'Sellora',
+            'Souklora',
             style: Theme.of(context).textTheme.displaySmall?.copyWith(
               fontFamily: 'serif',
               fontWeight: FontWeight.w800,
@@ -4953,8 +4956,8 @@ class SelloraShopperTopBar extends StatelessWidget {
   }
 }
 
-class SelloraSearchRow extends StatefulWidget {
-  const SelloraSearchRow({
+class SoukloraSearchRow extends StatefulWidget {
+  const SoukloraSearchRow({
     super.key,
     required this.value,
     required this.filters,
@@ -4970,10 +4973,10 @@ class SelloraSearchRow extends StatefulWidget {
   final ValueChanged<MarketplaceFilters> onFiltersChanged;
 
   @override
-  State<SelloraSearchRow> createState() => _SelloraSearchRowState();
+  State<SoukloraSearchRow> createState() => _SoukloraSearchRowState();
 }
 
-class _SelloraSearchRowState extends State<SelloraSearchRow> {
+class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
   late final TextEditingController _controller;
 
   @override
@@ -4983,7 +4986,7 @@ class _SelloraSearchRowState extends State<SelloraSearchRow> {
   }
 
   @override
-  void didUpdateWidget(covariant SelloraSearchRow oldWidget) {
+  void didUpdateWidget(covariant SoukloraSearchRow oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.value != _controller.text) {
       _controller.value = TextEditingValue(
@@ -5086,8 +5089,8 @@ class _SelloraSearchRowState extends State<SelloraSearchRow> {
   }
 }
 
-class SelloraSearchSuggestions extends StatelessWidget {
-  const SelloraSearchSuggestions({
+class SoukloraSearchSuggestions extends StatelessWidget {
+  const SoukloraSearchSuggestions({
     super.key,
     required this.products,
     required this.onSelected,
@@ -5177,8 +5180,8 @@ class SelloraSearchSuggestions extends StatelessWidget {
   }
 }
 
-class SelloraCategoryBubbles extends StatelessWidget {
-  const SelloraCategoryBubbles({
+class SoukloraCategoryBubbles extends StatelessWidget {
+  const SoukloraCategoryBubbles({
     super.key,
     required this.selected,
     required this.categories,
@@ -5209,7 +5212,7 @@ class SelloraCategoryBubbles extends StatelessWidget {
             shops,
             (item) => target == 'All' || item.category == target,
           );
-          return SelloraCategoryBubble(
+          return SoukloraCategoryBubble(
             name: shopperCategoryLabel(name),
             selected: selectedItem,
             shop: shop,
@@ -5222,8 +5225,8 @@ class SelloraCategoryBubbles extends StatelessWidget {
   }
 }
 
-class SelloraCategoryBubble extends StatelessWidget {
-  const SelloraCategoryBubble({
+class SoukloraCategoryBubble extends StatelessWidget {
+  const SoukloraCategoryBubble({
     super.key,
     required this.name,
     required this.selected,
@@ -5296,8 +5299,8 @@ class SelloraCategoryBubble extends StatelessWidget {
   }
 }
 
-class SelloraPromoBanner extends StatelessWidget {
-  const SelloraPromoBanner({super.key});
+class SoukloraPromoBanner extends StatelessWidget {
+  const SoukloraPromoBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -5314,7 +5317,7 @@ class SelloraPromoBanner extends StatelessWidget {
             right: -20,
             top: 20,
             bottom: 0,
-            child: _SelloraBannerIllustration(),
+            child: _SoukloraBannerIllustration(),
           ),
           Positioned.fill(
             child: DecoratedBox(
@@ -5341,7 +5344,7 @@ class SelloraPromoBanner extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'WELCOME TO SELLORA',
+                    'WELCOME TO SOUKLORA',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0,
@@ -5396,10 +5399,10 @@ class SelloraPromoBanner extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SelloraDot(active: true),
-                SelloraDot(active: false),
-                SelloraDot(active: false),
-                SelloraDot(active: false),
+                SoukloraDot(active: true),
+                SoukloraDot(active: false),
+                SoukloraDot(active: false),
+                SoukloraDot(active: false),
               ],
             ),
           ),
@@ -5409,8 +5412,8 @@ class SelloraPromoBanner extends StatelessWidget {
   }
 }
 
-class SelloraMarketplaceBanner extends StatelessWidget {
-  const SelloraMarketplaceBanner({
+class SoukloraMarketplaceBanner extends StatelessWidget {
+  const SoukloraMarketplaceBanner({
     super.key,
     required this.shopCount,
     required this.productCount,
@@ -5471,7 +5474,7 @@ class SelloraMarketplaceBanner extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Browse local shops, compare styles, and build one basket across Sellora.',
+                'Browse local shops, compare styles, and build one basket across Souklora.',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -5487,8 +5490,8 @@ class SelloraMarketplaceBanner extends StatelessWidget {
   }
 }
 
-class SelloraFeaturedStoreCard extends StatelessWidget {
-  const SelloraFeaturedStoreCard({
+class SoukloraFeaturedStoreCard extends StatelessWidget {
+  const SoukloraFeaturedStoreCard({
     super.key,
     required this.shop,
     required this.products,
@@ -5545,7 +5548,7 @@ class SelloraFeaturedStoreCard extends StatelessWidget {
                           ],
                         ),
                         Text(
-                          '${shop.category} in ${shop.location.isEmpty ? 'Sellora' : shop.location}',
+                          '${shop.category} in ${shop.location.isEmpty ? 'Souklora' : shop.location}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
@@ -5668,8 +5671,8 @@ class _StoreProductPreview extends StatelessWidget {
   }
 }
 
-class _SelloraBannerIllustration extends StatelessWidget {
-  const _SelloraBannerIllustration();
+class _SoukloraBannerIllustration extends StatelessWidget {
+  const _SoukloraBannerIllustration();
 
   @override
   Widget build(BuildContext context) {
@@ -5732,8 +5735,8 @@ class _SelloraBannerIllustration extends StatelessWidget {
   }
 }
 
-class SelloraDot extends StatelessWidget {
-  const SelloraDot({super.key, required this.active});
+class SoukloraDot extends StatelessWidget {
+  const SoukloraDot({super.key, required this.active});
 
   final bool active;
 
@@ -5751,8 +5754,8 @@ class SelloraDot extends StatelessWidget {
   }
 }
 
-class SelloraSectionHeader extends StatelessWidget {
-  const SelloraSectionHeader({
+class SoukloraSectionHeader extends StatelessWidget {
+  const SoukloraSectionHeader({
     super.key,
     required this.title,
     this.icon,
@@ -7224,8 +7227,8 @@ class ProductMiniCard extends StatelessWidget {
   }
 }
 
-class SelloraDealCard extends StatelessWidget {
-  const SelloraDealCard({
+class SoukloraDealCard extends StatelessWidget {
+  const SoukloraDealCard({
     super.key,
     required this.product,
     required this.isFavorite,
@@ -7377,8 +7380,8 @@ class SelloraDealCard extends StatelessWidget {
   }
 }
 
-class SelloraPopularCategoryTile extends StatelessWidget {
-  const SelloraPopularCategoryTile({
+class SoukloraPopularCategoryTile extends StatelessWidget {
+  const SoukloraPopularCategoryTile({
     super.key,
     required this.name,
     required this.shops,
@@ -8223,7 +8226,7 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Build a mini storefront inside Sellora without building a separate app.',
+              'Build a mini storefront inside Souklora without building a separate app.',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -9198,7 +9201,7 @@ class Shop {
       location: json['city'] as String? ?? '',
       story:
           json['story'] as String? ??
-          'Shop products directly from this Sellora store.',
+          'Shop products directly from this Souklora store.',
       rating: parseDouble(json['rating']),
       color: const Color(0xFF1F7A4D),
       icon: Icons.storefront,
@@ -9717,7 +9720,7 @@ class ShopDraft {
   factory ShopDraft.fromJson(Map<String, dynamic> json) {
     return ShopDraft(
       id: json['id']?.toString(),
-      name: json['name']?.toString() ?? 'My Sellora Store',
+      name: json['name']?.toString() ?? 'My Souklora Store',
       category: json['category']?.toString() ?? 'Store',
       city: json['city']?.toString() ?? 'Beirut',
       hasDelivery: (json['deliveryLabel']?.toString() ?? '').isNotEmpty,
@@ -10507,7 +10510,7 @@ Future<void> showAffiliateDialog(
 ) async {
   final creatorName = TextEditingController();
   final handle = TextEditingController();
-  final code = TextEditingController(text: 'SELLORA10');
+  final code = TextEditingController(text: 'SOUKLORA10');
   final commission = TextEditingController(text: '10');
   await showSimpleFormDialog(
     context: context,
@@ -10809,7 +10812,7 @@ String shopperCategoryLabel(String value) {
       .join(' ');
 }
 
-String authFriendlyError(SelloraApiException error) {
+String authFriendlyError(SoukloraApiException error) {
   if (error.statusCode == 404 && error.message.contains('Route not found')) {
     return 'Password reset is not live on the backend yet. Deploy the latest Railway backend, then try again.';
   }

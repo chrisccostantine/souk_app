@@ -1,6 +1,6 @@
-# Sellora Backend
+# Souklora Backend
 
-Railway-ready API for the Sellora marketplace app.
+Railway-ready API for the Souklora marketplace app.
 
 ## Stack
 
@@ -77,7 +77,7 @@ Forgot-password codes can be emailed through Resend over HTTPS. This avoids SMTP
 
 ```text
 RESEND_API_KEY=re_...
-RESEND_FROM=Sellora <onboarding@resend.dev>
+RESEND_FROM=Souklora <onboarding@resend.dev>
 ```
 
 Push notifications use Firebase Cloud Messaging. Set either:
@@ -99,7 +99,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
-SMTP_FROM=Sellora <your-email@gmail.com>
+SMTP_FROM=Souklora <your-email@gmail.com>
 ```
 
 For Gmail, `SMTP_PASS` must be an app password, not your normal Gmail password.
@@ -140,7 +140,7 @@ POST /api/shopify/oauth/start
 Content-Type: application/json
 
 {
-  "shopId": "sellora-shop-id"
+  "shopId": "souklora-shop-id"
 }
 ```
 
@@ -155,12 +155,12 @@ The mobile app asks only for the Shopify store URL, for example `merchant-store.
 After OAuth succeeds, the callback page tries to reopen the app with:
 
 ```text
-sellora://shopify-connected
+souklora://shopify-connected
 ```
 
 The mobile app also checks `/api/shopify/status` whenever it returns from the browser, so it can mark the store as connected even if the browser cannot auto-open the app.
 
-Shopify now requires expiring offline access tokens for Admin API calls. If an older connection shows a non-expiring token error, reconnect the Shopify store once so Sellora can store the refresh token.
+Shopify now requires expiring offline access tokens for Admin API calls. If an older connection shows a non-expiring token error, reconnect the Shopify store once so Souklora can store the refresh token.
 
 Sync catalog, collections, images, descriptions, prices, and inventory:
 
@@ -169,14 +169,14 @@ POST /api/shopify/sync
 Content-Type: application/json
 
 {
-  "shopId": "sellora-shop-id"
+  "shopId": "souklora-shop-id"
 }
 ```
 
 For two-way inventory:
 
-- Sellora orders call Shopify inventory adjustment for synced products.
-- Shopify inventory webhooks update Sellora product stock.
+- Souklora orders call Shopify inventory adjustment for synced products.
+- Shopify inventory webhooks update Souklora product stock.
 - Add `SHOPIFY_WEBHOOK_SECRET` in Railway if webhook signature verification is enabled.
 
 Recommended Shopify webhook topics:

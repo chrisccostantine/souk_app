@@ -50,7 +50,7 @@ export async function sendPushToTokens({ tokens, title, body, data = {} }) {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'sellora_campaigns',
+          channelId: 'souklora_campaigns',
           priority: 'high',
           defaultSound: true,
         },

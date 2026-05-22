@@ -30,7 +30,7 @@ export const updateShopProfileSchema = z.object({
 
 export const followStoreSchema = z.object({
   email: z.string().email(),
-  name: z.string().min(2).default('Sellora customer'),
+  name: z.string().min(2).default('Souklora customer'),
 });
 
 export const analyticsEventSchema = z.object({

@@ -1,6 +1,6 @@
-# Sellora
+# Souklora
 
-Sellora is a Flutter marketplace app for iOS and Android where independent shops can create mobile storefronts and customers can discover products, add them to one basket, and check out directly.
+Souklora is a Flutter marketplace app for iOS and Android where independent shops can create mobile storefronts and customers can discover products, add them to one basket, and check out directly.
 
 ## Built so far
 
@@ -24,10 +24,10 @@ flutter run
 Run the app against your Railway backend:
 
 ```powershell
-flutter run --dart-define=SELLORA_API_URL=https://your-railway-service.up.railway.app
+flutter run --dart-define=SOUKLORA_API_URL=https://your-railway-service.up.railway.app
 ```
 
-`SELLORA_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
+`SOUKLORA_API_URL` is required for real signup/login. Without it, the app will not fake authentication.
 
 For push notifications, add Firebase to the Flutter app (`google-services.json`
 for Android and `GoogleService-Info.plist` for iOS), then run `flutter pub get`.

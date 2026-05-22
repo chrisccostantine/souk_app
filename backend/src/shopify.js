@@ -230,7 +230,7 @@ async function fetchShopifyMainMenu(client, onProgress) {
   onProgress({ progress: 49, message: 'Reading Shopify navigation menu' });
   try {
     const result = await client.graphql(`
-      query SelloraMenus {
+      query SoukloraMenus {
         menus(first: 20, sortKey: TITLE) {
           nodes {
             id

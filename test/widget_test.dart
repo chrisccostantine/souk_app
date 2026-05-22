@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sellora_app/main.dart';
+import 'package:souklora_app/main.dart';
 
 void main() {
   testWidgets('Auth screen refuses local fake login without API URL', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const SelloraApp());
+    await tester.pumpWidget(const SoukloraApp());
 
-    expect(find.text('Welcome to Sellora'), findsOneWidget);
+    expect(find.text('Welcome to Souklora'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Your name'), 'Chris');
     await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'chris@example.com');

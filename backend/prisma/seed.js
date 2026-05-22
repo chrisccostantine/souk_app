@@ -12,7 +12,7 @@ function makePasswordSecret(password, salt = crypto.randomBytes(16).toString('he
 
 const shops = [
   {
-    owner: { name: 'Cedar Pantry Team', email: 'cedar@sellora.local' },
+    owner: { name: 'Cedar Pantry Team', email: 'cedar@souklora.local' },
     name: 'Cedar Pantry',
     slug: 'cedar-pantry',
     category: 'Grocery',
@@ -44,7 +44,7 @@ const shops = [
     ],
   },
   {
-    owner: { name: 'Loom House Team', email: 'loom@sellora.local' },
+    owner: { name: 'Loom House Team', email: 'loom@souklora.local' },
     name: 'Loom House',
     slug: 'loom-house',
     category: 'Home',
@@ -76,7 +76,7 @@ const shops = [
     ],
   },
   {
-    owner: { name: 'Atelier Nour Team', email: 'nour@sellora.local' },
+    owner: { name: 'Atelier Nour Team', email: 'nour@souklora.local' },
     name: 'Atelier Nour',
     slug: 'atelier-nour',
     category: 'Fashion',

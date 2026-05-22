@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-class SelloraApi {
-  SelloraApi({required String baseUrl, HttpClient? client})
+class SoukloraApi {
+  SoukloraApi({required String baseUrl, HttpClient? client})
       : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), ''),
         _client = client ?? (HttpClient()..connectionTimeout = _requestTimeout);
 
@@ -59,7 +59,7 @@ class SelloraApi {
   Future<Map<String, dynamic>> forgotPassword(Map<String, dynamic> payload) async {
     try {
       return await _post('/api/auth/forgot-password', payload);
-    } on SelloraApiException catch (error) {
+    } on SoukloraApiException catch (error) {
       if (error.statusCode != 404) {
         rethrow;
       }
@@ -240,7 +240,7 @@ class SelloraApi {
     try {
       body = text.isEmpty ? <String, dynamic>{} : jsonDecode(text) as Map<String, dynamic>;
     } catch (_) {
-      throw SelloraApiException(
+      throw SoukloraApiException(
         response.statusCode,
         'HTTP ${response.statusCode}: ${text.isEmpty ? response.reasonPhrase : text}',
       );
@@ -255,7 +255,7 @@ class SelloraApi {
           body['message'] ??
           detailMessage ??
           response.reasonPhrase;
-      throw SelloraApiException(response.statusCode, 'HTTP ${response.statusCode}: $message');
+      throw SoukloraApiException(response.statusCode, 'HTTP ${response.statusCode}: $message');
     }
     return body;
   }
@@ -291,12 +291,12 @@ class SelloraApi {
   }
 }
 
-class SelloraApiException implements Exception {
-  const SelloraApiException(this.statusCode, this.message);
+class SoukloraApiException implements Exception {
+  const SoukloraApiException(this.statusCode, this.message);
 
   final int statusCode;
   final String message;
 
   @override
-  String toString() => 'SelloraApiException($statusCode): $message';
+  String toString() => 'SoukloraApiException($statusCode): $message';
 }

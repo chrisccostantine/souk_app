@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:label="Sellora"
+        android:label="Souklora"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -31,7 +31,7 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="sellora" android:host="shopify-connected"/>
+                <data android:scheme="souklora" android:host="shopify-connected"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
@@ -41,7 +41,7 @@
             android:value="2" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="sellora_campaigns" />
+            android:value="souklora_campaigns" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
