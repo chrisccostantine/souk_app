@@ -48,6 +48,12 @@ export const createCampaignSchema = z.object({
   scheduledAt: z.coerce.date().optional(),
 });
 
+export const createStoreStorySchema = z.object({
+  title: z.string().min(2).max(80),
+  caption: z.string().max(220).optional().nullable(),
+  imageUrl: z.string().url().optional().nullable(),
+});
+
 export const registerDeviceTokenSchema = z.object({
   email: z.string().email(),
   token: z.string().min(20),

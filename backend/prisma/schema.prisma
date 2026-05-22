@@ -145,7 +145,22 @@ model Shop {
   liveEvents LiveSellingEvent[]
   affiliateLinks AffiliateLink[]
   collections   Collection[]
+  stories       StoreStory[]
   shopifyConnection ShopifyConnection?
+}
+
+model StoreStory {
+  id        String   @id @default(cuid())
+  shopId    String
+  title     String
+  caption   String?
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([shopId, createdAt])
 }
 
 model Product {

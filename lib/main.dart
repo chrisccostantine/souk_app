@@ -1434,6 +1434,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   final List<Order> _orders = [];
   List<Shop> _shops = [];
   List<Product> _products = [];
+  List<StoreStory> _stories = [];
   bool _catalogLoading = false;
   bool _showAllFeatured = false;
   String? _catalogMessage;
@@ -1486,11 +1487,16 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       final api = SoukloraApi(baseUrl: soukloraApiUrl);
       final shopRows = await api.fetchShops();
       final productRows = await api.fetchProducts();
+      final storyRows = await api.fetchStories();
       final shops = shopRows
           .map((item) => Shop.fromJson(item as Map<String, dynamic>))
           .toList();
       final products = productRows
           .map((item) => Product.fromJson(item as Map<String, dynamic>))
+          .toList();
+      final stories = storyRows
+          .map((item) => StoreStory.fromJson(item as Map<String, dynamic>))
+          .where((story) => story.expiresAt.isAfter(DateTime.now()))
           .toList();
       if (!mounted) {
         return;
@@ -1498,6 +1504,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       setState(() {
         _shops = shops;
         _products = products;
+        _stories = stories;
         _catalogLoading = false;
       });
     } catch (_) {
@@ -2026,6 +2033,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         query: _searchDraft,
         category: _category,
         shops: _shops,
+        stories: _stories,
         products: products,
         allProducts: _products,
         showAllFeatured: _showAllFeatured,
@@ -2299,6 +2307,7 @@ class HomePage extends StatelessWidget {
     required this.query,
     required this.category,
     required this.shops,
+    required this.stories,
     required this.products,
     required this.allProducts,
     required this.showAllFeatured,
@@ -2327,6 +2336,7 @@ class HomePage extends StatelessWidget {
   final String query;
   final String category;
   final List<Shop> shops;
+  final List<StoreStory> stories;
   final List<Product> products;
   final List<Product> allProducts;
   final bool showAllFeatured;
@@ -2421,13 +2431,13 @@ class HomePage extends StatelessWidget {
                     onSelected: onOpenProduct,
                   ),
                 ],
-                const SizedBox(height: 18),
-                SoukloraCategoryBubbles(
-                  selected: category,
-                  categories: categories,
-                  shops: shops,
-                  onSelected: onCategoryChanged,
-                ),
+                if (stories.isNotEmpty) ...[
+                  const SizedBox(height: 18),
+                  SoukloraStoryStrip(
+                    stories: stories,
+                    onOpenShop: onOpenShop,
+                  ),
+                ],
                 const SizedBox(height: 20),
                 SoukloraMarketplaceBanner(
                   shopCount: shops.length,
@@ -4455,6 +4465,22 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
   }
 
+  Future<void> _createStoreStory(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukloraApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before posting a story.');
+      return;
+    }
+    try {
+      await SoukloraApi(baseUrl: soukloraApiUrl).createStoreStory(shopId, payload);
+      _showSellerSnack('Story posted for 24 hours');
+    } on SoukloraApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not post story');
+    }
+  }
+
   Future<void> _createPlacement(Map<String, dynamic> payload) async {
     final shopId = widget.session.store?.id;
     if (soukloraApiUrl.isEmpty || shopId == null) {
@@ -4780,6 +4806,7 @@ class _SellerHubPageState extends State<SellerHubPage>
             synced: _shopifySynced,
             products: _syncedProducts,
             onCreateCampaign: _createCampaign,
+            onCreateStory: _createStoreStory,
             onCreatePlacement: _createPlacement,
             onCreateAffiliateLink: _createAffiliateLink,
           ),
@@ -5397,6 +5424,178 @@ class SoukloraCategoryBubbles extends StatelessWidget {
       ),
     );
   }
+}
+
+class SoukloraStoryStrip extends StatelessWidget {
+  const SoukloraStoryStrip({
+    super.key,
+    required this.stories,
+    required this.onOpenShop,
+  });
+
+  final List<StoreStory> stories;
+  final ValueChanged<Shop> onOpenShop;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: stories.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 14),
+        itemBuilder: (context, index) {
+          final story = stories[index];
+          return SoukloraStoryBubble(
+            story: story,
+            onTap: () => showStoreStorySheet(context, story, onOpenShop),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class SoukloraStoryBubble extends StatelessWidget {
+  const SoukloraStoryBubble({
+    super.key,
+    required this.story,
+    required this.onTap,
+  });
+
+  final StoreStory story;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: SizedBox(
+        width: 82,
+        child: Column(
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: const Color(0xFF1F7A4D),
+                  width: 2,
+                ),
+              ),
+              child: StoreAvatar(shop: story.shop, size: 68),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              story.shop.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void showStoreStorySheet(
+  BuildContext context,
+  StoreStory story,
+  ValueChanged<Shop> onOpenShop,
+) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  StoreAvatar(shop: story.shop, size: 48),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          story.shop.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        Text(
+                          story.expiresInLabel,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              if (story.imageUrl != null && story.imageUrl!.isNotEmpty)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: Image.network(
+                      story.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Container(
+                        color: const Color(0xFFF8F4EC),
+                        child: const Icon(Icons.image_not_supported_outlined),
+                      ),
+                    ),
+                  ),
+                ),
+              if (story.imageUrl != null && story.imageUrl!.isNotEmpty)
+                const SizedBox(height: 16),
+              Text(
+                story.title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0,
+                ),
+              ),
+              if (story.caption != null && story.caption!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(story.caption!),
+              ],
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    onOpenShop(story.shop);
+                  },
+                  icon: const Icon(Icons.storefront),
+                  label: const Text('Open store'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class SoukloraCategoryBubble extends StatelessWidget {
@@ -8779,6 +8978,7 @@ class SellerFeatureSuite extends StatelessWidget {
     required this.synced,
     required this.products,
     required this.onCreateCampaign,
+    required this.onCreateStory,
     required this.onCreatePlacement,
     required this.onCreateAffiliateLink,
   });
@@ -8789,6 +8989,7 @@ class SellerFeatureSuite extends StatelessWidget {
   final bool synced;
   final List<SellerInventoryProduct> products;
   final Future<void> Function(Map<String, dynamic>) onCreateCampaign;
+  final Future<void> Function(Map<String, dynamic>) onCreateStory;
   final ValueChanged<Map<String, dynamic>> onCreatePlacement;
   final ValueChanged<Map<String, dynamic>> onCreateAffiliateLink;
 
@@ -8804,6 +9005,11 @@ class SellerFeatureSuite extends StatelessWidget {
           icon: Icons.rocket_launch_outlined,
           accent: const Color(0xFFC8673A),
           actions: [
+            OutlinedButton.icon(
+              onPressed: () => showStoreStoryDialog(context, onCreateStory),
+              icon: const Icon(Icons.auto_stories_outlined),
+              label: const Text('New story'),
+            ),
             OutlinedButton.icon(
               onPressed: () => showCampaignDialog(context, onCreateCampaign),
               icon: const Icon(Icons.notifications_active_outlined),
@@ -9626,6 +9832,51 @@ class Shop {
   final String? websiteUrl;
   final List<String> storefrontCollectionIds;
   final ShopifyMenu shopifyMenu;
+}
+
+class StoreStory {
+  const StoreStory({
+    required this.id,
+    required this.shop,
+    required this.title,
+    required this.createdAt,
+    required this.expiresAt,
+    this.caption,
+    this.imageUrl,
+  });
+
+  factory StoreStory.fromJson(Map<String, dynamic> json) {
+    return StoreStory(
+      id: json['id']?.toString() ?? '',
+      shop: Shop.fromJson(json['shop'] as Map<String, dynamic>? ?? const {}),
+      title: json['title']?.toString() ?? 'New story',
+      caption: json['caption']?.toString(),
+      imageUrl: json['imageUrl']?.toString(),
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now(),
+      expiresAt: DateTime.tryParse(json['expiresAt']?.toString() ?? '') ??
+          DateTime.now(),
+    );
+  }
+
+  final String id;
+  final Shop shop;
+  final String title;
+  final String? caption;
+  final String? imageUrl;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  String get expiresInLabel {
+    final remaining = expiresAt.difference(DateTime.now());
+    if (remaining.inMinutes <= 0) {
+      return 'Expiring now';
+    }
+    if (remaining.inHours < 1) {
+      return '${remaining.inMinutes} min left';
+    }
+    return '${remaining.inHours}h left';
+  }
 }
 
 class ShopifyMenu {
@@ -10478,6 +10729,90 @@ Future<void> showCampaignDialog(
   );
   title.dispose();
   message.dispose();
+  if (payload != null) {
+    await onSubmit(payload);
+  }
+}
+
+Future<void> showStoreStoryDialog(
+  BuildContext context,
+  Future<void> Function(Map<String, dynamic>) onSubmit,
+) async {
+  final title = TextEditingController(text: 'Today at our store');
+  final caption = TextEditingController();
+  final imageUrl = TextEditingController();
+  final payload = await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('Post store story'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: title,
+                decoration: const InputDecoration(
+                  labelText: 'Story title',
+                  prefixIcon: Icon(Icons.auto_stories_outlined),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: caption,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Caption',
+                  prefixIcon: Icon(Icons.notes_outlined),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: imageUrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Image URL optional',
+                  prefixIcon: Icon(Icons.image_outlined),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Stories appear on the shopper homepage for 24 hours.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context, {
+                'title': title.text.trim(),
+                'caption': caption.text.trim().isEmpty
+                    ? null
+                    : caption.text.trim(),
+                'imageUrl': imageUrl.text.trim().isEmpty
+                    ? null
+                    : imageUrl.text.trim(),
+              });
+            },
+            child: const Text('Post'),
+          ),
+        ],
+      );
+    },
+  );
+  title.dispose();
+  caption.dispose();
+  imageUrl.dispose();
   if (payload != null) {
     await onSubmit(payload);
   }

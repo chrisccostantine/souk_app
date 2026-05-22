@@ -27,6 +27,7 @@ import {
   createPlacementSchema,
   createProductSchema,
   createReviewSchema,
+  createStoreStorySchema,
   favoriteProductSchema,
   forgotPasswordSchema,
   createShopSchema,
@@ -648,6 +649,27 @@ app.get('/api/shops', async (req, res, next) => {
   }
 });
 
+app.get('/api/stories', async (req, res, next) => {
+  try {
+    const now = new Date();
+    await prisma.storeStory.deleteMany({
+      where: { expiresAt: { lte: now } },
+    });
+    const stories = await prisma.storeStory.findMany({
+      where: {
+        expiresAt: { gt: now },
+        shop: { status: 'ACTIVE', verified: true },
+      },
+      include: { shop: true },
+      orderBy: { createdAt: 'desc' },
+      take: 40,
+    });
+    res.json({ stories });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/shops', async (req, res, next) => {
   try {
     const input = validate(createShopSchema, req.body);
@@ -676,6 +698,26 @@ app.post('/api/shops', async (req, res, next) => {
     });
 
     res.status(201).json({ shop });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shops/:id/stories', async (req, res, next) => {
+  try {
+    const input = validate(createStoreStorySchema, req.body);
+    const now = new Date();
+    const story = await prisma.storeStory.create({
+      data: {
+        shopId: String(req.params.id),
+        title: input.title,
+        caption: input.caption,
+        imageUrl: input.imageUrl,
+        expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      },
+      include: { shop: true },
+    });
+    res.status(201).json({ story });
   } catch (error) {
     next(error);
   }

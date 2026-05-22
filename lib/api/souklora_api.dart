@@ -36,6 +36,11 @@ class SoukloraApi {
     return body['products'] as List<dynamic>;
   }
 
+  Future<List<dynamic>> fetchStories() async {
+    final body = await _get('/api/stories');
+    return body['stories'] as List<dynamic>;
+  }
+
   Future<Map<String, dynamic>> signup(Map<String, dynamic> payload) async {
     return _post('/api/auth/signup', payload);
   }
@@ -104,6 +109,11 @@ class SoukloraApi {
 
   Future<Map<String, dynamic>> createCampaign(String shopId, Map<String, dynamic> payload) async {
     return _post('/api/shops/$shopId/campaigns', payload);
+  }
+
+  Future<Map<String, dynamic>> createStoreStory(String shopId, Map<String, dynamic> payload) async {
+    final body = await _post('/api/shops/$shopId/stories', payload);
+    return body['story'] as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> createPlacement(String shopId, Map<String, dynamic> payload) async {
