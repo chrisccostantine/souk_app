@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' show FontFeature;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -145,9 +144,7 @@ class SoukloraApp extends StatelessWidget {
           shadowColor: softShadow,
           color: Colors.white,
           margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
@@ -450,7 +447,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     }
     if (soukloraApiUrl.isEmpty || !soukloraApiUrl.startsWith('https://')) {
       setState(
-        () => _authError = 'SOUKLORA_API_URL must point to your Railway backend.',
+        () =>
+            _authError = 'SOUKLORA_API_URL must point to your Railway backend.',
       );
       return;
     }
@@ -465,7 +463,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       if (payload == null) {
         return;
       }
-      final response = await SoukloraApi(baseUrl: soukloraApiUrl).socialLogin(payload);
+      final response = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).socialLogin(payload);
       if (!mounted) {
         return;
       }
@@ -580,7 +580,9 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
                 return;
               }
               if (soukloraApiUrl.isEmpty) {
-                safeSetDialogState(() => error = 'SOUKLORA_API_URL is required.');
+                safeSetDialogState(
+                  () => error = 'SOUKLORA_API_URL is required.',
+                );
                 return;
               }
               safeSetDialogState(() {
@@ -1500,7 +1502,8 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   Future<void> _loadCatalog() async {
     if (soukloraApiUrl.isEmpty) {
       setState(() {
-        _catalogMessage = 'Run the app with SOUKLORA_API_URL to load live stores.';
+        _catalogMessage =
+            'Run the app with SOUKLORA_API_URL to load live stores.';
       });
       return;
     }
@@ -1680,7 +1683,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         'name': widget.session.name,
       };
       if (wasFollowing) {
-        await SoukloraApi(baseUrl: soukloraApiUrl).unfollowShop(shop.id, payload);
+        await SoukloraApi(
+          baseUrl: soukloraApiUrl,
+        ).unfollowShop(shop.id, payload);
         _showSnack('Unfollowed ${shop.name}');
       } else {
         await SoukloraApi(baseUrl: soukloraApiUrl).followShop(shop.id, payload);
@@ -2064,9 +2069,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         showAllFeatured: _showAllFeatured,
         loading: _catalogLoading,
         message: _catalogMessage,
-        categories: {
-          for (final shop in _shops) shop.category,
-        }.toList()..sort(),
+        categories: {for (final shop in _shops) shop.category}.toList()..sort(),
         favoriteIds: _favoriteIds,
         followedShopIds: _followedShopIds,
         onViewAllFeatured: () =>
@@ -2195,7 +2198,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _loadShops() async {
     if (soukloraApiUrl.isEmpty) {
-      setState(() => _message = 'SOUKLORA_API_URL is required for admin review.');
+      setState(
+        () => _message = 'SOUKLORA_API_URL is required for admin review.',
+      );
       return;
     }
     setState(() {
@@ -2438,7 +2443,10 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SoukloraShopperTopBar(cartCount: cartCount, onCartTap: onCartTap),
+                SoukloraShopperTopBar(
+                  cartCount: cartCount,
+                  onCartTap: onCartTap,
+                ),
                 const SizedBox(height: 14),
                 const SoukloraDeliveryStrip(),
                 const SizedBox(height: 18),
@@ -2458,10 +2466,7 @@ class HomePage extends StatelessWidget {
                 ],
                 if (stories.isNotEmpty) ...[
                   const SizedBox(height: 18),
-                  SoukloraStoryStrip(
-                    stories: stories,
-                    onOpenShop: onOpenShop,
-                  ),
+                  SoukloraStoryStrip(stories: stories, onOpenShop: onOpenShop),
                 ],
                 const SizedBox(height: 20),
                 SoukloraMarketplaceBanner(
@@ -2817,22 +2822,23 @@ class StorefrontPage extends StatelessWidget {
                                 shop.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                      fontWeight: FontWeight.w900,
-                                    ),
+                                style: Theme.of(context).textTheme.headlineSmall
+                                    ?.copyWith(fontWeight: FontWeight.w900),
                               ),
                             ),
                             if (shop.verified)
-                              const Icon(Icons.verified, color: Color(0xFF1F7A4D)),
+                              const Icon(
+                                Icons.verified,
+                                color: Color(0xFF1F7A4D),
+                              ),
                           ],
                         ),
                         Text(
                           '${shop.category} in ${shop.location.isEmpty ? 'Souklora' : shop.location}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.black54,
-                              ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: Colors.black54),
                         ),
                       ],
                     ),
@@ -2944,11 +2950,12 @@ void showStorefrontMenu(
           padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
           children: [
             Text(
-              shop.shopifyMenu.title.isEmpty ? 'Store menu' : shop.shopifyMenu.title,
-              style: Theme.of(sheetContext)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w900),
+              shop.shopifyMenu.title.isEmpty
+                  ? 'Store menu'
+                  : shop.shopifyMenu.title,
+              style: Theme.of(
+                sheetContext,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 10),
             for (final item in shop.shopifyMenu.items)
@@ -3004,7 +3011,10 @@ class StorefrontMenuItemTile extends StatelessWidget {
         ListTile(
           contentPadding: EdgeInsets.only(left: depth * 18.0, right: 4),
           leading: Icon(menuItemIcon(item.type)),
-          title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          title: Text(
+            item.title,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
           trailing: item.items.isEmpty ? const Icon(Icons.chevron_right) : null,
           onTap: () => onTap(item),
         ),
@@ -3055,7 +3065,9 @@ void openStorefrontMenuItem(
   if (item.type.toUpperCase() == 'COLLECTION') {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Sync Shopify again to open this collection inside Souklora.'),
+        content: Text(
+          'Sync Shopify again to open this collection inside Souklora.',
+        ),
       ),
     );
     return;
@@ -3099,7 +3111,9 @@ String? storefrontMenuUrl(Shop shop, ShopifyMenuItem item) {
   if (storeUrl == null || storeUrl.isEmpty) {
     return null;
   }
-  final base = storeUrl.endsWith('/') ? storeUrl.substring(0, storeUrl.length - 1) : storeUrl;
+  final base = storeUrl.endsWith('/')
+      ? storeUrl.substring(0, storeUrl.length - 1)
+      : storeUrl;
   final path = rawUrl.startsWith('/') ? rawUrl : '/$rawUrl';
   return '$base$path';
 }
@@ -3120,10 +3134,10 @@ String? shopifyNumericId(String? value) {
 }
 
 String comparableMenuText(String value) {
-  return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(
-        RegExp(r'^-+|-+$'),
-        '',
-      );
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
 }
 
 class StoreSocialLinks extends StatelessWidget {
@@ -3135,7 +3149,11 @@ class StoreSocialLinks extends StatelessWidget {
   Widget build(BuildContext context) {
     final links = [
       if (shop.instagramUrl != null && shop.instagramUrl!.isNotEmpty)
-        _StoreSocialLink('Instagram', Icons.alternate_email, shop.instagramUrl!),
+        _StoreSocialLink(
+          'Instagram',
+          Icons.alternate_email,
+          shop.instagramUrl!,
+        ),
       if (shop.tiktokUrl != null && shop.tiktokUrl!.isNotEmpty)
         _StoreSocialLink('TikTok', Icons.music_note_outlined, shop.tiktokUrl!),
       if (shop.websiteUrl != null && shop.websiteUrl!.isNotEmpty)
@@ -3594,16 +3612,16 @@ class ProfileStatTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 14,
-            offset: const Offset(0, 8),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 14,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-        ],
-      ),
           child: Row(
             children: [
               Icon(icon, color: const Color(0xFF8F552E)),
@@ -4183,7 +4201,9 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
     _startShopifySyncProgress();
     try {
-      final result = await SoukloraApi(baseUrl: soukloraApiUrl).syncShopify(shopId);
+      final result = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).syncShopify(shopId);
       if (!mounted) {
         return;
       }
@@ -4374,7 +4394,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final data = await SoukloraApi(baseUrl: soukloraApiUrl).fetchShopGrowth(shopId);
+      final data = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).fetchShopGrowth(shopId);
       if (!mounted) {
         return;
       }
@@ -4393,7 +4415,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final shop = await SoukloraApi(baseUrl: soukloraApiUrl).updateShopProfile(shopId, payload);
+      final shop = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).updateShopProfile(shopId, payload);
       if (!mounted) {
         return;
       }
@@ -4497,7 +4521,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createStoreStory(shopId, payload);
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).createStoreStory(shopId, payload);
       _showSellerSnack('Story posted for 24 hours');
     } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
@@ -4513,7 +4539,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createPlacement(shopId, payload);
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).createPlacement(shopId, payload);
       await _loadSellerGrowth();
       _showSellerSnack('Featured placement created');
     } on SoukloraApiException catch (error) {
@@ -4532,7 +4560,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).updateOrderStatus(order.id, status);
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).updateOrderStatus(order.id, status);
       await _loadSellerOrders();
       _showSellerSnack('Order updated to $status');
     } on SoukloraApiException catch (error) {
@@ -4549,12 +4579,13 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final copy = await SoukloraApi(baseUrl: soukloraApiUrl).generateProductCopy({
-        'productName': product.name,
-        'category': product.category,
-        'tone': 'premium and local',
-        'keywords': product.collections.join(', '),
-      });
+      final copy = await SoukloraApi(baseUrl: soukloraApiUrl)
+          .generateProductCopy({
+            'productName': product.name,
+            'category': product.category,
+            'tone': 'premium and local',
+            'keywords': product.collections.join(', '),
+          });
       if (!mounted) {
         return;
       }
@@ -4595,7 +4626,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createDeliveryRegion(shopId, payload);
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).createDeliveryRegion(shopId, payload);
       _showSellerSnack('Delivery region saved');
     } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
@@ -4611,7 +4644,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createLiveEvent(shopId, payload);
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).createLiveEvent(shopId, payload);
       _showSellerSnack('Live selling event scheduled');
     } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
@@ -4627,7 +4662,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createAffiliateLink(shopId, payload);
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).createAffiliateLink(shopId, payload);
       _showSellerSnack('Affiliate link created');
     } on SoukloraApiException catch (error) {
       _showSellerSnack(error.message);
@@ -5506,10 +5543,7 @@ class SoukloraStoryBubble extends StatelessWidget {
               padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: const Color(0xFF1F7A4D),
-                  width: 2,
-                ),
+                border: Border.all(color: const Color(0xFF1F7A4D), width: 2),
               ),
               child: StoreAvatar(shop: story.shop, size: 68),
             ),
@@ -5519,10 +5553,7 @@ class SoukloraStoryBubble extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
             ),
           ],
         ),
@@ -5564,9 +5595,7 @@ void showStoreStorySheet(
                         ),
                         Text(
                           story.expiresInLabel,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
+                          style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: Colors.black54),
                         ),
                       ],
@@ -6021,9 +6050,7 @@ class SoukloraStoreRowCard extends StatelessWidget {
                             shop.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                         ),
@@ -7042,7 +7069,10 @@ class ShopperEditorialBand extends StatelessWidget {
         ? 'Verified stores'
         : mostCommon(products.map((product) => product.shop.name));
     final limitedCount = products
-        .where((product) => product.effectiveStock > 0 && product.effectiveStock <= 5)
+        .where(
+          (product) =>
+              product.effectiveStock > 0 && product.effectiveStock <= 5,
+        )
         .length;
 
     return Container(
@@ -7460,9 +7490,7 @@ class ProductCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          stock > 0
-                              ? Icons.inventory_2_outlined
-                              : Icons.block,
+                          stock > 0 ? Icons.inventory_2_outlined : Icons.block,
                           size: 15,
                           color: stock > 0
                               ? Colors.black54
@@ -7471,9 +7499,7 @@ class ProductCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            stock > 0
-                                ? '$stock left'
-                                : 'Out of stock',
+                            stock > 0 ? '$stock left' : 'Out of stock',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.bodySmall
@@ -7609,7 +7635,7 @@ class AppNetworkImage extends StatelessWidget {
       if (commaIndex != -1) {
         try {
           final bytes = base64Decode(url.substring(commaIndex + 1));
-          return DecoratedBox(
+          return Container(
             foregroundDecoration: BoxDecoration(border: outline),
             child: Image.memory(
               bytes,
@@ -7626,7 +7652,7 @@ class AppNetworkImage extends StatelessWidget {
         }
       }
     }
-    return DecoratedBox(
+    return Container(
       foregroundDecoration: BoxDecoration(border: outline),
       child: Image.network(
         optimizedImageUrl(url, size),
@@ -7729,9 +7755,8 @@ class ShopCard extends StatelessWidget {
                         ),
                         Text(
                           shop.category,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.black54,
-                              ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.black54),
                         ),
                       ],
                     ),
@@ -8293,8 +8318,7 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                   ),
                 ),
                 FilledButton.icon(
-                  onPressed:
-                      (_selectedVariant?.stock ?? stock) == 0
+                  onPressed: (_selectedVariant?.stock ?? stock) == 0
                       ? null
                       : widget.onAddToCart,
                   icon: const Icon(Icons.add_shopping_cart),
@@ -8759,10 +8783,7 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
         _instagramUrl.text,
         SocialPlatform.instagram,
       ),
-      'tiktokUrl': normalizeSocialUrl(
-        _tiktokUrl.text,
-        SocialPlatform.tiktok,
-      ),
+      'tiktokUrl': normalizeSocialUrl(_tiktokUrl.text, SocialPlatform.tiktok),
       'websiteUrl': normalizeSocialUrl(
         _websiteUrl.text,
         SocialPlatform.website,
@@ -8941,9 +8962,9 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
               const SizedBox(height: 12),
               Text(
                 'Storefront collections',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -8952,7 +8973,9 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
                 children: [
                   for (final collection in widget.collections)
                     FilterChip(
-                      selected: _storefrontCollectionIds.contains(collection.id),
+                      selected: _storefrontCollectionIds.contains(
+                        collection.id,
+                      ),
                       showCheckmark: false,
                       label: Text(collection.title),
                       onSelected: (selected) {
@@ -8963,7 +8986,9 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Choose up to 5 storefront collections.'),
+                                  content: Text(
+                                    'Choose up to 5 storefront collections.',
+                                  ),
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );
@@ -9898,9 +9923,11 @@ class StoreStory {
       title: json['title']?.toString() ?? 'New story',
       caption: json['caption']?.toString(),
       imageUrl: json['imageUrl']?.toString(),
-      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
-      expiresAt: DateTime.tryParse(json['expiresAt']?.toString() ?? '') ??
+      expiresAt:
+          DateTime.tryParse(json['expiresAt']?.toString() ?? '') ??
           DateTime.now(),
     );
   }
@@ -10825,10 +10852,9 @@ Future<void> showStoreStoryDialog(
               const SizedBox(height: 10),
               Text(
                 'Stories appear on the shopper homepage for 24 hours.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Colors.black54),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
               ),
             ],
           ),
@@ -11521,7 +11547,9 @@ IconData categoryIcon(String value) {
   if (name.contains('home') || name.contains('decor')) {
     return Icons.chair_outlined;
   }
-  if (name.contains('food') || name.contains('grocery') || name.contains('bakery')) {
+  if (name.contains('food') ||
+      name.contains('grocery') ||
+      name.contains('bakery')) {
     return Icons.restaurant_outlined;
   }
   if (name.contains('bag')) {
