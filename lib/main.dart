@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show FontFeature;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -139,8 +140,14 @@ class SoukloraApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Souklora',
       theme: ThemeData(
-        textTheme: GoogleFonts.interTextTheme(),
-        primaryTextTheme: GoogleFonts.interTextTheme(),
+        textTheme: GoogleFonts.interTextTheme().apply(
+          bodyColor: ink,
+          displayColor: ink,
+        ),
+        primaryTextTheme: GoogleFonts.interTextTheme().apply(
+          bodyColor: ink,
+          displayColor: ink,
+        ),
         useMaterial3: true,
         colorScheme: scheme,
         scaffoldBackgroundColor: paper,
@@ -7784,19 +7791,16 @@ class AppNetworkImage extends StatelessWidget {
     }
     return Container(
       foregroundDecoration: BoxDecoration(border: outline),
-      child: Image.network(
-        optimizedImageUrl(url, size),
+      child: CachedNetworkImage(
+        imageUrl: optimizedImageUrl(url, size),
         width: double.infinity,
         height: double.infinity,
         fit: BoxFit.cover,
-        cacheWidth: size,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
-          return const SoukloraImageShimmer();
-        },
-        errorBuilder: errorBuilder,
+        memCacheWidth: size,
+        placeholder: (context, url) => const SoukloraImageShimmer(),
+        errorWidget: (context, url, error) =>
+            errorBuilder?.call(context, error, StackTrace.current) ??
+            Container(color: const Color(0xFFE7F0EA)),
       ),
     );
   }
