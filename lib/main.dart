@@ -1,14 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show FontFeature;
 
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:carousel_slider/carousel_slider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:gap/gap.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api/souklora_api.dart';
@@ -130,6 +140,8 @@ class SoukloraApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Souklora',
       theme: ThemeData(
+        textTheme: GoogleFonts.interTextTheme(),
+        primaryTextTheme: GoogleFonts.interTextTheme(),
         useMaterial3: true,
         colorScheme: scheme,
         scaffoldBackgroundColor: paper,
@@ -2473,6 +2485,13 @@ class HomePage extends StatelessWidget {
                   shopCount: shops.length,
                   productCount: allProducts.length,
                   verifiedCount: shops.where((shop) => shop.verified).length,
+                ).animate().fadeIn(
+                  duration: const Duration(milliseconds: 260),
+                ).slideY(
+                  begin: 0.04,
+                  end: 0,
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
                 ),
               ],
             ),
@@ -2513,28 +2532,26 @@ class HomePage extends StatelessWidget {
                     onViewAll: () => onCategoryChanged('All'),
                   ),
                 ),
-                SizedBox(
-                  height: 142,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: popularCategories.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 14),
-                    itemBuilder: (context, index) {
-                      final name = popularCategories[index];
-                      final categoryStores = shops
-                          .where((shop) => shop.category == name)
-                          .toList();
-                      return SizedBox(
-                        width: 148,
-                        child: SoukloraServiceTile(
-                          name: name,
-                          storeCount: categoryStores.length,
-                          icon: categoryIcon(name),
-                          onTap: () => onCategoryChanged(name),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+                  child: StaggeredGrid.count(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    children: [
+                      for (final name in popularCategories)
+                        StaggeredGridTile.fit(
+                          crossAxisCellCount: 1,
+                          child: SoukloraServiceTile(
+                            name: name,
+                            storeCount: shops
+                                .where((shop) => shop.category == name)
+                                .length,
+                            icon: categoryIcon(name),
+                            onTap: () => onCategoryChanged(name),
+                          ),
                         ),
-                      );
-                    },
+                    ],
                   ),
                 ),
                 if (nearbyShops.isNotEmpty) ...[
@@ -2565,7 +2582,14 @@ class HomePage extends StatelessWidget {
                         isFollowing: followedShopIds.contains(shop.id),
                         onFollow: () => onFollowStore(shop),
                         onOpen: () => onOpenShop(shop),
-                      );
+                      ).animate(delay: Duration(milliseconds: index * 35))
+                          .fadeIn(duration: const Duration(milliseconds: 220))
+                          .slideY(
+                            begin: 0.03,
+                            end: 0,
+                            duration: const Duration(milliseconds: 220),
+                            curve: Curves.easeOutCubic,
+                          );
                     },
                   ),
                 ],
@@ -5053,16 +5077,8 @@ class SoukloraShopperTopBar extends StatelessWidget {
         Expanded(
           child: Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F7A4D),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.shopping_bag, color: Colors.white),
-              ),
-              const SizedBox(width: 10),
+              const SoukloraLogoMark(size: 38),
+              const Gap(10),
               Text(
                 'Souklora',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -5091,6 +5107,43 @@ class SoukloraShopperTopBar extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class SoukloraLogoMark extends StatelessWidget {
+  const SoukloraLogoMark({super.key, required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F7A4D),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1F7A4D).withValues(alpha: 0.22),
+            blurRadius: 14,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: SvgPicture.string(
+        '''
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <path d="M7.2 9.6h9.6l-.7 8.2a2.2 2.2 0 0 1-2.2 2H10a2.2 2.2 0 0 1-2.2-2L7.2 9.6Z" fill="white"/>
+  <path d="M9 9.6V8a3 3 0 0 1 6 0v1.6" fill="none" stroke="#1F7A4D" stroke-width="1.7" stroke-linecap="round"/>
+  <path d="M9.2 13h5.6" stroke="#1F7A4D" stroke-width="1.7" stroke-linecap="round"/>
+</svg>
+''',
+        width: size * 0.64,
+        height: size * 0.64,
+      ),
     );
   }
 }
@@ -5198,6 +5251,7 @@ class SoukloraServiceTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Container(
+          height: 116,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
@@ -5215,7 +5269,7 @@ class SoukloraServiceTile extends StatelessWidget {
                 ),
                 child: Icon(icon, color: const Color(0xFF1F7A4D)),
               ),
-              const Spacer(),
+              const Gap(14),
               Text(
                 shopperCategoryLabel(name),
                 maxLines: 1,
@@ -5839,7 +5893,7 @@ class SoukloraPromoBanner extends StatelessWidget {
   }
 }
 
-class SoukloraMarketplaceBanner extends StatelessWidget {
+class SoukloraMarketplaceBanner extends StatefulWidget {
   const SoukloraMarketplaceBanner({
     super.key,
     required this.shopCount,
@@ -5852,10 +5906,41 @@ class SoukloraMarketplaceBanner extends StatelessWidget {
   final int verifiedCount;
 
   @override
+  State<SoukloraMarketplaceBanner> createState() =>
+      _SoukloraMarketplaceBannerState();
+}
+
+class _SoukloraMarketplaceBannerState extends State<SoukloraMarketplaceBanner> {
+  int _index = 0;
+
+  @override
   Widget build(BuildContext context) {
+    final slides = [
+      _MarketplaceSlide(
+        icon: Icons.bolt,
+        title: 'One basket, many local stores',
+        subtitle: 'Browse stores first, then shop their collections.',
+        value: '${widget.shopCount}',
+        label: 'stores',
+      ),
+      _MarketplaceSlide(
+        icon: Icons.verified_outlined,
+        title: 'Verified partners',
+        subtitle: 'Shop from approved local businesses with live storefronts.',
+        value: '${widget.verifiedCount}',
+        label: 'verified',
+      ),
+      _MarketplaceSlide(
+        icon: Icons.inventory_2_outlined,
+        title: 'Fresh products synced in',
+        subtitle: 'Collections, prices, and inventory stay connected.',
+        value: '${widget.productCount}',
+        label: 'items',
+      ),
+    ];
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -5864,74 +5949,123 @@ class SoukloraMarketplaceBanner extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1F7A4D),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.bolt, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'One basket, many local stores',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Browse stores first, then shop their collections.',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          CarouselSlider.builder(
+            itemCount: slides.length,
+            itemBuilder: (context, index, realIndex) {
+              return _MarketplaceBannerSlide(slide: slides[index]);
+            },
+            options: CarouselOptions(
+              height: 104,
+              viewportFraction: 1,
+              enableInfiniteScroll: true,
+              autoPlay: true,
+              autoPlayInterval: const Duration(seconds: 5),
+              autoPlayAnimationDuration: const Duration(milliseconds: 420),
+              onPageChanged: (index, reason) {
+                if (mounted) {
+                  setState(() => _index = index);
+                }
+              },
+            ),
           ),
-          const SizedBox(height: 14),
+          const Gap(10),
           Row(
             children: [
-              Expanded(
-                child: _MarketplaceMetric(
-                  value: '$shopCount',
-                  label: 'stores',
-                  icon: Icons.storefront,
+              AnimatedSmoothIndicator(
+                activeIndex: _index,
+                count: slides.length,
+                effect: ExpandingDotsEffect(
+                  dotHeight: 6,
+                  dotWidth: 6,
+                  spacing: 5,
+                  expansionFactor: 2.4,
+                  activeDotColor: Theme.of(context).colorScheme.primary,
+                  dotColor: Colors.black.withValues(alpha: 0.14),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MarketplaceMetric(
-                  value: '$verifiedCount',
-                  label: 'verified',
-                  icon: Icons.verified_outlined,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _MarketplaceMetric(
-                  value: '$productCount',
-                  label: 'items',
-                  icon: Icons.inventory_2_outlined,
+              const Spacer(),
+              Text(
+                '${_index + 1}/${slides.length}',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Colors.black54,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MarketplaceSlide {
+  const _MarketplaceSlide({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String value;
+  final String label;
+}
+
+class _MarketplaceBannerSlide extends StatelessWidget {
+  const _MarketplaceBannerSlide({required this.slide});
+
+  final _MarketplaceSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1F7A4D),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(slide.icon, color: Colors.white),
+        ),
+        const Gap(12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                slide.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const Gap(3),
+              Text(
+                slide.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              ),
+              const Spacer(),
+              _MarketplaceMetric(
+                value: slide.value,
+                label: slide.label,
+                icon: slide.icon,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -5949,39 +6083,36 @@ class _MarketplaceMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F4EC),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: const Color(0xFF1F7A4D)),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF1F7A4D)),
+        const Gap(7),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontFeatures: [FontFeature.tabularFigures()],
                 ),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.labelSmall?.copyWith(color: Colors.black54),
-                ),
-              ],
-            ),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.labelSmall?.copyWith(color: Colors.black54),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -7654,24 +7785,30 @@ class AppNetworkImage extends StatelessWidget {
     }
     return Container(
       foregroundDecoration: BoxDecoration(border: outline),
-      child: Image.network(
-        optimizedImageUrl(url, size),
+      child: CachedNetworkImage(
+        imageUrl: optimizedImageUrl(url, size),
         width: double.infinity,
         height: double.infinity,
         fit: BoxFit.cover,
-        cacheWidth: size,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) {
-            return child;
-          }
-          return Container(
-            color: const Color(0xFFE7F0EA),
-            alignment: Alignment.center,
-            child: const CircularProgressIndicator(strokeWidth: 2),
-          );
-        },
-        errorBuilder: errorBuilder,
+        memCacheWidth: size,
+        placeholder: (context, url) => const SoukloraImageShimmer(),
+        errorWidget: (context, url, error) =>
+            errorBuilder?.call(context, error, StackTrace.current) ??
+            Container(color: const Color(0xFFE7F0EA)),
       ),
+    );
+  }
+}
+
+class SoukloraImageShimmer extends StatelessWidget {
+  const SoukloraImageShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: const Color(0xFFE8E0D5),
+      highlightColor: const Color(0xFFF9F5ED),
+      child: Container(color: Colors.white),
     );
   }
 }
