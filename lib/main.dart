@@ -279,9 +279,9 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   AppSession? _session;
 
-  Future<void> _setSession(AppSession nextSession) async {
+  void _setSession(AppSession nextSession) {
     setState(() => _session = nextSession);
-    await registerNotificationDevice(nextSession);
+    unawaited(registerNotificationDevice(nextSession));
   }
 
   @override
@@ -1496,8 +1496,13 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   void initState() {
     super.initState();
     _loadCatalog();
-    _loadCustomerOrders();
-    _loadCustomerFollows();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(_loadCustomerOrders());
+      unawaited(_loadCustomerFollows());
+    });
   }
 
   @override
@@ -1531,9 +1536,14 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     });
     try {
       final api = SoukloraApi(baseUrl: soukloraApiUrl);
-      final shopRows = await api.fetchShops();
-      final productRows = await api.fetchProducts();
-      final storyRows = await api.fetchStories();
+      final results = await Future.wait<List<dynamic>>([
+        api.fetchShops(),
+        api.fetchProducts(),
+        api.fetchStories(),
+      ]);
+      final shopRows = results[0];
+      final productRows = results[1];
+      final storyRows = results[2];
       final shops = shopRows
           .map((item) => Shop.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -2504,9 +2514,8 @@ class HomePage extends StatelessWidget {
           ),
         ),
         if (loading)
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(child: CircularProgressIndicator()),
+          const SliverToBoxAdapter(
+            child: SoukloraHomeSkeleton(),
           )
         else if (message != null)
           SliverFillRemaining(
@@ -7815,6 +7824,56 @@ class SoukloraImageShimmer extends StatelessWidget {
       baseColor: const Color(0xFFE8E0D5),
       highlightColor: const Color(0xFFF9F5ED),
       child: Container(color: Colors.white),
+    );
+  }
+}
+
+class SoukloraHomeSkeleton extends StatelessWidget {
+  const SoukloraHomeSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: const Color(0xFFE8E0D5),
+      highlightColor: const Color(0xFFF9F5ED),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: Column(
+          children: [
+            _SkeletonBlock(height: 116),
+            const Gap(14),
+            Row(
+              children: const [
+                Expanded(child: _SkeletonBlock(height: 104)),
+                Gap(12),
+                Expanded(child: _SkeletonBlock(height: 104)),
+              ],
+            ),
+            const Gap(18),
+            for (var index = 0; index < 4; index += 1) ...[
+              const _SkeletonBlock(height: 118),
+              if (index < 3) const Gap(12),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SkeletonBlock extends StatelessWidget {
+  const _SkeletonBlock({required this.height});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
     );
   }
 }
