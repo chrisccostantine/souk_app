@@ -11,6 +11,7 @@ import {
   adjustShopifyInventory,
   fetchShopifyCatalog,
   normalizeShopDomain,
+  ShopifyClient,
   verifyShopifyWebhook,
 } from './shopify.js';
 import {
@@ -274,6 +275,16 @@ function shopifyTokenData(tokenBody) {
   };
 }
 
+function hasRequiredShopifyScopes(scopes) {
+  const granted = new Set(
+    String(scopes ?? '')
+      .split(',')
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+  );
+  return requiredShopifyScopes.every((scope) => granted.has(scope));
+}
+
 function shopifyTokenRequestBody(values) {
   const body = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
@@ -329,6 +340,78 @@ async function refreshShopifyConnection(connection) {
     where: { id: connection.id },
     data: shopifyTokenData(tokenBody),
   });
+}
+
+function webhookAddress(path) {
+  if (!process.env.APP_URL) {
+    return null;
+  }
+  return `${process.env.APP_URL.replace(/\/+$/, '')}${path}`;
+}
+
+async function registerShopifyWebhooks(connection) {
+  const addressByTopic = {
+    'inventory_levels/update': webhookAddress('/api/shopify/webhooks/inventory-levels-update'),
+    'products/create': webhookAddress('/api/shopify/webhooks/products-create'),
+    'products/update': webhookAddress('/api/shopify/webhooks/products-update'),
+    'products/delete': webhookAddress('/api/shopify/webhooks/products-delete'),
+  };
+  if (Object.values(addressByTopic).some((address) => !address)) {
+    return;
+  }
+
+  const client = new ShopifyClient(connection);
+  const existing = await client.getAll('/webhooks.json', { limit: 250 }, 'webhooks');
+  for (const [topic, address] of Object.entries(addressByTopic)) {
+    const alreadyRegistered = existing.some(
+      (webhook) => webhook.topic === topic && webhook.address === address,
+    );
+    if (alreadyRegistered) {
+      continue;
+    }
+    await client.post('/webhooks.json', {
+      webhook: {
+        topic,
+        address,
+        format: 'json',
+      },
+    });
+  }
+}
+
+function queueShopifySync(shopId, message = 'Queued Shopify sync') {
+  const existingJob = [...shopifySyncJobs.values()].find(
+    (job) => job.shopId === shopId && (job.status === 'queued' || job.status === 'running'),
+  );
+  if (existingJob) {
+    return existingJob;
+  }
+  const job = {
+    id: crypto.randomUUID(),
+    shopId,
+    status: 'queued',
+    progress: 2,
+    message,
+    result: null,
+    error: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  shopifySyncJobs.set(job.id, job);
+  runShopifySyncJob(job.id);
+  return job;
+}
+
+async function shopIdForWebhook(req) {
+  const shopDomain = normalizeShopDomain(req.get('X-Shopify-Shop-Domain') || '');
+  if (!shopDomain) {
+    return null;
+  }
+  const connection = await prisma.shopifyConnection.findFirst({
+    where: { shopDomain },
+    select: { shopId: true },
+  });
+  return connection?.shopId ?? null;
 }
 
 function publicUser(user) {
@@ -1200,7 +1283,7 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
       expiring: 1,
     });
     const tokenData = shopifyTokenData(tokenBody);
-    await prisma.shopifyConnection.upsert({
+    const connection = await prisma.shopifyConnection.upsert({
       where: { shopId: stateData.shopId },
       update: {
         shopDomain,
@@ -1213,6 +1296,13 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
         ...tokenData,
         apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
       },
+    });
+    registerShopifyWebhooks(connection).catch((error) => {
+      console.warn('Could not register Shopify webhooks', {
+        shopDomain,
+        message: error.message,
+        details: error.details,
+      });
     });
     const deepLink = `souklora://shopify-connected?shopId=${encodeURIComponent(stateData.shopId)}`;
     res.type('html').send(`<!doctype html>
@@ -1257,7 +1347,9 @@ app.get('/api/shopify/status', async (req, res, next) => {
         updatedAt: true,
       },
     });
-    const needsReconnect = Boolean(connection && !connection.refreshToken);
+    const needsReconnect = Boolean(
+      connection && (!connection.refreshToken || !hasRequiredShopifyScopes(connection.scopes)),
+    );
     res.json({
       connected: Boolean(connection) && !needsReconnect,
       needsReconnect,
@@ -1282,26 +1374,7 @@ app.post('/api/shopify/sync', async (req, res, next) => {
       error.status = 403;
       throw error;
     }
-    const existingJob = [...shopifySyncJobs.values()].find(
-      (job) => job.shopId === input.shopId && (job.status === 'queued' || job.status === 'running'),
-    );
-    if (existingJob) {
-      return res.status(202).json({ jobId: existingJob.id, status: existingJob.status });
-    }
-
-    const job = {
-      id: crypto.randomUUID(),
-      shopId: input.shopId,
-      status: 'queued',
-      progress: 2,
-      message: 'Queued Shopify sync',
-      result: null,
-      error: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    shopifySyncJobs.set(job.id, job);
-    runShopifySyncJob(job.id);
+    const job = queueShopifySync(input.shopId);
     res.status(202).json({ jobId: job.id, status: job.status, progress: job.progress, message: job.message });
   } catch (error) {
     next(error);
@@ -1536,14 +1609,62 @@ app.post('/api/shopify/webhooks/inventory-levels-update', async (req, res, next)
 
     const payload = req.body;
     if (payload.inventory_item_id) {
-      await prisma.product.updateMany({
-        where: { shopifyInventoryItemId: String(payload.inventory_item_id) },
-        data: {
-          stock: Number(payload.available ?? 0),
-          shopifyLocationId: payload.location_id ? String(payload.location_id) : undefined,
-          lastSyncedAt: new Date(),
-        },
+      const now = new Date();
+      const inventoryItemId = String(payload.inventory_item_id);
+      const stock = Number(payload.available ?? 0);
+      const variants = await prisma.productVariant.findMany({
+        where: { shopifyInventoryItemId: inventoryItemId },
+        select: { productId: true },
       });
+      const productIds = [...new Set(variants.map((variant) => variant.productId))];
+      await prisma.$transaction(async (tx) => {
+        await tx.productVariant.updateMany({
+          where: { shopifyInventoryItemId: inventoryItemId },
+          data: { stock },
+        });
+        await tx.product.updateMany({
+          where: { shopifyInventoryItemId: inventoryItemId },
+          data: {
+            stock,
+            shopifyLocationId: payload.location_id ? String(payload.location_id) : undefined,
+            lastSyncedAt: now,
+          },
+        });
+        for (const productId of productIds) {
+          const aggregate = await tx.productVariant.aggregate({
+            where: { productId },
+            _sum: { stock: true },
+          });
+          await tx.product.update({
+            where: { id: productId },
+            data: {
+              stock: aggregate._sum.stock ?? 0,
+              shopifyLocationId: payload.location_id ? String(payload.location_id) : undefined,
+              lastSyncedAt: now,
+            },
+          });
+        }
+      });
+    }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shopify/webhooks/products-create', async (req, res, next) => {
+  try {
+    const valid = verifyShopifyWebhook({
+      rawBody: req.rawBody,
+      hmac: req.get('X-Shopify-Hmac-Sha256'),
+      secret: process.env.SHOPIFY_WEBHOOK_SECRET,
+    });
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid Shopify webhook signature' });
+    }
+    const shopId = await shopIdForWebhook(req);
+    if (shopId) {
+      queueShopifySync(shopId, 'Queued Shopify sync from product create webhook');
     }
     res.status(204).send();
   } catch (error) {
@@ -1561,7 +1682,6 @@ app.post('/api/shopify/webhooks/products-update', async (req, res, next) => {
     if (!valid) {
       return res.status(401).json({ error: 'Invalid Shopify webhook signature' });
     }
-
     const product = req.body;
     const variant = product.variants?.[0];
     if (product.id && variant) {
@@ -1572,10 +1692,38 @@ app.post('/api/shopify/webhooks/products-update', async (req, res, next) => {
           description: stripHtml(product.body_html ?? ''),
           price: Number(variant.price ?? 0),
           imageUrl: product.image?.src,
+          active: product.status === 'active',
+          compareAtPrice: variant.compare_at_price ? Number(variant.compare_at_price) : null,
           shopifyVariantId: String(variant.id),
           shopifyInventoryItemId: String(variant.inventory_item_id),
           lastSyncedAt: new Date(),
         },
+      });
+    }
+    const shopId = await shopIdForWebhook(req);
+    if (shopId) {
+      queueShopifySync(shopId, 'Queued Shopify sync from product update webhook');
+    }
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/shopify/webhooks/products-delete', async (req, res, next) => {
+  try {
+    const valid = verifyShopifyWebhook({
+      rawBody: req.rawBody,
+      hmac: req.get('X-Shopify-Hmac-Sha256'),
+      secret: process.env.SHOPIFY_WEBHOOK_SECRET,
+    });
+    if (!valid) {
+      return res.status(401).json({ error: 'Invalid Shopify webhook signature' });
+    }
+    if (req.body.id) {
+      await prisma.product.updateMany({
+        where: { shopifyProductId: String(req.body.id) },
+        data: { active: false, stock: 0, lastSyncedAt: new Date() },
       });
     }
     res.status(204).send();
@@ -1614,6 +1762,13 @@ async function runShopifySyncJob(jobId) {
     }
 
     const freshConnection = await refreshShopifyConnection(connection);
+    registerShopifyWebhooks(freshConnection).catch((error) => {
+      console.warn('Could not register Shopify webhooks during sync', {
+        shopDomain: freshConnection.shopDomain,
+        message: error.message,
+        details: error.details,
+      });
+    });
     updateShopifySyncJob(jobId, {
       progress: 18,
       message: 'Downloading products, collections, variants, and images from Shopify',
@@ -1646,9 +1801,16 @@ async function runShopifySyncJob(jobId) {
 
 async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = () => {}) {
   const now = new Date();
-  const inventoryByItemId = new Map(
-    catalog.inventoryLevels.map((level) => [String(level.inventory_item_id), level]),
-  );
+  const inventoryByItemId = new Map();
+  for (const level of catalog.inventoryLevels) {
+    const key = String(level.inventory_item_id);
+    const existing = inventoryByItemId.get(key);
+    inventoryByItemId.set(key, {
+      ...level,
+      available: Number(existing?.available ?? 0) + Number(level.available ?? 0),
+      location_id: existing?.location_id ?? level.location_id,
+    });
+  }
   const productByShopifyId = new Map();
 
   for (let index = 0; index < catalog.collections.length; index += 1) {

@@ -2764,7 +2764,7 @@ class StoresPage extends StatelessWidget {
   }
 }
 
-class StorefrontPage extends StatelessWidget {
+class StorefrontPage extends StatefulWidget {
   const StorefrontPage({
     super.key,
     required this.shop,
@@ -2787,7 +2787,70 @@ class StorefrontPage extends StatelessWidget {
   final ValueChanged<Shop> onFollowStore;
 
   @override
+  State<StorefrontPage> createState() => _StorefrontPageState();
+}
+
+class _StorefrontPageState extends State<StorefrontPage> {
+  late List<Product> _products;
+  bool _productsLoading = false;
+  bool _productsLoadFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _products = widget.products;
+    unawaited(_loadStoreProducts());
+  }
+
+  @override
+  void didUpdateWidget(covariant StorefrontPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.shop.id != widget.shop.id) {
+      _products = widget.products;
+      _productsLoadFailed = false;
+      unawaited(_loadStoreProducts());
+    } else if (_products.isEmpty && widget.products.isNotEmpty) {
+      _products = widget.products;
+    }
+  }
+
+  Future<void> _loadStoreProducts() async {
+    if (soukloraApiUrl.isEmpty || widget.shop.id.isEmpty) {
+      return;
+    }
+    setState(() {
+      _productsLoading = true;
+      _productsLoadFailed = false;
+    });
+    try {
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).fetchProducts(shopId: widget.shop.id);
+      final products = rows
+          .map((item) => Product.fromJson(item as Map<String, dynamic>))
+          .toList();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _products = products;
+        _productsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _productsLoading = false;
+        _productsLoadFailed = true;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final shop = widget.shop;
+    final products = _products;
     final collectionGroups = storefrontCollectionGroups(shop, products);
     final featuredGroups = shop.storefrontCollectionIds.isEmpty
         ? collectionGroups.take(5).toList()
@@ -2806,18 +2869,18 @@ class StorefrontPage extends StatelessWidget {
                 context,
                 shop,
                 collectionGroups,
-                favoriteIds,
-                onOpenProduct,
-                onAddToCart,
-                onToggleFavorite,
+                widget.favoriteIds,
+                widget.onOpenProduct,
+                widget.onAddToCart,
+                widget.onToggleFavorite,
               ),
               icon: const Icon(Icons.menu),
             ),
           IconButton.filledTonal(
-            tooltip: isFollowing ? 'Following store' : 'Follow store',
-            onPressed: () => onFollowStore(shop),
+            tooltip: widget.isFollowing ? 'Following store' : 'Follow store',
+            onPressed: () => widget.onFollowStore(shop),
             icon: Icon(
-              isFollowing
+              widget.isFollowing
                   ? Icons.notifications_active
                   : Icons.add_alert_outlined,
             ),
@@ -2918,7 +2981,15 @@ class StorefrontPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          if (products.isEmpty)
+          if (products.isEmpty && _productsLoading)
+            const StorefrontProductsSkeleton()
+          else if (products.isEmpty && _productsLoadFailed)
+            EmptyState(
+              icon: Icons.wifi_off_outlined,
+              title: 'Products are taking longer',
+              message: 'Check your connection and reopen ${shop.name}.',
+            )
+          else if (products.isEmpty)
             const EmptyState(
               icon: Icons.inventory_2_outlined,
               title: 'No products yet',
@@ -2928,7 +2999,7 @@ class StorefrontPage extends StatelessWidget {
             StoreProductCarousel(
               title: 'Products',
               products: products.take(5).toList(),
-              favoriteIds: favoriteIds,
+              favoriteIds: widget.favoriteIds,
               onViewAll: () {
                 Navigator.push(
                   context,
@@ -2942,24 +3013,24 @@ class StorefrontPage extends StatelessWidget {
                         handle: null,
                         products: products,
                       ),
-                      favoriteIds: favoriteIds,
-                      onOpenProduct: onOpenProduct,
-                      onAddToCart: onAddToCart,
-                      onToggleFavorite: onToggleFavorite,
+                      favoriteIds: widget.favoriteIds,
+                      onOpenProduct: widget.onOpenProduct,
+                      onAddToCart: widget.onAddToCart,
+                      onToggleFavorite: widget.onToggleFavorite,
                     ),
                   ),
                 );
               },
-              onOpenProduct: onOpenProduct,
-              onAddToCart: onAddToCart,
-              onToggleFavorite: onToggleFavorite,
+              onOpenProduct: widget.onOpenProduct,
+              onAddToCart: widget.onAddToCart,
+              onToggleFavorite: widget.onToggleFavorite,
             )
           else
             for (final group in featuredGroups) ...[
               StoreProductCarousel(
                 title: group.title,
                 products: group.products.take(5).toList(),
-                favoriteIds: favoriteIds,
+                favoriteIds: widget.favoriteIds,
                 onViewAll: () {
                   Navigator.push(
                     context,
@@ -2967,20 +3038,62 @@ class StorefrontPage extends StatelessWidget {
                       builder: (context) => StoreCollectionProductsPage(
                         shop: shop,
                         group: group,
-                        favoriteIds: favoriteIds,
-                        onOpenProduct: onOpenProduct,
-                        onAddToCart: onAddToCart,
-                        onToggleFavorite: onToggleFavorite,
+                        favoriteIds: widget.favoriteIds,
+                        onOpenProduct: widget.onOpenProduct,
+                        onAddToCart: widget.onAddToCart,
+                        onToggleFavorite: widget.onToggleFavorite,
                       ),
                     ),
                   );
                 },
-                onOpenProduct: onOpenProduct,
-                onAddToCart: onAddToCart,
-                onToggleFavorite: onToggleFavorite,
+                onOpenProduct: widget.onOpenProduct,
+                onAddToCart: widget.onAddToCart,
+                onToggleFavorite: widget.onToggleFavorite,
               ),
               const SizedBox(height: 18),
             ],
+        ],
+      ),
+    );
+  }
+}
+
+class StorefrontProductsSkeleton extends StatelessWidget {
+  const StorefrontProductsSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: const Color(0xFFE8E0D5),
+      highlightColor: const Color(0xFFF9F5ED),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SkeletonBlock(height: 20),
+          const Gap(12),
+          SizedBox(
+            height: 228,
+            child: Row(
+              children: const [
+                Expanded(child: _SkeletonBlock(height: 228)),
+                Gap(12),
+                Expanded(child: _SkeletonBlock(height: 228)),
+              ],
+            ),
+          ),
+          const Gap(18),
+          const _SkeletonBlock(height: 20),
+          const Gap(12),
+          SizedBox(
+            height: 228,
+            child: Row(
+              children: const [
+                Expanded(child: _SkeletonBlock(height: 228)),
+                Gap(12),
+                Expanded(child: _SkeletonBlock(height: 228)),
+              ],
+            ),
+          ),
         ],
       ),
     );

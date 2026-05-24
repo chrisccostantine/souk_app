@@ -176,10 +176,14 @@ Content-Type: application/json
 For two-way inventory:
 
 - Souklora orders call Shopify inventory adjustment for synced products.
-- Shopify inventory webhooks update Souklora product stock.
-- Add `SHOPIFY_WEBHOOK_SECRET` in Railway if webhook signature verification is enabled.
+- Souklora automatically registers Shopify webhooks after connect and during sync.
+- Shopify inventory webhooks update Souklora product and variant stock.
+- Shopify product create/update/delete webhooks queue a background catalog sync.
+- Add `SHOPIFY_WEBHOOK_SECRET` in Railway if webhook signature verification is enabled. Use the Shopify app secret for app webhooks.
 
 Recommended Shopify webhook topics:
 
 - `inventory_levels/update` -> `/api/shopify/webhooks/inventory-levels-update`
+- `products/create` -> `/api/shopify/webhooks/products-create`
 - `products/update` -> `/api/shopify/webhooks/products-update`
+- `products/delete` -> `/api/shopify/webhooks/products-delete`
