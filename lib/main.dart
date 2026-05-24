@@ -1536,33 +1536,19 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     });
     try {
       final api = SoukloraApi(baseUrl: soukloraApiUrl);
-      final results = await Future.wait<List<dynamic>>([
-        api.fetchShops(),
-        api.fetchProducts(),
-        api.fetchStories(),
-      ]);
-      final shopRows = results[0];
-      final productRows = results[1];
-      final storyRows = results[2];
+      final shopRows = await api.fetchShops();
       final shops = shopRows
           .map((item) => Shop.fromJson(item as Map<String, dynamic>))
-          .toList();
-      final products = productRows
-          .map((item) => Product.fromJson(item as Map<String, dynamic>))
-          .toList();
-      final stories = storyRows
-          .map((item) => StoreStory.fromJson(item as Map<String, dynamic>))
-          .where((story) => story.expiresAt.isAfter(DateTime.now()))
           .toList();
       if (!mounted) {
         return;
       }
       setState(() {
         _shops = shops;
-        _products = products;
-        _stories = stories;
         _catalogLoading = false;
       });
+      unawaited(_loadStories(api));
+      unawaited(_loadHomepageProducts(api));
     } catch (_) {
       if (!mounted) {
         return;
@@ -1571,6 +1557,37 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         _catalogLoading = false;
         _catalogMessage = 'Could not load live catalog from Souklora.';
       });
+    }
+  }
+
+  Future<void> _loadStories(SoukloraApi api) async {
+    try {
+      final storyRows = await api.fetchStories();
+      final stories = storyRows
+          .map((item) => StoreStory.fromJson(item as Map<String, dynamic>))
+          .where((story) => story.expiresAt.isAfter(DateTime.now()))
+          .toList();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _stories = stories);
+    } catch (_) {
+      // Stories are optional; hide the strip if none can be loaded quickly.
+    }
+  }
+
+  Future<void> _loadHomepageProducts(SoukloraApi api) async {
+    try {
+      final productRows = await api.fetchProducts(limit: 80);
+      final products = productRows
+          .map((item) => Product.fromJson(item as Map<String, dynamic>))
+          .toList();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _products = products);
+    } catch (_) {
+      // Stores are the primary homepage content; products can fill in later.
     }
   }
 

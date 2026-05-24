@@ -24,13 +24,19 @@ class SoukloraApi {
     return body['shops'] as List<dynamic>;
   }
 
-  Future<List<dynamic>> fetchProducts({String? query, String? category, String? shopId}) async {
+  Future<List<dynamic>> fetchProducts({
+    String? query,
+    String? category,
+    String? shopId,
+    int? limit,
+  }) async {
     final body = await _get(
       '/api/products',
       {
         'q': query,
         'category': category,
         'shopId': shopId,
+        'limit': limit?.toString(),
       },
     );
     return body['products'] as List<dynamic>;

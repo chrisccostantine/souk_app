@@ -1025,6 +1025,10 @@ app.get('/api/shops/:id/inventory', async (req, res, next) => {
 app.get('/api/products', async (req, res, next) => {
   try {
     const { category, q, shopId } = req.query;
+    const requestedLimit = Number(req.query.limit);
+    const take = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 200)
+      : undefined;
     const products = await prisma.product.findMany({
       where: {
         active: true,
@@ -1050,6 +1054,7 @@ app.get('/api/products', async (req, res, next) => {
         },
       },
       orderBy: { createdAt: 'desc' },
+      ...(take ? { take } : {}),
     });
     res.json({ products });
   } catch (error) {
