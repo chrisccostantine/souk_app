@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui' show FontFeature;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -116,6 +117,7 @@ class SoukloraApp extends StatelessWidget {
     const clay = Color(0xFFC8673A);
     const paper = Color(0xFFF8F4EC);
     const ink = Color(0xFF17211B);
+    final softShadow = Colors.black.withValues(alpha: 0.08);
 
     final scheme = ColorScheme.fromSeed(
       seedColor: leaf,
@@ -139,12 +141,35 @@ class SoukloraApp extends StatelessWidget {
           foregroundColor: ink,
         ),
         cardTheme: CardThemeData(
-          elevation: 0,
+          elevation: 1,
+          shadowColor: softShadow,
           color: Colors.white,
+          margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: BorderSide(color: Colors.black.withValues(alpha: 0.07)),
           ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(44, 44),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(44, 44),
+            side: BorderSide(color: Colors.black.withValues(alpha: 0.18)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -3425,7 +3450,7 @@ class SellEntryPage extends StatelessWidget {
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: const Color(0xFF3B2114),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -5212,12 +5237,12 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
             height: 62,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  blurRadius: 14,
+                  offset: const Offset(0, 7),
                 ),
               ],
             ),
@@ -5252,12 +5277,12 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
           height: 62,
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+                blurRadius: 14,
+                offset: const Offset(0, 7),
               ),
             ],
           ),
@@ -5682,7 +5707,7 @@ class SoukloraPromoBanner extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: const Color(0xFFE9DED0),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Stack(
         children: [
@@ -6216,9 +6241,10 @@ class _StoreStat extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w800),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
         ],
       ),
@@ -6531,7 +6557,10 @@ class ShopperPulseTile extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontFeatures: [FontFeature.tabularFigures()],
+            ),
           ),
           Text(
             label,
@@ -7124,7 +7153,10 @@ class EditorialMetric extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
                 ),
                 Text(
                   label,
@@ -7571,18 +7603,22 @@ class AppNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final outline = Border.all(color: Colors.black.withValues(alpha: 0.10));
     if (url.startsWith('data:image')) {
       final commaIndex = url.indexOf(',');
       if (commaIndex != -1) {
         try {
           final bytes = base64Decode(url.substring(commaIndex + 1));
-          return Image.memory(
-            bytes,
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.cover,
-            cacheWidth: size,
-            errorBuilder: errorBuilder,
+          return DecoratedBox(
+            foregroundDecoration: BoxDecoration(border: outline),
+            child: Image.memory(
+              bytes,
+              width: double.infinity,
+              height: double.infinity,
+              fit: BoxFit.cover,
+              cacheWidth: size,
+              errorBuilder: errorBuilder,
+            ),
           );
         } catch (error, stackTrace) {
           return errorBuilder?.call(context, error, stackTrace) ??
@@ -7590,23 +7626,26 @@ class AppNetworkImage extends StatelessWidget {
         }
       }
     }
-    return Image.network(
-      optimizedImageUrl(url, size),
-      width: double.infinity,
-      height: double.infinity,
-      fit: BoxFit.cover,
-      cacheWidth: size,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) {
-          return child;
-        }
-        return Container(
-          color: const Color(0xFFE7F0EA),
-          alignment: Alignment.center,
-          child: const CircularProgressIndicator(strokeWidth: 2),
-        );
-      },
-      errorBuilder: errorBuilder,
+    return DecoratedBox(
+      foregroundDecoration: BoxDecoration(border: outline),
+      child: Image.network(
+        optimizedImageUrl(url, size),
+        width: double.infinity,
+        height: double.infinity,
+        fit: BoxFit.cover,
+        cacheWidth: size,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) {
+            return child;
+          }
+          return Container(
+            color: const Color(0xFFE7F0EA),
+            alignment: Alignment.center,
+            child: const CircularProgressIndicator(strokeWidth: 2),
+          );
+        },
+        errorBuilder: errorBuilder,
+      ),
     );
   }
 }
@@ -7631,7 +7670,14 @@ class StoreAvatar extends StatelessWidget {
       child: Container(
         width: size,
         height: size,
-        color: current?.color ?? const Color(0xFFF4EEE7),
+        foregroundDecoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.black.withValues(alpha: 0.10)),
+        ),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: current?.color ?? const Color(0xFFF4EEE7),
+        ),
         child: logoUrl == null || logoUrl.isEmpty
             ? Icon(
                 fallbackIcon ?? current?.icon ?? Icons.storefront,
