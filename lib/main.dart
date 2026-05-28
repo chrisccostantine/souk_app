@@ -30,11 +30,7 @@ Future<void> main() async {
 }
 
 const _soukloraApiUrl = String.fromEnvironment('SOUKLORA_API_URL');
-const _selloraApiUrl = String.fromEnvironment('SELLORA_API_URL');
-const _legacyApiUrl = String.fromEnvironment('SOUK_API_URL');
-const soukloraApiUrl = _soukloraApiUrl == ''
-    ? (_selloraApiUrl == '' ? _legacyApiUrl : _selloraApiUrl)
-    : _soukloraApiUrl;
+const soukloraApiUrl = _soukloraApiUrl;
 const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 const appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID');
 const appleRedirectUri = String.fromEnvironment('APPLE_REDIRECT_URI');
@@ -365,8 +361,8 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
         _password.text == '12345678') {
       widget.onAuthenticated(
         const AppSession(
-          name: 'Scalora Admin',
-          email: 'Scalora.socialmedia.agency@gmail.com',
+          name: 'Souklora Admin',
+          email: 'admin@souklora.local',
           role: AccountRole.admin,
         ),
       );
@@ -1487,7 +1483,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   int get _cartCount => _cart.fold(0, (sum, line) => sum + line.quantity);
 
   double get _subtotal =>
-      _cart.fold(0, (sum, line) => sum + (line.product.price * line.quantity));
+      _cart.fold(0, (sum, line) => sum + (line.unitPrice * line.quantity));
 
   int get _cartShopCount =>
       _cart.map((line) => line.product.shop.id).toSet().length;
@@ -1652,11 +1648,15 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     );
   }
 
-  void _addToCart(Product product) {
+  void _addToCart(Product product, [ProductVariant? variant]) {
     setState(() {
-      final index = _cart.indexWhere((line) => line.product.id == product.id);
+      final index = _cart.indexWhere(
+        (line) =>
+            line.product.id == product.id &&
+            line.variant?.identity == variant?.identity,
+      );
       if (index == -1) {
-        _cart.add(CartLine(product: product));
+        _cart.add(CartLine(product: product, variant: variant));
       } else {
         _cart[index] = _cart[index].copyWith(
           quantity: _cart[index].quantity + 1,
@@ -1664,15 +1664,19 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       }
     });
     _trackShopEvent(product, 'addToCart');
-    _showSnack('${product.name} added to basket');
+    _showSnack(
+      variant == null
+          ? '${product.name} added to basket'
+          : '${product.name} ${variant.title} added to basket',
+    );
   }
 
-  void _updateQuantity(Product product, int quantity) {
+  void _updateQuantity(CartLine line, int quantity) {
     setState(() {
       if (quantity <= 0) {
-        _cart.removeWhere((line) => line.product.id == product.id);
+        _cart.removeWhere((item) => item.key == line.key);
       } else {
-        final index = _cart.indexWhere((line) => line.product.id == product.id);
+        final index = _cart.indexWhere((item) => item.key == line.key);
         if (index != -1) {
           _cart[index] = _cart[index].copyWith(quantity: quantity);
         }
@@ -1787,9 +1791,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             Navigator.pop(context);
             _toggleFavorite(product);
           },
-          onAddToCart: () {
+          onAddToCart: (variant) {
             Navigator.pop(context);
-            _addToCart(product);
+            _addToCart(product, variant);
           },
           onReview: (rating, comment) =>
               _createReview(product, rating, comment),
@@ -1881,7 +1885,12 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           'shopId': entry.key,
           'items': [
             for (final line in lines)
-              {'productId': line.product.id, 'quantity': line.quantity},
+              {
+                'productId': line.product.id,
+                if (line.variant?.id.isNotEmpty == true)
+                  'variantId': line.variant!.id,
+                'quantity': line.quantity,
+              },
           ],
           'fulfillmentMethod': info.deliveryMethod == 'Pickup'
               ? 'PICKUP'
@@ -1902,7 +1911,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             total: total == 0
                 ? lines.fold<double>(
                         0,
-                        (sum, line) => sum + line.product.price * line.quantity,
+                        (sum, line) => sum + line.unitPrice * line.quantity,
                       ) +
                       (info.deliveryMethod == 'Pickup' ? 0 : 3.5)
                 : total,
@@ -2188,6 +2197,88 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   }
 }
 
+class AdminStatGrid extends StatelessWidget {
+  const AdminStatGrid({super.key, required this.items});
+
+  final List<AdminStatItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.85,
+      ),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    item.icon,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        item.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class AdminStatItem {
+  const AdminStatItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+}
+
 class SellerAppShell extends StatefulWidget {
   const SellerAppShell({
     super.key,
@@ -2234,6 +2325,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   List<Shop> _shops = [];
   bool _loading = false;
   String? _message;
+  String _statusFilter = 'Needs review';
 
   @override
   void initState() {
@@ -2281,8 +2373,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       await SoukloraApi(baseUrl: soukloraApiUrl).verifyShop(shop.id, {
         'verified': approved,
         'verificationNote': approved
-            ? 'Approved by Scalora admin'
-            : 'Declined by Scalora admin',
+            ? 'Approved by Souklora admin'
+            : 'Declined by Souklora admin',
       });
       await _loadShops();
       if (!mounted) {
@@ -2308,6 +2400,27 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final activeStores = _shops
+        .where((shop) => shop.verified && shop.statusLabel == 'ACTIVE')
+        .length;
+    final needsReview = _shops
+        .where((shop) => !shop.verified || shop.statusLabel != 'ACTIVE')
+        .length;
+    final totalProducts = _shops.fold<int>(
+      0,
+      (sum, shop) => sum + shop.productCount,
+    );
+    final totalFollowers = _shops.fold<int>(
+      0,
+      (sum, shop) => sum + shop.followerCount,
+    );
+    final visibleShops = _shops.where((shop) {
+      return switch (_statusFilter) {
+        'Active' => shop.verified && shop.statusLabel == 'ACTIVE',
+        'Needs review' => !shop.verified || shop.statusLabel != 'ACTIVE',
+        _ => true,
+      };
+    }).toList();
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -2317,7 +2430,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             const SizedBox(height: 18),
             const SectionTitle(
               title: 'Admin dashboard',
-              action: 'Store approvals',
+              action: 'Control center',
             ),
             const SizedBox(height: 12),
             if (_loading)
@@ -2328,25 +2441,60 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 title: 'Admin unavailable',
                 message: _message!,
               )
-            else
-              for (final shop in _shops) ...[
+            else ...[
+              AdminStatGrid(
+                items: [
+                  AdminStatItem(
+                    icon: Icons.pending_actions_outlined,
+                    label: 'Needs review',
+                    value: needsReview.toString(),
+                  ),
+                  AdminStatItem(
+                    icon: Icons.verified_outlined,
+                    label: 'Active stores',
+                    value: activeStores.toString(),
+                  ),
+                  AdminStatItem(
+                    icon: Icons.inventory_2_outlined,
+                    label: 'Products',
+                    value: totalProducts.toString(),
+                  ),
+                  AdminStatItem(
+                    icon: Icons.notifications_active_outlined,
+                    label: 'Followers',
+                    value: totalFollowers.toString(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'Needs review', label: Text('Review')),
+                  ButtonSegment(value: 'Active', label: Text('Active')),
+                  ButtonSegment(value: 'All', label: Text('All')),
+                ],
+                selected: {_statusFilter},
+                onSelectionChanged: (value) =>
+                    setState(() => _statusFilter = value.first),
+              ),
+              const SizedBox(height: 12),
+              if (visibleShops.isEmpty)
+                const EmptyState(
+                  icon: Icons.task_alt_outlined,
+                  title: 'Nothing to review',
+                  message: 'Stores that need admin action will appear here.',
+                )
+              else
+                for (final shop in visibleShops) ...[
                 Card(
                   child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: shop.verified
-                          ? const Color(0xFF1F7A4D)
-                          : const Color(0xFFC8673A),
-                      child: Icon(
-                        shop.verified ? Icons.verified : Icons.hourglass_top,
-                        color: Colors.white,
-                      ),
-                    ),
+                    leading: StoreAvatar(shop: shop, size: 44),
                     title: Text(
                       shop.name,
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     subtitle: Text(
-                      '${shop.category} - ${shop.location} - ${shop.statusLabel}',
+                      '${shop.category} - ${shop.location} - ${shop.productCount} products - ${shop.statusLabel}',
                     ),
                     trailing: Wrap(
                       spacing: 8,
@@ -2367,6 +2515,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 ),
                 const SizedBox(height: 10),
               ],
+            ],
           ],
         ),
       ),
@@ -3654,7 +3803,7 @@ class SellEntryPage extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Create a store account, get approved by Scalora, then sync Shopify products into the marketplace.',
+                'Create a store account, get approved by Souklora, then sync Shopify products into the marketplace.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Colors.white.withValues(alpha: 0.78),
                   height: 1.4,
@@ -4060,7 +4209,7 @@ class CartPage extends StatefulWidget {
   final List<CartLine> cart;
   final double subtotal;
   final int shopCount;
-  final void Function(Product product, int quantity) onQuantityChanged;
+  final void Function(CartLine line, int quantity) onQuantityChanged;
   final ValueChanged<CheckoutInfo> onCheckout;
 
   @override
@@ -4969,7 +5118,7 @@ class _SellerHubPageState extends State<SellerHubPage>
               icon: Icons.category_outlined,
               title: 'No synced collections yet',
               message:
-                  'Sync Shopify products after Scalora admin approves your store.',
+                  'Sync Shopify products after Souklora admin approves your store.',
             )
           else
             CollectionBrowser(
@@ -5803,22 +5952,15 @@ void showStoreStorySheet(
                 ],
               ),
               const SizedBox(height: 18),
-              if (story.imageUrl != null && story.imageUrl!.isNotEmpty)
+              if (normalizedImageUrl(story.imageUrl) != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: AspectRatio(
                     aspectRatio: 1,
-                    child: Image.network(
-                      story.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => Container(
-                        color: const Color(0xFFF8F4EC),
-                        child: const Icon(Icons.image_not_supported_outlined),
-                      ),
-                    ),
+                    child: AppNetworkImage(url: story.imageUrl!, size: 900),
                   ),
                 ),
-              if (story.imageUrl != null && story.imageUrl!.isNotEmpty)
+              if (normalizedImageUrl(story.imageUrl) != null)
                 const SizedBox(height: 16),
               Text(
                 story.title,
@@ -7836,6 +7978,7 @@ class ProductArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = productPrimaryImage(product);
     return AspectRatio(
       aspectRatio: 1,
       child: Container(
@@ -7844,7 +7987,7 @@ class ProductArt extends StatelessWidget {
           children: [
             Align(
               alignment: Alignment.center,
-              child: product.imageUrl == null
+              child: imageUrl == null
                   ? Container(
                       width: 76,
                       height: 76,
@@ -7855,7 +7998,7 @@ class ProductArt extends StatelessWidget {
                       child: Icon(product.icon, color: Colors.white, size: 38),
                     )
                   : AppNetworkImage(
-                      url: product.imageUrl!,
+                      url: imageUrl,
                       size: 360,
                       errorBuilder: (_, _, _) {
                         return Container(
@@ -7905,12 +8048,21 @@ class AppNetworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = normalizedImageUrl(url);
     final outline = Border.all(color: Colors.black.withValues(alpha: 0.10));
-    if (url.startsWith('data:image')) {
-      final commaIndex = url.indexOf(',');
+    if (imageUrl == null) {
+      return errorBuilder?.call(
+            context,
+            const FormatException('Invalid image URL'),
+            StackTrace.current,
+          ) ??
+          const ImageFallback();
+    }
+    if (imageUrl.startsWith('data:image')) {
+      final commaIndex = imageUrl.indexOf(',');
       if (commaIndex != -1) {
         try {
-          final bytes = base64Decode(url.substring(commaIndex + 1));
+          final bytes = base64Decode(imageUrl.substring(commaIndex + 1));
           return Container(
             foregroundDecoration: BoxDecoration(border: outline),
             child: Image.memory(
@@ -7924,14 +8076,14 @@ class AppNetworkImage extends StatelessWidget {
           );
         } catch (error, stackTrace) {
           return errorBuilder?.call(context, error, stackTrace) ??
-              Container(color: const Color(0xFFE7F0EA));
+              const ImageFallback();
         }
       }
     }
     return Container(
       foregroundDecoration: BoxDecoration(border: outline),
       child: CachedNetworkImage(
-        imageUrl: optimizedImageUrl(url, size),
+        imageUrl: optimizedImageUrl(imageUrl, size),
         width: double.infinity,
         height: double.infinity,
         fit: BoxFit.cover,
@@ -7939,8 +8091,23 @@ class AppNetworkImage extends StatelessWidget {
         placeholder: (context, url) => const SoukloraImageShimmer(),
         errorWidget: (context, url, error) =>
             errorBuilder?.call(context, error, StackTrace.current) ??
-            Container(color: const Color(0xFFE7F0EA)),
+            const ImageFallback(),
       ),
+    );
+  }
+}
+
+class ImageFallback extends StatelessWidget {
+  const ImageFallback({super.key, this.icon = Icons.image_not_supported_outlined});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFE7F0EA),
+      alignment: Alignment.center,
+      child: Icon(icon, color: const Color(0xFF1F7A4D)),
     );
   }
 }
@@ -8135,6 +8302,7 @@ class ProductMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageUrl = productPrimaryImage(product);
     return Material(
       color: product.color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(8),
@@ -8152,7 +8320,7 @@ class ProductMiniCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   child: Stack(
                     children: [
-                      product.imageUrl == null
+                      imageUrl == null
                           ? Container(
                               color: product.color,
                               child: Icon(
@@ -8161,7 +8329,7 @@ class ProductMiniCard extends StatelessWidget {
                                 size: 34,
                               ),
                             )
-                          : AppNetworkImage(url: product.imageUrl!, size: 260),
+                          : AppNetworkImage(url: imageUrl, size: 260),
                       Positioned(
                         right: 4,
                         top: 4,
@@ -8454,7 +8622,7 @@ class ProductDetailSheet extends StatefulWidget {
   final Product product;
   final bool isFavorite;
   final VoidCallback onFavorite;
-  final VoidCallback onAddToCart;
+  final ValueChanged<ProductVariant?> onAddToCart;
   final void Function(int rating, String comment) onReview;
 
   @override
@@ -8652,7 +8820,7 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                 FilledButton.icon(
                   onPressed: (_selectedVariant?.stock ?? stock) == 0
                       ? null
-                      : widget.onAddToCart,
+                      : () => widget.onAddToCart(_selectedVariant),
                   icon: const Icon(Icons.add_shopping_cart),
                   label: const Text('Add to basket'),
                 ),
@@ -8673,7 +8841,7 @@ class CartLineTile extends StatelessWidget {
   });
 
   final CartLine line;
-  final void Function(Product product, int quantity) onQuantityChanged;
+  final void Function(CartLine line, int quantity) onQuantityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -8704,14 +8872,20 @@ class CartLineTile extends StatelessWidget {
                     line.product.shop.name,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  Text(line.product.formattedPrice),
+                  if (line.variant != null)
+                    Text(
+                      line.variant!.title,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  Text(money(line.unitPrice)),
                 ],
               ),
             ),
             QuantityStepper(
               quantity: line.quantity,
-              onChanged: (quantity) =>
-                  onQuantityChanged(line.product, quantity),
+              onChanged: (quantity) => onQuantityChanged(line, quantity),
             ),
           ],
         ),
@@ -9966,6 +10140,7 @@ class SellerInventoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stock = product.effectiveStock;
+    final imageUrl = normalizedImageUrl(product.imageUrl);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -9973,27 +10148,17 @@ class SellerInventoryTile extends StatelessWidget {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: product.imageUrl == null
+              child: imageUrl == null
                   ? Container(
                       width: 58,
                       height: 58,
                       color: const Color(0xFFE7F0EA),
                       child: const Icon(Icons.inventory_2),
                     )
-                  : Image.network(
-                      optimizedImageUrl(product.imageUrl!, 160),
+                  : SizedBox(
                       width: 58,
                       height: 58,
-                      fit: BoxFit.cover,
-                      cacheWidth: 160,
-                      errorBuilder: (_, _, _) {
-                        return Container(
-                          width: 58,
-                          height: 58,
-                          color: const Color(0xFFE7F0EA),
-                          child: const Icon(Icons.image_not_supported_outlined),
-                        );
-                      },
+                      child: AppNetworkImage(url: imageUrl, size: 160),
                     ),
             ),
             const SizedBox(width: 10),
@@ -10172,6 +10337,9 @@ class Shop {
     required this.orderCount,
     required this.verified,
     required this.statusLabel,
+    this.productCount = 0,
+    this.followerCount = 0,
+    this.campaignCount = 0,
     this.logoUrl,
     this.bannerUrl,
     this.instagramUrl,
@@ -10183,6 +10351,7 @@ class Shop {
 
   factory Shop.fromJson(Map<String, dynamic> json) {
     final name = json['name'] as String? ?? 'Store';
+    final counts = json['_count'] as Map<String, dynamic>? ?? const {};
     return Shop(
       id: json['id'] as String? ?? '',
       name: name,
@@ -10199,8 +10368,11 @@ class Shop {
       orderCount: parseInt(json['orderCount']),
       verified: json['verified'] == true,
       statusLabel: json['status'] as String? ?? 'DRAFT',
-      logoUrl: json['logoUrl'] as String?,
-      bannerUrl: json['bannerUrl'] as String?,
+      productCount: parseInt(counts['products']),
+      followerCount: parseInt(counts['followers']),
+      campaignCount: parseInt(counts['notificationCampaigns']),
+      logoUrl: normalizedImageUrl(json['logoUrl'] as String?),
+      bannerUrl: normalizedImageUrl(json['bannerUrl'] as String?),
       instagramUrl: json['instagramUrl'] as String?,
       tiktokUrl: json['tiktokUrl'] as String?,
       websiteUrl: json['websiteUrl'] as String?,
@@ -10228,6 +10400,9 @@ class Shop {
   final int orderCount;
   final bool verified;
   final String statusLabel;
+  final int productCount;
+  final int followerCount;
+  final int campaignCount;
   final String? logoUrl;
   final String? bannerUrl;
   final String? instagramUrl;
@@ -10254,7 +10429,7 @@ class StoreStory {
       shop: Shop.fromJson(json['shop'] as Map<String, dynamic>? ?? const {}),
       title: json['title']?.toString() ?? 'New story',
       caption: json['caption']?.toString(),
-      imageUrl: json['imageUrl']?.toString(),
+      imageUrl: normalizedImageUrl(json['imageUrl']?.toString()),
       createdAt:
           DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
           DateTime.now(),
@@ -10373,7 +10548,8 @@ class Product {
     final images = (json['images'] as List<dynamic>? ?? [])
         .map((item) => item as Map<String, dynamic>)
         .map((item) => item['url'] as String? ?? '')
-        .where((url) => url.isNotEmpty)
+        .map(normalizedImageUrl)
+        .whereType<String>()
         .toList();
     final variants = (json['variants'] as List<dynamic>? ?? [])
         .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
@@ -10381,6 +10557,7 @@ class Product {
     final collectionNames = productCollectionNames(json);
     final collectionIds = productCollectionIds(json);
     final collectionShopifyIds = productCollectionShopifyIds(json);
+    final primaryImageUrl = normalizedImageUrl(json['imageUrl'] as String?);
     return Product(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Product',
@@ -10393,10 +10570,8 @@ class Product {
       description: json['description'] as String? ?? '',
       rating: parseDouble(json['rating']),
       stock: parseInt(json['stock']),
-      imageUrl: json['imageUrl'] as String?,
-      images: images.isEmpty && json['imageUrl'] != null
-          ? [json['imageUrl'] as String]
-          : images,
+      imageUrl: primaryImageUrl,
+      images: images.isEmpty && primaryImageUrl != null ? [primaryImageUrl] : images,
       variants: variants,
       collectionNames: collectionNames,
       collectionIds: collectionIds,
@@ -10462,18 +10637,28 @@ class Product {
 }
 
 class CartLine {
-  const CartLine({required this.product, this.quantity = 1});
+  const CartLine({required this.product, this.variant, this.quantity = 1});
 
   final Product product;
+  final ProductVariant? variant;
   final int quantity;
 
   CartLine copyWith({int? quantity}) {
-    return CartLine(product: product, quantity: quantity ?? this.quantity);
+    return CartLine(
+      product: product,
+      variant: variant,
+      quantity: quantity ?? this.quantity,
+    );
   }
+
+  String get key => '${product.id}:${variant?.identity ?? ''}';
+
+  double get unitPrice => variant?.price ?? product.price;
 }
 
 class ProductVariant {
   const ProductVariant({
+    required this.id,
     required this.title,
     required this.price,
     this.compareAtPrice,
@@ -10486,6 +10671,7 @@ class ProductVariant {
 
   factory ProductVariant.fromJson(Map<String, dynamic> json) {
     return ProductVariant(
+      id: json['id']?.toString() ?? '',
       title: json['title'] as String? ?? 'Variant',
       price: parseDouble(json['price']),
       compareAtPrice: nullableDouble(json['compareAtPrice']),
@@ -10497,6 +10683,7 @@ class ProductVariant {
     );
   }
 
+  final String id;
   final String title;
   final double price;
   final double? compareAtPrice;
@@ -10505,6 +10692,8 @@ class ProductVariant {
   final String? option2;
   final String? option3;
   final String? sku;
+
+  String get identity => id.isNotEmpty ? id : '$title:$sku:$option1:$option2:$option3';
 
   Iterable<String> get searchableOptions sync* {
     for (final value in [title, option1, option2, option3]) {
@@ -11854,11 +12043,15 @@ String? productPrimaryImage(Product? product) {
   if (product == null) {
     return null;
   }
-  if (product.imageUrl != null && product.imageUrl!.isNotEmpty) {
-    return product.imageUrl;
+  final imageUrl = normalizedImageUrl(product.imageUrl);
+  if (imageUrl != null) {
+    return imageUrl;
   }
-  if (product.images.isNotEmpty) {
-    return product.images.first;
+  for (final image in product.images) {
+    final normalized = normalizedImageUrl(image);
+    if (normalized != null) {
+      return normalized;
+    }
   }
   return null;
 }
@@ -12038,10 +12231,30 @@ int parseInt(Object? value) {
   return int.tryParse(value?.toString() ?? '') ?? 0;
 }
 
+String? normalizedImageUrl(String? value) {
+  final text = value?.trim();
+  if (text == null || text.isEmpty) {
+    return null;
+  }
+  if (text.startsWith('data:image')) {
+    return text;
+  }
+  final withScheme = text.startsWith('//') ? 'https:$text' : text;
+  final uri = Uri.tryParse(withScheme);
+  if (uri == null || !uri.hasScheme) {
+    return null;
+  }
+  if (uri.scheme != 'http' && uri.scheme != 'https') {
+    return null;
+  }
+  return uri.toString();
+}
+
 String optimizedImageUrl(String url, int width) {
-  final uri = Uri.tryParse(url);
+  final normalized = normalizedImageUrl(url) ?? url;
+  final uri = Uri.tryParse(normalized);
   if (uri == null || !uri.host.contains('shopify')) {
-    return url;
+    return normalized;
   }
   return uri
       .replace(

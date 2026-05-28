@@ -60,6 +60,18 @@ const shopifyScopes = requiredShopifyScopes.join(',');
 const oauthStates = new Map();
 const shopifySyncJobs = new Map();
 const passwordResetCodes = new Map();
+const shopifyAutoSyncIntervalMs = Math.max(
+  Number(process.env.SHOPIFY_AUTO_SYNC_INTERVAL_MINUTES || 10),
+  2,
+) * 60 * 1000;
+const shopifyAutoSyncStaleMs = Math.max(
+  Number(process.env.SHOPIFY_AUTO_SYNC_STALE_MINUTES || 15),
+  5,
+) * 60 * 1000;
+const shopifyAutoSyncBatchSize = Math.max(
+  Number(process.env.SHOPIFY_AUTO_SYNC_BATCH_SIZE || 3),
+  1,
+);
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -402,6 +414,72 @@ function queueShopifySync(shopId, message = 'Queued Shopify sync') {
   return job;
 }
 
+async function queueShopifySyncIfStale(shopId, reason = 'Catalog freshness check') {
+  const connection = await prisma.shopifyConnection.findUnique({
+    where: { shopId },
+    select: {
+      shopId: true,
+      lastSyncedAt: true,
+      shop: { select: { status: true, verified: true } },
+    },
+  });
+  if (!connection || connection.shop.status !== 'ACTIVE' || !connection.shop.verified) {
+    return null;
+  }
+  const lastSyncedAt = connection.lastSyncedAt?.getTime() ?? 0;
+  if (Date.now() - lastSyncedAt < shopifyAutoSyncStaleMs) {
+    return null;
+  }
+  return queueShopifySync(shopId, `${reason}: queued Shopify catalog refresh`);
+}
+
+let shopifyAutoSyncRunning = false;
+
+async function runShopifyAutoSyncSweep() {
+  if (shopifyAutoSyncRunning) {
+    return;
+  }
+  shopifyAutoSyncRunning = true;
+  try {
+    const staleBefore = new Date(Date.now() - shopifyAutoSyncStaleMs);
+    const connections = await prisma.shopifyConnection.findMany({
+      where: {
+        shop: { status: 'ACTIVE', verified: true },
+        OR: [{ lastSyncedAt: null }, { lastSyncedAt: { lt: staleBefore } }],
+      },
+      orderBy: { lastSyncedAt: 'asc' },
+      take: shopifyAutoSyncBatchSize,
+    });
+    for (const connection of connections) {
+      registerShopifyWebhooks(connection).catch((error) => {
+        console.warn('Could not ensure Shopify webhooks during auto-sync', {
+          shopDomain: connection.shopDomain,
+          message: error.message,
+          details: error.details,
+        });
+      });
+      queueShopifySync(
+        connection.shopId,
+        'Automatic Shopify catalog refresh',
+      );
+    }
+  } catch (error) {
+    console.warn('Shopify auto-sync sweep failed', {
+      message: error.message,
+      details: error.details,
+    });
+  } finally {
+    shopifyAutoSyncRunning = false;
+  }
+}
+
+function startShopifyAutoSync() {
+  setTimeout(() => {
+    runShopifyAutoSyncSweep();
+  }, 30 * 1000);
+  setInterval(runShopifyAutoSyncSweep, shopifyAutoSyncIntervalMs);
+}
+
 async function shopIdForWebhook(req) {
   const shopDomain = normalizeShopDomain(req.get('X-Shopify-Shop-Domain') || '');
   if (!shopDomain) {
@@ -723,6 +801,14 @@ app.get('/api/shops', async (req, res, next) => {
           where: { active: true },
           orderBy: { createdAt: 'desc' },
           take: 6,
+        },
+        _count: {
+          select: {
+            products: true,
+            followers: true,
+            orders: true,
+            notificationCampaigns: true,
+          },
         },
       },
     });
@@ -1076,6 +1162,12 @@ app.post('/api/shops/:id/placements', async (req, res, next) => {
 app.get('/api/shops/:id/inventory', async (req, res, next) => {
   try {
     const shopId = String(req.params.id);
+    queueShopifySyncIfStale(shopId, 'Seller inventory opened').catch((error) => {
+      console.warn('Could not queue stale Shopify inventory sync', {
+        shopId,
+        message: error.message,
+      });
+    });
     const [products, collections] = await Promise.all([
       prisma.product.findMany({
         where: { shopId, active: true },
@@ -1108,6 +1200,14 @@ app.get('/api/shops/:id/inventory', async (req, res, next) => {
 app.get('/api/products', async (req, res, next) => {
   try {
     const { category, q, shopId } = req.query;
+    if (shopId) {
+      queueShopifySyncIfStale(String(shopId), 'Storefront opened').catch((error) => {
+        console.warn('Could not queue stale Shopify product sync', {
+          shopId: String(shopId),
+          message: error.message,
+        });
+      });
+    }
     const requestedLimit = Number(req.query.limit);
     const take = Number.isFinite(requestedLimit)
       ? Math.min(Math.max(Math.trunc(requestedLimit), 1), 200)
@@ -1370,7 +1470,7 @@ app.post('/api/shopify/sync', async (req, res, next) => {
       select: { status: true, verified: true },
     });
     if (!shop || shop.status !== 'ACTIVE' || !shop.verified) {
-      const error = new Error('Store must be approved by Scalora admin before Shopify sync');
+      const error = new Error('Store must be approved by Souklora admin before Shopify sync');
       error.status = 403;
       throw error;
     }
@@ -1400,7 +1500,7 @@ app.get('/api/orders', async (req, res, next) => {
       include: {
         customer: true,
         shop: true,
-        items: { include: { product: true } },
+        items: { include: { product: true, variant: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1410,68 +1510,284 @@ app.get('/api/orders', async (req, res, next) => {
   }
 });
 
+function aggregateOrderItems(items) {
+  const quantities = new Map();
+  for (const item of items) {
+    const key = `${item.productId}:${item.variantId ?? ''}`;
+    quantities.set(
+      key,
+      {
+        productId: item.productId,
+        variantId: item.variantId ?? null,
+        quantity: (quantities.get(key)?.quantity ?? 0) + item.quantity,
+      },
+    );
+  }
+  return [...quantities.values()];
+}
+
+function stockError(product) {
+  const error = new Error(`${product.name} is out of stock`);
+  error.status = 409;
+  return error;
+}
+
+async function reserveLocalInventory(orderItems, products) {
+  for (const item of orderItems) {
+    const product = products.find((current) => current.id === item.productId);
+    if (!product || product.stock < item.quantity) {
+      throw stockError(product ?? { name: 'This product' });
+    }
+    const variant = item.variantId
+      ? product.variants?.find((current) => current.id === item.variantId)
+      : null;
+    if (item.variantId && (!variant || variant.stock < item.quantity)) {
+      throw stockError({
+        name: `${product.name} ${variant?.title ?? 'variant'}`,
+      });
+    }
+    const result = await prisma.product.updateMany({
+      where: {
+        id: item.productId,
+        active: true,
+        stock: { gte: item.quantity },
+      },
+      data: {
+        stock: { decrement: item.quantity },
+        lastSyncedAt: new Date(),
+      },
+    });
+    if (result.count !== 1) {
+      throw stockError(product);
+    }
+    if (variant) {
+      const variantResult = await prisma.productVariant.updateMany({
+        where: {
+          id: variant.id,
+          stock: { gte: item.quantity },
+        },
+        data: {
+          stock: { decrement: item.quantity },
+        },
+      });
+      if (variantResult.count !== 1) {
+        await restoreLocalInventory([item]);
+        throw stockError({ name: `${product.name} ${variant.title}` });
+      }
+    }
+  }
+}
+
+async function restoreLocalInventory(orderItems) {
+  await prisma.$transaction(
+    orderItems.flatMap((item) => [
+      prisma.product.updateMany({
+        where: { id: item.productId },
+        data: { stock: { increment: item.quantity } },
+      }),
+      ...(item.variantId
+        ? [
+            prisma.productVariant.updateMany({
+              where: { id: item.variantId },
+              data: { stock: { increment: item.quantity } },
+            }),
+          ]
+        : []),
+    ]),
+  );
+}
+
+async function reserveShopifyInventoryForOrder(shopId, orderItems, products) {
+  const connection = await prisma.shopifyConnection.findUnique({ where: { shopId } });
+  if (!connection) {
+    return { updated: [], failed: [] };
+  }
+
+  let freshConnection;
+  try {
+    freshConnection = await refreshShopifyConnection(connection);
+  } catch (error) {
+    error.status = error.status || 409;
+    throw error;
+  }
+
+  const updated = [];
+  const failed = [];
+  const shopifyItems = [];
+  for (const item of orderItems) {
+    const product = products.find((current) => current.id === item.productId);
+    const variant = item.variantId
+      ? product?.variants?.find((current) => current.id === item.variantId)
+      : null;
+    const inventoryItemId =
+      variant?.shopifyInventoryItemId ?? product?.shopifyInventoryItemId;
+    if (!product || !inventoryItemId) {
+      continue;
+    }
+    const locationId = product.shopifyLocationId || freshConnection.defaultLocationId;
+    if (!locationId) {
+      const error = new Error(`Missing Shopify location for ${product.name}`);
+      error.status = 409;
+      throw error;
+    }
+
+    const available = await fetchShopifyInventoryAvailable({
+      connection: freshConnection,
+      inventoryItemId,
+      locationId,
+    });
+    if (available !== null && available < item.quantity) {
+      const error = new Error(
+        `${product.name}${variant ? ` ${variant.title}` : ''} only has ${available} left in Shopify`,
+      );
+      error.status = 409;
+      throw error;
+    }
+    shopifyItems.push({ item, product, variant, inventoryItemId, locationId });
+  }
+
+  for (const { item, product, variant, inventoryItemId, locationId } of shopifyItems) {
+    try {
+      const result = await adjustShopifyInventory({
+        connection: freshConnection,
+        inventoryItemId,
+        locationId,
+        quantity: item.quantity,
+      });
+      const nextAvailable = result.inventory_level?.available;
+      const stock = typeof nextAvailable === 'number' ? nextAvailable : Math.max(product.stock - item.quantity, 0);
+      await prisma.$transaction([
+        prisma.product.update({
+          where: { id: product.id },
+          data: {
+            stock,
+            lastSyncedAt: new Date(),
+          },
+        }),
+        prisma.productVariant.updateMany({
+          where: variant?.id
+            ? { id: variant.id }
+            : { shopifyInventoryItemId: inventoryItemId },
+          data: { stock },
+        }),
+      ]);
+      updated.push(product.id);
+    } catch (error) {
+      failed.push({ productId: product.id, reason: error.message });
+      error.status = error.status || 409;
+      throw error;
+    }
+  }
+  return { updated, failed };
+}
+
+async function fetchShopifyInventoryAvailable({ connection, inventoryItemId, locationId }) {
+  const client = new ShopifyClient(connection);
+  const result = await client.get('/inventory_levels.json', {
+    inventory_item_ids: inventoryItemId,
+    location_ids: locationId,
+  });
+  const level = result.inventory_levels?.[0];
+  return typeof level?.available === 'number' ? level.available : null;
+}
+
 app.post('/api/orders', async (req, res, next) => {
   try {
     const input = validate(createOrderSchema, req.body);
+    const orderItems = aggregateOrderItems(input.items);
     const products = await prisma.product.findMany({
-      where: { id: { in: input.items.map((item) => item.productId) } },
+      where: { id: { in: orderItems.map((item) => item.productId) } },
+      include: { variants: true },
     });
 
-    if (products.length !== input.items.length) {
+    if (products.length !== orderItems.length) {
       const error = new Error('One or more products were not found');
       error.status = 404;
       throw error;
     }
 
-    const subtotal = input.items.reduce((sum, item) => {
+    for (const product of products) {
+      if (product.shopId !== input.shopId || !product.active) {
+        const error = new Error(`${product.name} is no longer available from this store`);
+        error.status = 409;
+        throw error;
+      }
+    }
+
+    const subtotal = orderItems.reduce((sum, item) => {
       const product = products.find((current) => current.id === item.productId);
-      return sum + Number(product.price) * item.quantity;
+      const variant = item.variantId
+        ? product.variants.find((current) => current.id === item.variantId)
+        : null;
+      return sum + Number(variant?.price ?? product.price) * item.quantity;
     }, 0);
     const deliveryFee = input.fulfillmentMethod === 'DELIVERY' ? 3.5 : 0;
     const total = subtotal + deliveryFee;
 
-    const order = await prisma.$transaction(async (tx) => {
-      const customer = await tx.user.upsert({
-        where: { email: input.customerEmail },
-        update: { name: input.customerName },
-        create: {
-          email: input.customerEmail,
-          name: input.customerName,
-          role: 'CUSTOMER',
-        },
-      });
-
-      return tx.order.create({
-        data: {
-          customerId: customer.id,
-          shopId: input.shopId,
-          fulfillmentMethod: input.fulfillmentMethod,
-          paymentMethod: input.paymentMethod,
-          deliveryAddress: input.deliveryAddress,
-          note: input.note,
-          subtotal,
-          deliveryFee,
-          total,
-          items: {
-            create: input.items.map((item) => {
-              const product = products.find((current) => current.id === item.productId);
-              return {
-                productId: item.productId,
-                quantity: item.quantity,
-                unitPrice: product.price,
-              };
-            }),
+    await reserveLocalInventory(orderItems, products);
+    let order;
+    try {
+      order = await prisma.$transaction(async (tx) => {
+        const customer = await tx.user.upsert({
+          where: { email: input.customerEmail },
+          update: { name: input.customerName },
+          create: {
+            email: input.customerEmail,
+            name: input.customerName,
+            role: 'CUSTOMER',
           },
-        },
-        include: {
-          customer: true,
-          shop: true,
-          items: { include: { product: true } },
-        },
-      });
-    });
+        });
 
-    const shopifyUpdates = await syncSoukloraOrderToShopifyInventory(input.shopId, order.items);
+        return tx.order.create({
+          data: {
+            customerId: customer.id,
+            shopId: input.shopId,
+            fulfillmentMethod: input.fulfillmentMethod,
+            paymentMethod: input.paymentMethod,
+            deliveryAddress: input.deliveryAddress,
+            note: input.note,
+            subtotal,
+            deliveryFee,
+            total,
+            items: {
+              create: orderItems.map((item) => {
+                const product = products.find((current) => current.id === item.productId);
+                const variant = item.variantId
+                  ? product.variants.find((current) => current.id === item.variantId)
+                  : null;
+                return {
+                  productId: item.productId,
+                  variantId: item.variantId,
+                  quantity: item.quantity,
+                  unitPrice: variant?.price ?? product.price,
+                };
+              }),
+            },
+          },
+          include: {
+            customer: true,
+            shop: true,
+            items: { include: { product: true, variant: true } },
+          },
+        });
+      });
+    } catch (error) {
+      await restoreLocalInventory(orderItems);
+      throw error;
+    }
+
+    let shopifyUpdates = { updated: [], failed: [] };
+    try {
+      shopifyUpdates = await reserveShopifyInventoryForOrder(input.shopId, orderItems, products);
+    } catch (error) {
+      await restoreLocalInventory(orderItems);
+      await prisma.order.delete({
+        where: { id: order.id },
+      });
+      queueShopifySync(input.shopId, 'Queued Shopify sync after failed checkout reservation');
+      throw error;
+    }
+
     const day = new Date();
     day.setHours(0, 0, 0, 0);
     await prisma.$transaction([
@@ -1493,7 +1809,7 @@ app.post('/api/orders', async (req, res, next) => {
         },
       }),
     ]);
-    res.status(201).json({ order });
+    res.status(201).json({ order, inventory: shopifyUpdates });
     if (shopifyUpdates.failed.length > 0) {
       console.warn('Some Shopify inventory updates failed', shopifyUpdates.failed);
     }
@@ -1511,7 +1827,7 @@ app.patch('/api/orders/:id/status', async (req, res, next) => {
       include: {
         customer: true,
         shop: true,
-        items: { include: { product: true } },
+        items: { include: { product: true, variant: true } },
       },
     });
     res.json({ order });
@@ -2063,54 +2379,6 @@ function stripHtml(value) {
   return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-async function syncSoukloraOrderToShopifyInventory(shopId, orderItems) {
-  const connection = await prisma.shopifyConnection.findUnique({ where: { shopId } });
-  if (!connection) {
-    return { updated: [], failed: [] };
-  }
-
-  let freshConnection;
-  try {
-    freshConnection = await refreshShopifyConnection(connection);
-  } catch (error) {
-    return { updated: [], failed: [{ shopId, reason: error.message }] };
-  }
-
-  const updated = [];
-  const failed = [];
-  for (const item of orderItems) {
-    const product = item.product;
-    if (!product.shopifyInventoryItemId) {
-      continue;
-    }
-    const locationId = product.shopifyLocationId || freshConnection.defaultLocationId;
-    if (!locationId) {
-      failed.push({ productId: product.id, reason: 'Missing Shopify location id' });
-      continue;
-    }
-    try {
-      const result = await adjustShopifyInventory({
-        connection: freshConnection,
-        inventoryItemId: product.shopifyInventoryItemId,
-        locationId,
-        quantity: item.quantity,
-      });
-      const available = result.inventory_level?.available;
-      await prisma.product.update({
-        where: { id: product.id },
-        data: {
-          stock: typeof available === 'number' ? available : Math.max(product.stock - item.quantity, 0),
-          lastSyncedAt: new Date(),
-        },
-      });
-      updated.push(product.id);
-    } catch (error) {
-      failed.push({ productId: product.id, reason: error.message });
-    }
-  }
-  return { updated, failed };
-}
-
 app.use((req, res) => {
   res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
 });
@@ -2125,4 +2393,5 @@ app.use((error, _req, res, _next) => {
 
 app.listen(port, () => {
   console.log(`Souklora API listening on port ${port}`);
+  startShopifyAutoSync();
 });
