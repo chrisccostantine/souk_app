@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui' show FontFeature;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:carousel_slider/carousel_slider.dart';
@@ -1076,7 +1075,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
             const SizedBox(height: 24),
             Center(
               child: Text(
-                'Powered by Souklora • Shopify Sync',
+                'Powered by Scalora',
                 style: Theme.of(
                   context,
                 ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -1392,7 +1391,6 @@ class AuthTrustRow extends StatelessWidget {
         'Trusted Stores',
         'Verified sellers',
       ),
-      AuthTrustItem(Icons.sync, 'Easy Returns', 'Hassle-free'),
       AuthTrustItem(Icons.support_agent, '24/7 Support', 'We are here'),
     ];
     return Row(
@@ -2245,8 +2243,9 @@ class AdminStatGrid extends StatelessWidget {
                         item.value,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w900),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                       Text(
                         item.label,
@@ -2486,35 +2485,35 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                 )
               else
                 for (final shop in visibleShops) ...[
-                Card(
-                  child: ListTile(
-                    leading: StoreAvatar(shop: shop, size: 44),
-                    title: Text(
-                      shop.name,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                    subtitle: Text(
-                      '${shop.category} - ${shop.location} - ${shop.productCount} products - ${shop.statusLabel}',
-                    ),
-                    trailing: Wrap(
-                      spacing: 8,
-                      children: [
-                        IconButton.filledTonal(
-                          tooltip: 'Approve',
-                          onPressed: () => _reviewShop(shop, true),
-                          icon: const Icon(Icons.check),
-                        ),
-                        IconButton.filledTonal(
-                          tooltip: 'Decline',
-                          onPressed: () => _reviewShop(shop, false),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
+                  Card(
+                    child: ListTile(
+                      leading: StoreAvatar(shop: shop, size: 44),
+                      title: Text(
+                        shop.name,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      subtitle: Text(
+                        '${shop.category} - ${shop.location} - ${shop.productCount} products - ${shop.statusLabel}',
+                      ),
+                      trailing: Wrap(
+                        spacing: 8,
+                        children: [
+                          IconButton.filledTonal(
+                            tooltip: 'Approve',
+                            onPressed: () => _reviewShop(shop, true),
+                            icon: const Icon(Icons.check),
+                          ),
+                          IconButton.filledTonal(
+                            tooltip: 'Decline',
+                            onPressed: () => _reviewShop(shop, false),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-              ],
+                  const SizedBox(height: 10),
+                ],
             ],
           ],
         ),
@@ -2664,25 +2663,26 @@ class HomePage extends StatelessWidget {
                 ],
                 const SizedBox(height: 20),
                 SoukloraMarketplaceBanner(
-                  shopCount: shops.length,
-                  productCount: allProducts.length,
-                  verifiedCount: shops.where((shop) => shop.verified).length,
-                ).animate().fadeIn(
-                  duration: const Duration(milliseconds: 260),
-                ).slideY(
-                  begin: 0.04,
-                  end: 0,
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                ),
+                      shopCount: shops.length,
+                      productCount: allProducts.length,
+                      verifiedCount: shops
+                          .where((shop) => shop.verified)
+                          .length,
+                    )
+                    .animate()
+                    .fadeIn(duration: const Duration(milliseconds: 260))
+                    .slideY(
+                      begin: 0.04,
+                      end: 0,
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                    ),
               ],
             ),
           ),
         ),
         if (loading)
-          const SliverToBoxAdapter(
-            child: SoukloraHomeSkeleton(),
-          )
+          const SliverToBoxAdapter(child: SoukloraHomeSkeleton())
         else if (message != null)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -2758,12 +2758,13 @@ class HomePage extends StatelessWidget {
                           .where((product) => product.shop.id == shop.id)
                           .toList();
                       return SoukloraStoreRowCard(
-                        shop: shop,
-                        productCount: shopProducts.length,
-                        isFollowing: followedShopIds.contains(shop.id),
-                        onFollow: () => onFollowStore(shop),
-                        onOpen: () => onOpenShop(shop),
-                      ).animate(delay: Duration(milliseconds: index * 35))
+                            shop: shop,
+                            productCount: shopProducts.length,
+                            isFollowing: followedShopIds.contains(shop.id),
+                            onFollow: () => onFollowStore(shop),
+                            onOpen: () => onOpenShop(shop),
+                          )
+                          .animate(delay: Duration(milliseconds: index * 35))
                           .fadeIn(duration: const Duration(milliseconds: 220))
                           .slideY(
                             begin: 0.03,
@@ -6372,9 +6373,9 @@ class _MarketplaceBannerSlide extends StatelessWidget {
                 slide.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
               ),
               const Gap(3),
               Text(
@@ -8140,7 +8141,10 @@ class AppNetworkImage extends StatelessWidget {
 }
 
 class ImageFallback extends StatelessWidget {
-  const ImageFallback({super.key, this.icon = Icons.image_not_supported_outlined});
+  const ImageFallback({
+    super.key,
+    this.icon = Icons.image_not_supported_outlined,
+  });
 
   final IconData icon;
 
@@ -10613,7 +10617,9 @@ class Product {
       rating: parseDouble(json['rating']),
       stock: parseInt(json['stock']),
       imageUrl: primaryImageUrl,
-      images: images.isEmpty && primaryImageUrl != null ? [primaryImageUrl] : images,
+      images: images.isEmpty && primaryImageUrl != null
+          ? [primaryImageUrl]
+          : images,
       variants: variants,
       collectionNames: collectionNames,
       collectionIds: collectionIds,
@@ -10735,7 +10741,8 @@ class ProductVariant {
   final String? option3;
   final String? sku;
 
-  String get identity => id.isNotEmpty ? id : '$title:$sku:$option1:$option2:$option3';
+  String get identity =>
+      id.isNotEmpty ? id : '$title:$sku:$option1:$option2:$option3';
 
   Iterable<String> get searchableOptions sync* {
     for (final value in [title, option1, option2, option3]) {
