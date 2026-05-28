@@ -61,15 +61,15 @@ const oauthStates = new Map();
 const shopifySyncJobs = new Map();
 const passwordResetCodes = new Map();
 const shopifyAutoSyncIntervalMs = Math.max(
-  Number(process.env.SHOPIFY_AUTO_SYNC_INTERVAL_MINUTES || 10),
-  2,
+  Number(process.env.SHOPIFY_AUTO_SYNC_INTERVAL_MINUTES || 1),
+  1,
 ) * 60 * 1000;
 const shopifyAutoSyncStaleMs = Math.max(
-  Number(process.env.SHOPIFY_AUTO_SYNC_STALE_MINUTES || 15),
-  5,
+  Number(process.env.SHOPIFY_AUTO_SYNC_STALE_MINUTES || 1),
+  1,
 ) * 60 * 1000;
 const shopifyAutoSyncBatchSize = Math.max(
-  Number(process.env.SHOPIFY_AUTO_SYNC_BATCH_SIZE || 3),
+  Number(process.env.SHOPIFY_AUTO_SYNC_BATCH_SIZE || 5),
   1,
 );
 

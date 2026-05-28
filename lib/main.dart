@@ -2943,6 +2943,7 @@ class _StorefrontPageState extends State<StorefrontPage> {
   late List<Product> _products;
   bool _productsLoading = false;
   bool _productsLoadFailed = false;
+  bool _scheduledFreshnessRefresh = false;
 
   @override
   void initState() {
@@ -2957,6 +2958,7 @@ class _StorefrontPageState extends State<StorefrontPage> {
     if (oldWidget.shop.id != widget.shop.id) {
       _products = widget.products;
       _productsLoadFailed = false;
+      _scheduledFreshnessRefresh = false;
       unawaited(_loadStoreProducts());
     } else if (_products.isEmpty && widget.products.isNotEmpty) {
       _products = widget.products;
@@ -2985,6 +2987,7 @@ class _StorefrontPageState extends State<StorefrontPage> {
         _products = products;
         _productsLoading = false;
       });
+      _scheduleFreshnessRefresh();
     } catch (_) {
       if (!mounted) {
         return;
@@ -2993,6 +2996,39 @@ class _StorefrontPageState extends State<StorefrontPage> {
         _productsLoading = false;
         _productsLoadFailed = true;
       });
+    }
+  }
+
+  void _scheduleFreshnessRefresh() {
+    if (_scheduledFreshnessRefresh || soukloraApiUrl.isEmpty) {
+      return;
+    }
+    _scheduledFreshnessRefresh = true;
+    Future<void>.delayed(const Duration(seconds: 12), () async {
+      await _refreshStoreProductsSilently();
+    });
+    Future<void>.delayed(const Duration(seconds: 45), () async {
+      await _refreshStoreProductsSilently();
+    });
+  }
+
+  Future<void> _refreshStoreProductsSilently() async {
+    if (!mounted || widget.shop.id.isEmpty) {
+      return;
+    }
+    try {
+      final rows = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).fetchProducts(shopId: widget.shop.id);
+      final products = rows
+          .map((item) => Product.fromJson(item as Map<String, dynamic>))
+          .toList();
+      if (!mounted) {
+        return;
+      }
+      setState(() => _products = products);
+    } catch (_) {
+      // Keep the already loaded products; freshness will retry next open.
     }
   }
 
@@ -3895,10 +3931,13 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        FilledButton.icon(
-          onPressed: onLogout,
-          icon: const Icon(Icons.logout),
-          label: const Text('Logout'),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: onLogout,
+            icon: const Icon(Icons.logout),
+            label: const Text('Logout'),
+          ),
         ),
       ],
     );
@@ -3928,7 +3967,8 @@ class ProfileStatTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          constraints: const BoxConstraints(minHeight: 92),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
@@ -3940,27 +3980,29 @@ class ProfileStatTile extends StatelessWidget {
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, color: const Color(0xFF8F552E)),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 18,
-                    ),
-                  ),
-                  Text(
-                    label,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                  ),
-                ],
+              const SizedBox(height: 8),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18,
+                ),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
               ),
             ],
           ),
