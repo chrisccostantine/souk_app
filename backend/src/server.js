@@ -77,7 +77,7 @@ app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
 app.use(
   express.json({
-    limit: '6mb',
+    limit: '20mb',
     verify: (req, _res, buf) => {
       req.rawBody = buf.toString('utf8');
     },
@@ -1306,6 +1306,27 @@ app.post('/api/products/:id/favorite', async (req, res, next) => {
 app.post('/api/products', async (req, res, next) => {
   try {
     const input = validate(createProductSchema, req.body);
+    const images = (input.images ?? [])
+      .filter((image) => image.url)
+      .slice(0, 7)
+      .map((image, index) => ({
+        url: image.url,
+        altText: image.altText ?? input.name,
+        position: image.position ?? index,
+      }));
+    const variants = (input.variants ?? []).map((variant) => ({
+      title: variant.title,
+      price: variant.price,
+      compareAtPrice: variant.compareAtPrice ?? null,
+      stock: variant.stock ?? 0,
+      sku: variant.sku ?? null,
+      option1: variant.option1 ?? null,
+      option2: variant.option2 ?? null,
+      option3: variant.option3 ?? null,
+      imageUrl: variant.imageUrl ?? null,
+    }));
+    const variantStock = variants.reduce((sum, variant) => sum + variant.stock, 0);
+    const primaryImageUrl = input.imageUrl ?? images[0]?.url ?? null;
     const product = await prisma.product.create({
       data: {
         shopId: input.shopId,
@@ -1315,10 +1336,32 @@ app.post('/api/products', async (req, res, next) => {
         description: input.description,
         price: input.price,
         compareAtPrice: input.compareAtPrice,
-        stock: input.stock,
-        imageUrl: input.imageUrl,
+        stock: variants.length > 0 ? variantStock : input.stock,
+        imageUrl: primaryImageUrl,
+        syncedFrom: 'MANUAL',
+        ...(images.length > 0
+          ? {
+              images: {
+                create: images,
+              },
+            }
+          : {}),
+        ...(variants.length > 0
+          ? {
+              variants: {
+                create: variants,
+              },
+            }
+          : {}),
       },
-      include: { shop: true },
+      include: {
+        shop: true,
+        images: { orderBy: { position: 'asc' } },
+        variants: { orderBy: { title: 'asc' } },
+        collections: {
+          include: { collection: true },
+        },
+      },
     });
     res.status(201).json({ product });
   } catch (error) {

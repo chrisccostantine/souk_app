@@ -42,6 +42,23 @@ const soukloraNotificationChannel = AndroidNotificationChannel(
 final localNotifications = FlutterLocalNotificationsPlugin();
 bool pushNotificationsReady = false;
 
+Future<String?> pickImageDataUrl({
+  double? maxWidth,
+  int imageQuality = 72,
+}) async {
+  final picker = ImagePicker();
+  final image = await picker.pickImage(
+    source: ImageSource.gallery,
+    maxWidth: maxWidth,
+    imageQuality: imageQuality,
+  );
+  if (image == null) {
+    return null;
+  }
+  final bytes = await image.readAsBytes();
+  return 'data:image/jpeg;base64,${base64Encode(bytes)}';
+}
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (Firebase.apps.isEmpty) {
@@ -3593,7 +3610,7 @@ class StoreProductCarousel extends StatelessWidget {
             itemBuilder: (context, index) {
               final product = products[index];
               return SizedBox(
-                width: 168,
+                width: 164,
                 child: ProductCard(
                   product: product,
                   isFavorite: favoriteIds.contains(product.id),
@@ -3637,7 +3654,7 @@ class StoreCollectionProductsPage extends StatelessWidget {
         itemCount: group.products.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          childAspectRatio: 0.58,
+          childAspectRatio: 0.56,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
@@ -4721,7 +4738,7 @@ class _SellerHubPageState extends State<SellerHubPage>
       }
       setState(() {
         _inventoryLoading = false;
-        _inventoryMessage = 'Could not load synced inventory.';
+        _inventoryMessage = 'Could not load catalog.';
       });
     }
   }
@@ -4810,7 +4827,7 @@ class _SellerHubPageState extends State<SellerHubPage>
               ),
               SellerMenuTile(
                 icon: Icons.sync,
-                label: 'Product sync',
+                label: 'Catalog',
                 selected: _sellerSection == SellerMenuSection.productSync,
                 onTap: () =>
                     _selectSellerSection(SellerMenuSection.productSync),
@@ -4890,6 +4907,26 @@ class _SellerHubPageState extends State<SellerHubPage>
       _showSellerSnack(error.message);
     } catch (_) {
       _showSellerSnack('Could not post story');
+    }
+  }
+
+  Future<void> _createManualProduct(Map<String, dynamic> payload) async {
+    final shopId = widget.session.store?.id;
+    if (soukloraApiUrl.isEmpty || shopId == null) {
+      _showSellerSnack('Connect the backend before adding products.');
+      return;
+    }
+    try {
+      await SoukloraApi(baseUrl: soukloraApiUrl).createProduct({
+        ...payload,
+        'shopId': shopId,
+      });
+      await _loadSellerInventory();
+      _showSellerSnack('Product added to your catalog');
+    } on SoukloraApiException catch (error) {
+      _showSellerSnack(error.message);
+    } catch (_) {
+      _showSellerSnack('Could not add product');
     }
   }
 
@@ -5085,14 +5122,16 @@ class _SellerHubPageState extends State<SellerHubPage>
     final dashboardGrowthStats = _growthStats.copyWith(
       revenue: dashboardRevenue,
     );
-    final visibleSyncedProducts = _selectedCollectionId == null
-        ? <SellerInventoryProduct>[]
-        : _syncedProducts
-              .where(
-                (product) =>
-                    product.collectionIds.contains(_selectedCollectionId),
-              )
-              .toList();
+    final visibleSyncedProducts = _syncedCollections.isEmpty
+        ? _syncedProducts
+        : (_selectedCollectionId == null
+              ? <SellerInventoryProduct>[]
+              : _syncedProducts
+                    .where(
+                      (product) =>
+                          product.collectionIds.contains(_selectedCollectionId),
+                    )
+                    .toList());
     final selectedCollection = _selectedCollectionId == null
         ? null
         : firstWhereOrNull(
@@ -5137,6 +5176,20 @@ class _SellerHubPageState extends State<SellerHubPage>
             onSave: _saveStoreProfile,
           ),
         if (_sellerSection == SellerMenuSection.productSync) ...[
+          SectionTitle(
+            title: 'Catalog',
+            action: '',
+            actionButton: FilledButton.icon(
+              onPressed: () => showManualProductDialog(
+                context,
+                store.category,
+                _createManualProduct,
+              ),
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text('Add product'),
+            ),
+          ),
+          const SizedBox(height: 10),
           ShopifySyncCard(
             shopifyStore: _shopifyStore,
             connected: _shopifyConnected,
@@ -5149,21 +5202,29 @@ class _SellerHubPageState extends State<SellerHubPage>
             onSync: _syncShopify,
           ),
           const SizedBox(height: 16),
+          ManualCatalogCard(onAddProduct: () {
+            showManualProductDialog(
+              context,
+              store.category,
+              _createManualProduct,
+            );
+          }),
+          const SizedBox(height: 16),
           SectionTitle(
-            title: 'Collections',
-            action: '${_syncedCollections.length} synced',
+            title: 'Catalog collections',
+            action: '${_syncedCollections.length} collections',
           ),
           const SizedBox(height: 10),
           if (_inventoryLoading)
             const LinearProgressIndicator(minHeight: 6)
-          else if (_syncedCollections.isEmpty)
+          else if (_syncedCollections.isEmpty && _syncedProducts.isEmpty)
             const EmptyState(
               icon: Icons.category_outlined,
-              title: 'No synced collections yet',
+              title: 'No collections yet',
               message:
-                  'Sync Shopify products after Souklora admin approves your store.',
+                  'Connect Shopify to import collections or add manual products below.',
             )
-          else
+          else if (_syncedCollections.isNotEmpty)
             CollectionBrowser(
               collections: visibleCollections,
               selectedId: _selectedCollectionId,
@@ -5181,9 +5242,11 @@ class _SellerHubPageState extends State<SellerHubPage>
           const SizedBox(height: 16),
           SectionTitle(
             title: selectedCollection?.title ?? 'Products by collection',
-            action: _selectedCollectionId == null
-                ? 'Choose a collection'
-                : '${visibleSyncedProducts.length} products',
+            action: _syncedCollections.isEmpty
+                ? '${visibleSyncedProducts.length} products'
+                : (_selectedCollectionId == null
+                      ? 'Choose a collection'
+                      : '${visibleSyncedProducts.length} products'),
           ),
           const SizedBox(height: 10),
           if (_inventoryMessage != null)
@@ -5192,7 +5255,7 @@ class _SellerHubPageState extends State<SellerHubPage>
               title: 'Inventory unavailable',
               message: _inventoryMessage!,
             )
-          else if (_selectedCollectionId == null)
+          else if (_syncedCollections.isNotEmpty && _selectedCollectionId == null)
             const EmptyState(
               icon: Icons.touch_app_outlined,
               title: 'Choose a collection',
@@ -7897,107 +7960,88 @@ class ProductCard extends StatelessWidget {
               isFavorite: isFavorite,
               onFavorite: onFavorite,
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 9, 10, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w900),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      height: 1.06,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      product.shop.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        if (product.shop.verified) ...[
-                          const Icon(
-                            Icons.verified,
-                            size: 15,
-                            color: Color(0xFF1F7A4D),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Verified',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: const Color(0xFF1F7A4D),
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        const Icon(
-                          Icons.star,
-                          size: 15,
-                          color: Color(0xFFE7A72E),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    product.shop.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          stock > 0 ? '$stock left' : 'Out of stock',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: stock > 0
+                                    ? Colors.black54
+                                    : Theme.of(context).colorScheme.error,
+                                fontWeight: FontWeight.w800,
+                              ),
                         ),
-                        const SizedBox(width: 4),
-                        Text(product.rating.toStringAsFixed(1)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(
-                          stock > 0 ? Icons.inventory_2_outlined : Icons.block,
-                          size: 15,
-                          color: stock > 0
-                              ? Colors.black54
-                              : Theme.of(context).colorScheme.error,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            stock > 0 ? '$stock left' : 'Out of stock',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: stock > 0
-                                      ? Colors.black54
-                                      : Theme.of(context).colorScheme.error,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Expanded(
+                      ),
+                      const Icon(
+                        Icons.star_rounded,
+                        size: 14,
+                        color: Color(0xFFE7A72E),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        product.rating.toStringAsFixed(1),
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
                           child: Text(
                             product.formattedPrice,
-                            style: Theme.of(context).textTheme.titleMedium
+                            style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w900),
                           ),
                         ),
-                        IconButton.filled(
-                          tooltip: 'Add to basket',
-                          onPressed: stock <= 0 ? null : onAdd,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 40,
-                            height: 40,
-                          ),
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(Icons.add_shopping_cart),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        tooltip: 'Add to basket',
+                        onPressed: stock <= 0 ? null : onAdd,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 40,
+                          height: 40,
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.add_shopping_cart, size: 19),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -9350,17 +9394,13 @@ class _StoreOnboardingPanelState extends State<StoreOnboardingPanel> {
   }
 
   Future<void> _pickStoreImage({required bool logo}) async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(
-      source: ImageSource.gallery,
+    final dataUrl = await pickImageDataUrl(
       maxWidth: logo ? 384 : 960,
       imageQuality: logo ? 70 : 58,
     );
-    if (image == null) {
+    if (dataUrl == null) {
       return;
     }
-    final bytes = await image.readAsBytes();
-    final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
     setState(() {
       if (logo) {
         _logoDataUrl = dataUrl;
@@ -10030,6 +10070,66 @@ class ShopifySyncCard extends StatelessWidget {
   }
 }
 
+class ManualCatalogCard extends StatelessWidget {
+  const ManualCatalogCard({super.key, required this.onAddProduct});
+
+  final VoidCallback onAddProduct;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7F0EA),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.inventory_2_outlined,
+                color: Color(0xFF1F7A4D),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Manual listings',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Add products without Shopify, including images, variants, and stock.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            IconButton.filled(
+              tooltip: 'Add manual product',
+              onPressed: onAddProduct,
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SellerMetricGrid extends StatelessWidget {
   const SellerMetricGrid({
     super.key,
@@ -10398,14 +10498,14 @@ class Shop {
   factory Shop.fromJson(Map<String, dynamic> json) {
     final name = json['name'] as String? ?? 'Store';
     final counts = json['_count'] as Map<String, dynamic>? ?? const {};
+    final story = (json['story'] as String?)
+        ?.replaceAll(RegExp(r'\bSouk\b', caseSensitive: false), 'Souklora');
     return Shop(
       id: json['id'] as String? ?? '',
       name: name,
       category: json['category'] as String? ?? 'Store',
       location: json['city'] as String? ?? '',
-      story:
-          json['story'] as String? ??
-          'Shop products directly from this Souklora store.',
+      story: story ?? 'Shop products directly from this Souklora store.',
       rating: parseDouble(json['rating']),
       color: const Color(0xFF1F7A4D),
       icon: Icons.storefront,
@@ -10715,6 +10815,7 @@ class ProductVariant {
     this.option2,
     this.option3,
     this.sku,
+    this.imageUrl,
   });
 
   factory ProductVariant.fromJson(Map<String, dynamic> json) {
@@ -10728,6 +10829,7 @@ class ProductVariant {
       option2: json['option2'] as String?,
       option3: json['option3'] as String?,
       sku: json['sku'] as String?,
+      imageUrl: normalizedImageUrl(json['imageUrl']?.toString()),
     );
   }
 
@@ -10740,6 +10842,7 @@ class ProductVariant {
   final String? option2;
   final String? option3;
   final String? sku;
+  final String? imageUrl;
 
   String get identity =>
       id.isNotEmpty ? id : '$title:$sku:$option1:$option2:$option3';
@@ -11383,78 +11486,497 @@ Future<void> showStoreStoryDialog(
 ) async {
   final title = TextEditingController(text: 'Today at our store');
   final caption = TextEditingController();
-  final imageUrl = TextEditingController();
+  String? storyImage;
   final payload = await showDialog<Map<String, dynamic>>(
     context: context,
     builder: (context) {
-      return AlertDialog(
-        title: const Text('Post store story'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: title,
-                decoration: const InputDecoration(
-                  labelText: 'Story title',
-                  prefixIcon: Icon(Icons.auto_stories_outlined),
-                ),
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Post store story'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(
+                      labelText: 'Story title',
+                      prefixIcon: Icon(Icons.auto_stories_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: caption,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Caption',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 150,
+                      child: storyImage == null
+                          ? Container(
+                              color: const Color(0xFFE7F0EA),
+                              child: const Icon(
+                                Icons.image_outlined,
+                                color: Color(0xFF1F7A4D),
+                                size: 42,
+                              ),
+                            )
+                          : AppNetworkImage(url: storyImage!, size: 900),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final image = await pickImageDataUrl(
+                        maxWidth: 1080,
+                        imageQuality: 68,
+                      );
+                      if (image != null) {
+                        setDialogState(() => storyImage = image);
+                      }
+                    },
+                    icon: const Icon(Icons.upload_outlined),
+                    label: Text(
+                      storyImage == null ? 'Upload story image' : 'Change image',
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Stories appear on the shopper homepage for 24 hours.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: caption,
-                minLines: 2,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Caption',
-                  prefixIcon: Icon(Icons.notes_outlined),
-                ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: imageUrl,
-                keyboardType: TextInputType.url,
-                decoration: const InputDecoration(
-                  labelText: 'Image URL optional',
-                  prefixIcon: Icon(Icons.image_outlined),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Stories appear on the shopper homepage for 24 hours.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              FilledButton(
+                onPressed: storyImage == null
+                    ? null
+                    : () {
+                        Navigator.pop(context, {
+                          'title': title.text.trim(),
+                          'caption': caption.text.trim().isEmpty
+                              ? null
+                              : caption.text.trim(),
+                          'imageUrl': storyImage,
+                        });
+                      },
+                child: const Text('Post'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context, {
-                'title': title.text.trim(),
-                'caption': caption.text.trim().isEmpty
-                    ? null
-                    : caption.text.trim(),
-                'imageUrl': imageUrl.text.trim().isEmpty
-                    ? null
-                    : imageUrl.text.trim(),
-              });
-            },
-            child: const Text('Post'),
-          ),
-        ],
+          );
+        },
       );
     },
   );
   title.dispose();
   caption.dispose();
-  imageUrl.dispose();
+  if (payload != null) {
+    await onSubmit(payload);
+  }
+}
+
+class _ManualVariantDraft {
+  _ManualVariantDraft({required int index})
+    : title = TextEditingController(text: 'Variant $index'),
+      price = TextEditingController(),
+      stock = TextEditingController(text: '0'),
+      sku = TextEditingController();
+
+  final TextEditingController title;
+  final TextEditingController price;
+  final TextEditingController stock;
+  final TextEditingController sku;
+  int? imageIndex;
+
+  void dispose() {
+    title.dispose();
+    price.dispose();
+    stock.dispose();
+    sku.dispose();
+  }
+}
+
+Future<void> showManualProductDialog(
+  BuildContext context,
+  String defaultCategory,
+  Future<void> Function(Map<String, dynamic>) onSubmit,
+) async {
+  final name = TextEditingController();
+  final category = TextEditingController(text: defaultCategory);
+  final description = TextEditingController();
+  final price = TextEditingController();
+  final compareAtPrice = TextEditingController();
+  final stock = TextEditingController(text: '0');
+  final imageUrls = <String>[];
+  final variants = <_ManualVariantDraft>[];
+
+  final payload = await showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setDialogState) {
+          Map<String, dynamic>? buildPayload() {
+            final productPrice = double.tryParse(price.text.trim());
+            if (name.text.trim().length < 2 ||
+                category.text.trim().length < 2 ||
+                description.text.trim().length < 10 ||
+                productPrice == null ||
+                productPrice <= 0 ||
+                imageUrls.isEmpty) {
+              return null;
+            }
+            final variantPayload = <Map<String, dynamic>>[];
+            for (final variant in variants) {
+              final variantTitle = variant.title.text.trim();
+              final variantPrice =
+                  double.tryParse(variant.price.text.trim()) ?? productPrice;
+              if (variantTitle.isEmpty || variantPrice <= 0) {
+                continue;
+              }
+              variantPayload.add({
+                'title': variantTitle,
+                'price': variantPrice,
+                'stock': int.tryParse(variant.stock.text.trim()) ?? 0,
+                'sku': variant.sku.text.trim().isEmpty
+                    ? null
+                    : variant.sku.text.trim(),
+                'imageUrl': variant.imageIndex == null
+                    ? null
+                    : imageUrls[variant.imageIndex!],
+              });
+            }
+            final stockValue = variantPayload.isEmpty
+                ? (int.tryParse(stock.text.trim()) ?? 0)
+                : variantPayload.fold<int>(
+                    0,
+                    (sum, variant) => sum + (variant['stock'] as int),
+                  );
+            return {
+              'name': name.text.trim(),
+              'category': category.text.trim(),
+              'description': description.text.trim(),
+              'price': productPrice,
+              'compareAtPrice': double.tryParse(compareAtPrice.text.trim()),
+              'stock': stockValue,
+              'imageUrl': imageUrls.first,
+              'images': [
+                for (var i = 0; i < imageUrls.length; i++)
+                  {
+                    'url': imageUrls[i],
+                    'altText': name.text.trim(),
+                    'position': i,
+                  },
+              ],
+              'variants': variantPayload,
+            };
+          }
+
+          return AlertDialog(
+            title: const Text('Add manual product'),
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: name,
+                      decoration: const InputDecoration(
+                        labelText: 'Product name',
+                        prefixIcon: Icon(Icons.inventory_2_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: category,
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        prefixIcon: Icon(Icons.category_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: description,
+                      minLines: 3,
+                      maxLines: 5,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        prefixIcon: Icon(Icons.notes_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: price,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Price',
+                              prefixIcon: Icon(Icons.payments_outlined),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: compareAtPrice,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Compare at',
+                              prefixIcon: Icon(Icons.local_offer_outlined),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: stock,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Stock without variants',
+                        prefixIcon: Icon(Icons.warehouse_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Product images (${imageUrls.length}/7)',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: imageUrls.length >= 7
+                              ? null
+                              : () async {
+                                  final image = await pickImageDataUrl(
+                                    maxWidth: 1080,
+                                    imageQuality: 70,
+                                  );
+                                  if (image != null) {
+                                    setDialogState(() => imageUrls.add(image));
+                                  }
+                                },
+                          icon: const Icon(Icons.add_photo_alternate_outlined),
+                          label: const Text('Add image'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (imageUrls.isEmpty)
+                      const EmptyState(
+                        icon: Icons.image_outlined,
+                        title: 'Upload at least one image',
+                        message: 'Manual products can include up to 7 images.',
+                      )
+                    else
+                      SizedBox(
+                        height: 76,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: imageUrls.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(width: 8),
+                          itemBuilder: (context, index) {
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 76,
+                                height: 76,
+                                child: AppNetworkImage(
+                                  url: imageUrls[index],
+                                  size: 180,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Variants',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setDialogState(
+                              () => variants.add(
+                                _ManualVariantDraft(
+                                  index: variants.length + 1,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('Add variant'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    for (var i = 0; i < variants.length; i++) ...[
+                      Card(
+                        elevation: 0,
+                        color: const Color(0xFFF7F4ED),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: variants[i].title,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Variant name',
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Remove variant',
+                                    onPressed: () {
+                                      final removed = variants.removeAt(i);
+                                      removed.dispose();
+                                      setDialogState(() {});
+                                    },
+                                    icon: const Icon(Icons.close),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: variants[i].price,
+                                      keyboardType: TextInputType.number,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Price override',
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: variants[i].stock,
+                                      keyboardType: TextInputType.number,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Quantity',
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: variants[i].sku,
+                                      decoration: const InputDecoration(
+                                        labelText: 'SKU optional',
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: DropdownButtonFormField<int?>(
+                                      initialValue: variants[i].imageIndex,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Variant image',
+                                      ),
+                                      items: [
+                                        const DropdownMenuItem<int?>(
+                                          value: null,
+                                          child: Text('No image'),
+                                        ),
+                                        for (var imageIndex = 0;
+                                            imageIndex < imageUrls.length;
+                                            imageIndex++)
+                                          DropdownMenuItem<int?>(
+                                            value: imageIndex,
+                                            child: Text('Image ${imageIndex + 1}'),
+                                          ),
+                                      ],
+                                      onChanged: (value) {
+                                        setDialogState(
+                                          () =>
+                                              variants[i].imageIndex = value,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final nextPayload = buildPayload();
+                  if (nextPayload == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Add name, category, 10+ description characters, price, and one image.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  Navigator.pop(context, nextPayload);
+                },
+                child: const Text('Save product'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+  for (final variant in variants) {
+    variant.dispose();
+  }
+  name.dispose();
+  category.dispose();
+  description.dispose();
+  price.dispose();
+  compareAtPrice.dispose();
+  stock.dispose();
   if (payload != null) {
     await onSubmit(payload);
   }

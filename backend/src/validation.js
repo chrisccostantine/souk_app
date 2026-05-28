@@ -51,7 +51,7 @@ export const createCampaignSchema = z.object({
 export const createStoreStorySchema = z.object({
   title: z.string().min(2).max(80),
   caption: z.string().max(220).optional().nullable(),
-  imageUrl: z.string().url().optional().nullable(),
+  imageUrl: z.string().min(1),
 });
 
 export const registerDeviceTokenSchema = z.object({
@@ -176,9 +176,29 @@ export const createProductSchema = z.object({
   category: z.string().min(2),
   description: z.string().min(10),
   price: z.coerce.number().positive(),
-  compareAtPrice: z.coerce.number().positive().optional(),
+  compareAtPrice: z.coerce.number().positive().optional().nullable(),
   stock: z.coerce.number().int().min(0),
-  imageUrl: z.string().url().optional(),
+  imageUrl: z.string().min(1).optional(),
+  images: z.array(
+    z.object({
+      url: z.string().min(1),
+      altText: z.string().optional().nullable(),
+      position: z.coerce.number().int().min(0).optional(),
+    }),
+  ).max(7).optional(),
+  variants: z.array(
+    z.object({
+      title: z.string().min(1).max(120),
+      price: z.coerce.number().positive(),
+      compareAtPrice: z.coerce.number().positive().optional().nullable(),
+      stock: z.coerce.number().int().min(0).default(0),
+      sku: z.string().optional().nullable(),
+      option1: z.string().optional().nullable(),
+      option2: z.string().optional().nullable(),
+      option3: z.string().optional().nullable(),
+      imageUrl: z.string().min(1).optional().nullable(),
+    }),
+  ).optional(),
 });
 
 export const createOrderSchema = z.object({
