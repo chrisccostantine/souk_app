@@ -5102,6 +5102,7 @@ class _SellerHubPageState extends State<SellerHubPage>
   bool _shopifyPending = false;
   bool _shopifySynced = false;
   bool _shopifySyncing = false;
+  bool _shopifyCheckingConnection = false;
   double _shopifySyncProgress = 0;
   String? _shopifyMessage;
   Timer? _shopifySyncTimer;
@@ -5142,7 +5143,34 @@ class _SellerHubPageState extends State<SellerHubPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _refreshSellerStore();
-      _refreshShopifyStatus();
+      _handleShopifyReturn();
+    }
+  }
+
+  Future<void> _handleShopifyReturn() async {
+    final wasPending = _shopifyPending;
+    if (wasPending && mounted) {
+      setState(() {
+        _shopifyCheckingConnection = true;
+        _shopifyMessage =
+            'Checking Shopify connection after redirect...';
+      });
+    }
+    await _refreshShopifyStatus();
+    await _loadSellerInventory();
+    if (!mounted) {
+      return;
+    }
+    if (wasPending) {
+      setState(() => _shopifyCheckingConnection = false);
+      final message = _shopifyConnected
+          ? 'Shopify is connected to your store'
+          : _shopifyNeedsReconnect
+              ? 'Shopify needs reconnecting'
+              : 'Shopify connection is not complete yet';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+      );
     }
   }
 
@@ -5276,17 +5304,28 @@ class _SellerHubPageState extends State<SellerHubPage>
         _shopifyNeedsReconnect = needsReconnect;
         if (connected) {
           _shopifyPending = false;
+          _shopifyCheckingConnection = false;
           _shopifyNeedsReconnect = false;
           _shopifyMessage = _hasShopifySyncedCatalog
               ? 'Products are synced from Shopify.'
               : 'Shopify connected. You can sync products now.';
         } else if (needsReconnect) {
           _shopifyPending = false;
+          _shopifyCheckingConnection = false;
           _shopifyMessage = 'Reconnect Shopify once to refresh access.';
         }
       });
     } catch (_) {
-      // Keep the current UI state; auth and sync actions surface explicit errors.
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _shopifyCheckingConnection = false;
+        if (_shopifyPending) {
+          _shopifyMessage =
+              'Could not verify Shopify connection. Return here after approval or try reconnecting.';
+        }
+      });
     }
   }
 
@@ -5936,6 +5975,7 @@ class _SellerHubPageState extends State<SellerHubPage>
             pending: _shopifyPending,
             synced: hasShopifySyncedCatalog,
             syncing: _shopifySyncing,
+            checkingConnection: _shopifyCheckingConnection,
             syncProgress: _shopifySyncProgress,
             message: _shopifyMessage,
             onConnect: _connectShopify,
@@ -10806,6 +10846,7 @@ class ShopifySyncCard extends StatelessWidget {
     required this.pending,
     required this.synced,
     required this.syncing,
+    required this.checkingConnection,
     required this.syncProgress,
     required this.message,
     required this.onConnect,
@@ -10818,6 +10859,7 @@ class ShopifySyncCard extends StatelessWidget {
   final bool pending;
   final bool synced;
   final bool syncing;
+  final bool checkingConnection;
   final double syncProgress;
   final String? message;
   final VoidCallback onConnect;
@@ -10826,7 +10868,8 @@ class ShopifySyncCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveConnected = connected || synced;
-    final canConnect = !syncing && (!effectiveConnected || needsReconnect);
+    final busy = syncing || checkingConnection;
+    final canConnect = !busy && (!effectiveConnected || needsReconnect);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -10850,7 +10893,9 @@ class ShopifySyncCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        synced
+                        checkingConnection
+                            ? 'Checking Shopify connection'
+                            : synced
                             ? 'Products synced from Shopify'
                             : effectiveConnected
                             ? 'Shopify connected'
@@ -10861,6 +10906,8 @@ class ShopifySyncCard extends StatelessWidget {
                       Text(
                         synced
                             ? 'Your Shopify catalog is live in Souklora.'
+                            : checkingConnection
+                            ? 'We are verifying the Shopify approval now.'
                             : effectiveConnected
                             ? 'Your store is connected. Sync when you want to import products.'
                             : 'Import collections, images, descriptions, prices, and inventory.',
@@ -10877,6 +10924,8 @@ class ShopifySyncCard extends StatelessWidget {
             Text(
               synced
                   ? 'Products, variants, prices, images, and inventory are synced from Shopify. Refresh the catalog only when you want to pull the latest Shopify changes.'
+                  : checkingConnection
+                  ? 'Stay on this screen for a moment while Souklora confirms the Shopify connection.'
                   : effectiveConnected
                   ? 'Shopify is connected. Start a product sync to import your catalog into Souklora.'
                   : 'Enter the store URL, then login with Shopify and approve access.',
@@ -10899,6 +10948,7 @@ class ShopifySyncCard extends StatelessWidget {
               children: [
                 Tag(label: effectiveConnected ? 'Connected' : 'Not connected'),
                 if (needsReconnect) const Tag(label: 'Reconnect needed'),
+                if (checkingConnection) const Tag(label: 'Checking connection'),
                 if (pending && !effectiveConnected)
                   const Tag(label: 'Login pending'),
                 Tag(
@@ -10932,6 +10982,10 @@ class ShopifySyncCard extends StatelessWidget {
                 ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w800),
               ),
             ],
+            if (checkingConnection && !syncing) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(minHeight: 6),
+            ],
             const SizedBox(height: 14),
             Row(
               children: [
@@ -10957,8 +11011,8 @@ class ShopifySyncCard extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: FilledButton.tonalIcon(
-                    onPressed: syncing ? null : onSync,
-                    icon: syncing
+                    onPressed: busy ? null : onSync,
+                    icon: busy
                         ? const SizedBox(
                             width: 18,
                             height: 18,
@@ -10966,8 +11020,10 @@ class ShopifySyncCard extends StatelessWidget {
                           )
                         : const Icon(Icons.cloud_sync_outlined),
                     label: Text(
-                      syncing
-                          ? 'Syncing...'
+                      busy
+                          ? checkingConnection
+                                ? 'Checking...'
+                                : 'Syncing...'
                           : synced
                           ? 'Refresh catalog'
                           : 'Sync products',
