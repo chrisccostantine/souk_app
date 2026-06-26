@@ -22,6 +22,7 @@ enum ShopStatus {
 
 enum OrderStatus {
   PLACED
+  PENDING_SYNC
   ACCEPTED
   PACKING
   READY
@@ -280,14 +281,24 @@ model Order {
   id                String            @id @default(cuid())
   customerId        String
   shopId            String
+  shopifyOrderId    String?
+  idempotencyKey    String?           @unique
   status            OrderStatus       @default(PLACED)
   fulfillmentMethod FulfillmentMethod @default(DELIVERY)
   paymentMethod     PaymentMethod     @default(CASH_ON_DELIVERY)
   subtotal          Decimal
   deliveryFee       Decimal           @default(0)
+  discount          Decimal           @default(0)
   total             Decimal
+  currency          String            @default("USD")
+  customerName      String?
+  customerPhone     String?
+  customerEmail     String?
+  whatsappPhone     String?
+  city              String?
   deliveryAddress   String?
   note              String?
+  shopifySyncError  String?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   customer          User              @relation(fields: [customerId], references: [id])

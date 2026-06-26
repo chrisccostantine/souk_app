@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -337,10 +336,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
   }
 
   Map<String, dynamic> _loginPayload() {
-    return {
-      'email': _email.text.trim(),
-      'password': _password.text,
-    };
+    return {'email': _email.text.trim(), 'password': _password.text};
   }
 
   AppSession _sessionFromAuthResponse(Map<String, dynamic> response) {
@@ -1383,6 +1379,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
   List<StoreStory> _stories = [];
   bool _catalogLoading = false;
   bool _showAllFeatured = false;
+  bool _checkoutSubmitting = false;
   String? _catalogMessage;
 
   int get _cartCount => _cart.fold(0, (sum, line) => sum + line.quantity);
@@ -1766,14 +1763,18 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         .catchError((_) => <String, dynamic>{});
   }
 
-  Future<void> _placeOrder(CheckoutInfo info) async {
+  Future<bool> _placeOrder(CheckoutInfo info) async {
     if (_cart.isEmpty) {
-      return;
+      return false;
+    }
+    if (_checkoutSubmitting) {
+      return false;
     }
     if (soukloraApiUrl.isEmpty) {
       _showSnack('SOUKLORA_API_URL is required for checkout');
-      return;
+      return false;
     }
+    setState(() => _checkoutSubmitting = true);
     try {
       final groupedLines = <String, List<CartLine>>{};
       for (final line in _cart) {
@@ -1784,10 +1785,17 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
 
       for (final entry in groupedLines.entries) {
         final lines = entry.value;
-        final body = await api.createOrder({
-          'customerName': widget.session.name,
-          'customerEmail': widget.session.email,
+        final orderJson = await api.checkout({
+          'customerName': info.fullName.trim(),
+          'customerEmail': info.email.trim().isEmpty
+              ? widget.session.email
+              : info.email.trim(),
+          'customerPhone': info.phone.trim(),
+          if (info.whatsapp.trim().isNotEmpty)
+            'whatsappPhone': info.whatsapp.trim(),
           'shopId': entry.key,
+          'idempotencyKey':
+              '${widget.session.email}:${entry.key}:${DateTime.now().millisecondsSinceEpoch}',
           'items': [
             for (final line in lines)
               {
@@ -1802,9 +1810,9 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
               : 'DELIVERY',
           'paymentMethod': paymentMethodCode(info.paymentMethod),
           'deliveryAddress': info.address,
+          'city': info.city,
           'note': info.note,
         });
-        final orderJson = body['order'] as Map<String, dynamic>? ?? body;
         final total = parseDouble(orderJson['total']);
         final id =
             orderJson['id'] as String? ??
@@ -1839,10 +1847,25 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
             ? 'Order ${placedOrders.first.id} placed'
             : '${placedOrders.length} store orders placed',
       );
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (context) => CheckoutSuccessPage(orders: placedOrders),
+          ),
+        );
+      }
+      return true;
     } on SoukloraApiException catch (error) {
       _showSnack(error.message);
+      return false;
     } catch (_) {
       _showSnack('Could not place order');
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => _checkoutSubmitting = false);
+      }
     }
   }
 
@@ -1987,9 +2010,11 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
               subtotal: _subtotal,
               shopCount: _cartShopCount,
               onQuantityChanged: _updateQuantity,
-              onCheckout: (info) {
-                Navigator.pop(sheetContext);
-                _placeOrder(info);
+              onCheckout: (info) async {
+                final success = await _placeOrder(info);
+                if (success && sheetContext.mounted) {
+                  Navigator.pop(sheetContext);
+                }
               },
             ),
           ),
@@ -2185,6 +2210,64 @@ class AdminStatItem {
   final String value;
 }
 
+class AdminOrderTile extends StatelessWidget {
+  const AdminOrderTile({super.key, required this.order});
+
+  final AdminOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${order.id} - ${order.shopName}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Text(
+                  money(order.total),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${order.customerName} - ${order.customerPhone}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Tag(label: order.status),
+                Tag(label: order.paymentMethod),
+                Tag(
+                  label: order.shopifyOrderId.isEmpty
+                      ? 'Shopify pending'
+                      : 'Shopify #${order.shopifyOrderId}',
+                ),
+                Tag(label: order.createdDate),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SellerAppShell extends StatefulWidget {
   const SellerAppShell({
     super.key,
@@ -2229,6 +2312,7 @@ class AdminDashboardPage extends StatefulWidget {
 
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   List<Shop> _shops = [];
+  List<AdminOrder> _orders = [];
   bool _loading = false;
   String? _message;
   String _statusFilter = 'Needs review';
@@ -2251,15 +2335,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       _message = null;
     });
     try {
-      final rows = await SoukloraApi(
-        baseUrl: soukloraApiUrl,
-      ).fetchShops(includeAll: true);
+      final api = SoukloraApi(baseUrl: soukloraApiUrl);
+      final rows = await api.fetchShops(includeAll: true);
+      final orderRows = await api.fetchOrders();
       if (!mounted) {
         return;
       }
       setState(() {
         _shops = rows
             .map((item) => Shop.fromJson(item as Map<String, dynamic>))
+            .toList();
+        _orders = orderRows
+            .map((item) => AdminOrder.fromJson(item as Map<String, dynamic>))
             .toList();
         _loading = false;
       });
@@ -2316,9 +2403,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       0,
       (sum, shop) => sum + shop.productCount,
     );
-    final totalFollowers = _shops.fold<int>(
+    final orderRevenue = _orders.fold<double>(
       0,
-      (sum, shop) => sum + shop.followerCount,
+      (sum, order) => sum + order.total,
     );
     final visibleShops = _shops.where((shop) {
       return switch (_statusFilter) {
@@ -2366,12 +2453,52 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                     value: totalProducts.toString(),
                   ),
                   AdminStatItem(
-                    icon: Icons.notifications_active_outlined,
-                    label: 'Followers',
-                    value: totalFollowers.toString(),
+                    icon: Icons.receipt_long_outlined,
+                    label: 'Orders',
+                    value: _orders.length.toString(),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.attach_money, color: Color(0xFF1F7A4D)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Marketplace order value',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      Text(
+                        money(orderRevenue),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SectionTitle(
+                title: 'Recent orders',
+                action: '${_orders.length} total',
+              ),
+              const SizedBox(height: 10),
+              if (_orders.isEmpty)
+                const EmptyState(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No orders yet',
+                  message: 'Customer checkout orders will appear here.',
+                )
+              else
+                for (final order in _orders.take(8)) ...[
+                  AdminOrderTile(order: order),
+                  const SizedBox(height: 10),
+                ],
               const SizedBox(height: 14),
               SegmentedButton<String>(
                 segments: const [
@@ -2973,21 +3100,22 @@ class HomeProductRail extends StatelessWidget {
               final product = products[index];
               return SizedBox(
                 width: 184,
-                child: HomeProductCard(
-                      product: product,
-                      isFavorite: favoriteIds.contains(product.id),
-                      onOpen: () => onOpenProduct(product),
-                      onAdd: () => onAddToCart(product),
-                      onFavorite: () => onToggleFavorite(product),
-                    )
-                    .animate(delay: Duration(milliseconds: index * 28))
-                    .fadeIn(duration: const Duration(milliseconds: 220))
-                    .slideY(
-                      begin: 0.025,
-                      end: 0,
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                    ),
+                child:
+                    HomeProductCard(
+                          product: product,
+                          isFavorite: favoriteIds.contains(product.id),
+                          onOpen: () => onOpenProduct(product),
+                          onAdd: () => onAddToCart(product),
+                          onFavorite: () => onToggleFavorite(product),
+                        )
+                        .animate(delay: Duration(milliseconds: index * 28))
+                        .fadeIn(duration: const Duration(milliseconds: 220))
+                        .slideY(
+                          begin: 0.025,
+                          end: 0,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                        ),
               );
             },
           ),
@@ -3129,8 +3257,9 @@ class HomeProductCard extends StatelessWidget {
                           style: IconButton.styleFrom(
                             backgroundColor: const Color(0xFF1F7A4D),
                             foregroundColor: Colors.white,
-                            disabledBackgroundColor:
-                                Colors.black.withValues(alpha: 0.08),
+                            disabledBackgroundColor: Colors.black.withValues(
+                              alpha: 0.08,
+                            ),
                             fixedSize: const Size(40, 40),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
@@ -4746,9 +4875,7 @@ class SoukloraBottomNavItem extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 2),
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: selected
-              ? const Color(0xFFEAF3ED)
-              : Colors.transparent,
+          color: selected ? const Color(0xFFEAF3ED) : Colors.transparent,
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
@@ -4791,23 +4918,89 @@ class CartPage extends StatefulWidget {
   final double subtotal;
   final int shopCount;
   final void Function(CartLine line, int quantity) onQuantityChanged;
-  final ValueChanged<CheckoutInfo> onCheckout;
+  final Future<bool> Function(CheckoutInfo info) onCheckout;
 
   @override
   State<CartPage> createState() => _CartPageState();
 }
 
 class _CartPageState extends State<CartPage> {
-  final _address = TextEditingController(text: 'Beirut, Lebanon');
+  late final TextEditingController _fullName;
+  final _phone = TextEditingController();
+  final _whatsapp = TextEditingController();
+  final _email = TextEditingController();
+  final _address = TextEditingController();
+  final _city = TextEditingController(text: 'Beirut');
   final _note = TextEditingController();
   String _method = 'Delivery';
   String _payment = 'Cash on delivery';
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _fullName = TextEditingController(text: widget.session.name);
+    _email.text = widget.session.email;
+  }
 
   @override
   void dispose() {
+    _fullName.dispose();
+    _phone.dispose();
+    _whatsapp.dispose();
+    _email.dispose();
     _address.dispose();
+    _city.dispose();
     _note.dispose();
     super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final fullName = _fullName.text.trim();
+    final phone = _phone.text.trim();
+    final address = _address.text.trim();
+    final city = _city.text.trim();
+    if (fullName.length < 2) {
+      setState(() => _error = 'Enter your full name.');
+      return;
+    }
+    if (phone.length < 6) {
+      setState(() => _error = 'Enter a valid phone number.');
+      return;
+    }
+    if (_method == 'Delivery' && address.length < 3) {
+      setState(() => _error = 'Enter your delivery address.');
+      return;
+    }
+    if (_method == 'Delivery' && city.length < 2) {
+      setState(() => _error = 'Enter your city or area.');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final success = await widget.onCheckout(
+      CheckoutInfo(
+        fullName: fullName,
+        phone: phone,
+        whatsapp: _whatsapp.text,
+        email: _email.text,
+        address: address,
+        city: city,
+        note: _note.text,
+        deliveryMethod: _method,
+        paymentMethod: _payment,
+      ),
+    );
+    if (mounted && !success) {
+      setState(() {
+        _submitting = false;
+        _error =
+            'Checkout could not be completed. Please review and try again.';
+      });
+    }
   }
 
   @override
@@ -4846,26 +5039,36 @@ class _CartPageState extends State<CartPage> {
           ],
           const SizedBox(height: 8),
           CheckoutForm(
+            fullName: _fullName,
+            phone: _phone,
+            whatsapp: _whatsapp,
+            email: _email,
             address: _address,
+            city: _city,
             note: _note,
             method: _method,
             payment: _payment,
             onMethodChanged: (value) => setState(() => _method = value),
             onPaymentChanged: (value) => setState(() => _payment = value),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           CheckoutSummary(
             subtotal: widget.subtotal,
             delivery: deliveryTotal,
+            discount: 0,
             total: total,
-            onCheckout: () => widget.onCheckout(
-              CheckoutInfo(
-                address: _address.text,
-                note: _note.text,
-                deliveryMethod: _method,
-                paymentMethod: _payment,
-              ),
-            ),
+            loading: _submitting,
+            onCheckout: _submit,
           ),
         ],
       ],
@@ -5452,10 +5655,9 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createProduct({
-        ...payload,
-        'shopId': shopId,
-      });
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+      ).createProduct({...payload, 'shopId': shopId});
       await _loadSellerInventory();
       _showSellerSnack('Product added to your catalog');
     } on SoukloraApiException catch (error) {
@@ -5739,13 +5941,15 @@ class _SellerHubPageState extends State<SellerHubPage>
             onSync: _syncShopify,
           ),
           const SizedBox(height: 16),
-          ManualCatalogCard(onAddProduct: () {
-            showManualProductDialog(
-              context,
-              store.category,
-              _createManualProduct,
-            );
-          }),
+          ManualCatalogCard(
+            onAddProduct: () {
+              showManualProductDialog(
+                context,
+                store.category,
+                _createManualProduct,
+              );
+            },
+          ),
           const SizedBox(height: 16),
           SectionTitle(
             title: 'Catalog collections',
@@ -5792,7 +5996,8 @@ class _SellerHubPageState extends State<SellerHubPage>
               title: 'Inventory unavailable',
               message: _inventoryMessage!,
             )
-          else if (_syncedCollections.isNotEmpty && _selectedCollectionId == null)
+          else if (_syncedCollections.isNotEmpty &&
+              _selectedCollectionId == null)
             const EmptyState(
               icon: Icons.touch_app_outlined,
               title: 'Choose a collection',
@@ -8559,8 +8764,9 @@ class ProductCard extends StatelessWidget {
                       const SizedBox(width: 2),
                       Text(
                         product.rating.toStringAsFixed(1),
-                        style: Theme.of(context).textTheme.labelSmall
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ],
                   ),
@@ -8704,7 +8910,7 @@ class ProductPriceLine extends StatelessWidget {
           if (showOldPrice) ...[
             const SizedBox(width: 7),
             Text(
-              money(oldPrice!),
+              money(oldPrice),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Colors.black45,
                 fontWeight: FontWeight.w800,
@@ -9496,10 +9702,8 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
                         _selectedVariant?.compareAtPrice ??
                         widget.product.compareAtPrice,
                     priceStyle: Theme.of(context).textTheme.headlineSmall
-                        ?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                    ),
+                        ?.copyWith(fontWeight: FontWeight.w900),
+                  ),
                 ),
                 FilledButton.icon(
                   onPressed: (_selectedVariant?.stock ?? stock) == 0
@@ -9619,7 +9823,12 @@ class QuantityStepper extends StatelessWidget {
 class CheckoutForm extends StatelessWidget {
   const CheckoutForm({
     super.key,
+    required this.fullName,
+    required this.phone,
+    required this.whatsapp,
+    required this.email,
     required this.address,
+    required this.city,
     required this.note,
     required this.method,
     required this.payment,
@@ -9627,7 +9836,12 @@ class CheckoutForm extends StatelessWidget {
     required this.onPaymentChanged,
   });
 
+  final TextEditingController fullName;
+  final TextEditingController phone;
+  final TextEditingController whatsapp;
+  final TextEditingController email;
   final TextEditingController address;
+  final TextEditingController city;
   final TextEditingController note;
   final String method;
   final String payment;
@@ -9649,6 +9863,45 @@ class CheckoutForm extends StatelessWidget {
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 12),
+            TextField(
+              controller: fullName,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Full name',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Phone number',
+                prefixIcon: Icon(Icons.phone_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: whatsapp,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'WhatsApp if different',
+                prefixIcon: Icon(Icons.chat_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Email optional',
+                prefixIcon: Icon(Icons.mail_outline),
+              ),
+            ),
+            const SizedBox(height: 12),
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment(
@@ -9668,9 +9921,20 @@ class CheckoutForm extends StatelessWidget {
             const SizedBox(height: 12),
             TextField(
               controller: address,
+              minLines: 1,
+              maxLines: 2,
               decoration: const InputDecoration(
                 labelText: 'Address',
                 prefixIcon: Icon(Icons.location_on_outlined),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: city,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'City / area',
+                prefixIcon: Icon(Icons.location_city_outlined),
               ),
             ),
             const SizedBox(height: 10),
@@ -9706,7 +9970,7 @@ class CheckoutForm extends StatelessWidget {
               minLines: 1,
               maxLines: 3,
               decoration: const InputDecoration(
-                labelText: 'Order note',
+                labelText: 'Delivery notes',
                 prefixIcon: Icon(Icons.sticky_note_2_outlined),
               ),
             ),
@@ -9722,13 +9986,17 @@ class CheckoutSummary extends StatelessWidget {
     super.key,
     required this.subtotal,
     required this.delivery,
+    required this.discount,
     required this.total,
+    required this.loading,
     required this.onCheckout,
   });
 
   final double subtotal;
   final double delivery;
+  final double discount;
   final double total;
+  final bool loading;
   final VoidCallback onCheckout;
 
   @override
@@ -9742,15 +10010,23 @@ class CheckoutSummary extends StatelessWidget {
             SummaryRow(label: 'Subtotal', value: money(subtotal)),
             const SizedBox(height: 8),
             SummaryRow(label: 'Delivery', value: money(delivery)),
+            const SizedBox(height: 8),
+            SummaryRow(label: 'Discount', value: '-${money(discount)}'),
             const Divider(height: 24, color: Colors.white24),
             SummaryRow(label: 'Total', value: money(total), strong: true),
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: onCheckout,
-                icon: const Icon(Icons.lock_outline),
-                label: const Text('Place order'),
+                onPressed: loading ? null : onCheckout,
+                icon: loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.lock_outline),
+                label: Text(loading ? 'Placing order...' : 'Place order'),
               ),
             ),
           ],
@@ -11022,28 +11298,79 @@ class SellerOrderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ListTile(
-        leading: const CircleAvatar(child: Icon(Icons.local_shipping)),
-        title: Text(
-          order.customer,
-          style: const TextStyle(fontWeight: FontWeight.w900),
-        ),
-        subtitle: Text('${order.summary} - ${money(order.total)}'),
-        trailing: PopupMenuButton<String>(
-          tooltip: 'Update status',
-          onSelected: onStatusChanged,
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'ACCEPTED', child: Text('Accept')),
-            PopupMenuItem(value: 'PACKING', child: Text('Packing')),
-            PopupMenuItem(value: 'READY', child: Text('Ready')),
-            PopupMenuItem(
-              value: 'OUT_FOR_DELIVERY',
-              child: Text('Out for delivery'),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const CircleAvatar(child: Icon(Icons.local_shipping)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.customer,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      Text(
+                        order.phone.isEmpty ? order.id : order.phone,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  money(order.total),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ],
             ),
-            PopupMenuItem(value: 'DELIVERED', child: Text('Delivered')),
-            PopupMenuItem(value: 'CANCELLED', child: Text('Cancel')),
+            const SizedBox(height: 10),
+            Text(order.summary),
+            if (order.address.isNotEmpty || order.city.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                [
+                  order.address,
+                  order.city,
+                ].where((item) => item.isNotEmpty).join(', '),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Tag(label: order.status),
+                Tag(label: order.paymentMethod),
+                Tag(
+                  label: order.shopifyOrderId.isEmpty
+                      ? 'Shopify pending'
+                      : 'Shopify #${order.shopifyOrderId}',
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Update status',
+                  onSelected: onStatusChanged,
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'ACCEPTED', child: Text('Accept')),
+                    PopupMenuItem(value: 'PACKING', child: Text('Packing')),
+                    PopupMenuItem(value: 'READY', child: Text('Ready')),
+                    PopupMenuItem(
+                      value: 'OUT_FOR_DELIVERY',
+                      child: Text('Out for delivery'),
+                    ),
+                    PopupMenuItem(value: 'DELIVERED', child: Text('Delivered')),
+                    PopupMenuItem(value: 'CANCELLED', child: Text('Cancel')),
+                  ],
+                  child: const Tag(label: 'Update status'),
+                ),
+              ],
+            ),
           ],
-          child: Chip(label: Text(order.status)),
         ),
       ),
     );
@@ -11104,6 +11431,126 @@ class EmptyState extends StatelessWidget {
   }
 }
 
+class CheckoutSuccessPage extends StatelessWidget {
+  const CheckoutSuccessPage({super.key, required this.orders});
+
+  final List<Order> orders;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = orders.fold<double>(0, (sum, order) => sum + order.total);
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(22, 24, 22, 28),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton.filledTonal(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+            const SizedBox(height: 30),
+            CircleAvatar(
+              radius: 38,
+              backgroundColor: const Color(0xFF1F7A4D),
+              child: const Icon(
+                Icons.check_rounded,
+                color: Colors.white,
+                size: 42,
+              ),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'Order confirmed',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              orders.length == 1
+                  ? '${orders.first.shopName} received your order.'
+                  : '${orders.length} stores received your order.',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(color: Colors.black54),
+            ),
+            const SizedBox(height: 24),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    for (final order in orders) ...[
+                      SummaryLine(
+                        label: '${order.id} - ${order.shopName}',
+                        value: money(order.total),
+                      ),
+                      if (order != orders.last) const Divider(height: 18),
+                    ],
+                    const Divider(height: 24),
+                    SummaryLine(
+                      label: 'Total',
+                      value: money(total),
+                      strong: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: const Text('View order history'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SummaryLine extends StatelessWidget {
+  const SummaryLine({
+    super.key,
+    required this.label,
+    required this.value,
+    this.strong = false,
+  });
+
+  final String label;
+  final String value;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: strong ? FontWeight.w900 : FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class Shop {
   const Shop({
     required this.id,
@@ -11134,8 +11581,10 @@ class Shop {
   factory Shop.fromJson(Map<String, dynamic> json) {
     final name = json['name'] as String? ?? 'Store';
     final counts = json['_count'] as Map<String, dynamic>? ?? const {};
-    final story = (json['story'] as String?)
-        ?.replaceAll(RegExp(r'\bSouk\b', caseSensitive: false), 'Souklora');
+    final story = (json['story'] as String?)?.replaceAll(
+      RegExp(r'\bSouk\b', caseSensitive: false),
+      'Souklora',
+    );
     return Shop(
       id: json['id'] as String? ?? '',
       name: name,
@@ -11680,14 +12129,18 @@ class Order {
     final shop =
         json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
     final items = json['items'] as List<dynamic>? ?? const [];
+    final itemCount = items.fold<int>(0, (sum, item) {
+      final row = item as Map<String, dynamic>? ?? const <String, dynamic>{};
+      return sum + parseInt(row['quantity']);
+    });
     final id = json['id'] as String? ?? '';
     return Order(
       id: '#${id.substring(0, id.length > 8 ? 8 : id.length)}',
       shopName: shop['name'] as String? ?? 'Store',
       total: parseDouble(json['total']),
-      status: json['status'] as String? ?? 'PLACED',
+      status: orderStatusLabel(json['status'] as String? ?? ''),
       eta: 'Live order',
-      itemCount: items.length,
+      itemCount: itemCount == 0 ? items.length : itemCount,
     );
   }
 
@@ -11701,13 +12154,23 @@ class Order {
 
 class CheckoutInfo {
   const CheckoutInfo({
+    required this.fullName,
+    required this.phone,
+    required this.whatsapp,
+    required this.email,
     required this.address,
+    required this.city,
     required this.note,
     required this.deliveryMethod,
     required this.paymentMethod,
   });
 
+  final String fullName;
+  final String phone;
+  final String whatsapp;
+  final String email;
   final String address;
+  final String city;
   final String note;
   final String deliveryMethod;
   final String paymentMethod;
@@ -11907,9 +12370,14 @@ class SellerOrder {
   const SellerOrder(
     this.id,
     this.customer,
+    this.phone,
+    this.address,
+    this.city,
     this.summary,
     this.status,
     this.total,
+    this.paymentMethod,
+    this.shopifyOrderId,
   );
 
   factory SellerOrder.fromJson(Map<String, dynamic> json) {
@@ -11929,20 +12397,80 @@ class SellerOrder {
               .join(', ');
     return SellerOrder(
       json['id'] as String? ?? '',
-      (customer['name'] as String?) ??
+      (json['customerName'] as String?) ??
+          (customer['name'] as String?) ??
           (customer['email'] as String?) ??
           'Customer',
+      json['customerPhone'] as String? ?? customer['phone'] as String? ?? '',
+      json['deliveryAddress'] as String? ?? '',
+      json['city'] as String? ?? '',
       summary,
-      json['status'] as String? ?? 'PLACED',
+      orderStatusLabel(json['status'] as String? ?? ''),
       parseDouble(json['total']),
+      paymentMethodLabel(json['paymentMethod'] as String? ?? ''),
+      json['shopifyOrderId']?.toString() ?? '',
     );
   }
 
   final String id;
   final String customer;
+  final String phone;
+  final String address;
+  final String city;
   final String summary;
   final String status;
   final double total;
+  final String paymentMethod;
+  final String shopifyOrderId;
+}
+
+class AdminOrder {
+  const AdminOrder({
+    required this.id,
+    required this.shopifyOrderId,
+    required this.shopName,
+    required this.customerName,
+    required this.customerPhone,
+    required this.total,
+    required this.status,
+    required this.paymentMethod,
+    required this.createdDate,
+  });
+
+  factory AdminOrder.fromJson(Map<String, dynamic> json) {
+    final shop =
+        json['shop'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final customer =
+        json['customer'] as Map<String, dynamic>? ?? const <String, dynamic>{};
+    final id = json['id']?.toString() ?? '';
+    return AdminOrder(
+      id: '#${id.substring(0, id.length > 8 ? 8 : id.length)}',
+      shopifyOrderId: json['shopifyOrderId']?.toString() ?? '',
+      shopName: shop['name'] as String? ?? 'Store',
+      customerName:
+          json['customerName'] as String? ??
+          customer['name'] as String? ??
+          'Customer',
+      customerPhone:
+          json['customerPhone'] as String? ??
+          customer['phone'] as String? ??
+          '',
+      total: parseDouble(json['total']),
+      status: orderStatusLabel(json['status'] as String? ?? ''),
+      paymentMethod: paymentMethodLabel(json['paymentMethod'] as String? ?? ''),
+      createdDate: shortDate(json['createdAt']),
+    );
+  }
+
+  final String id;
+  final String shopifyOrderId;
+  final String shopName;
+  final String customerName;
+  final String customerPhone;
+  final double total;
+  final String status;
+  final String paymentMethod;
+  final String createdDate;
 }
 
 class SellerMetric {
@@ -12130,7 +12658,9 @@ Future<void> showStoreStoryDialog(
                     },
                     icon: const Icon(Icons.upload_outlined),
                     label: Text(
-                      storyImage == null ? 'Upload story image' : 'Change image',
+                      storyImage == null
+                          ? 'Upload story image'
+                          : 'Change image',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -12378,8 +12908,7 @@ Future<void> showManualProductDialog(
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: imageUrls.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(width: 8),
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
                           itemBuilder: (context, index) {
                             return ClipRRect(
                               borderRadius: BorderRadius.circular(8),
@@ -12408,9 +12937,7 @@ Future<void> showManualProductDialog(
                           onPressed: () {
                             setDialogState(
                               () => variants.add(
-                                _ManualVariantDraft(
-                                  index: variants.length + 1,
-                                ),
+                                _ManualVariantDraft(index: variants.length + 1),
                               ),
                             );
                           },
@@ -12496,18 +13023,21 @@ Future<void> showManualProductDialog(
                                           value: null,
                                           child: Text('No image'),
                                         ),
-                                        for (var imageIndex = 0;
-                                            imageIndex < imageUrls.length;
-                                            imageIndex++)
+                                        for (
+                                          var imageIndex = 0;
+                                          imageIndex < imageUrls.length;
+                                          imageIndex++
+                                        )
                                           DropdownMenuItem<int?>(
                                             value: imageIndex,
-                                            child: Text('Image ${imageIndex + 1}'),
+                                            child: Text(
+                                              'Image ${imageIndex + 1}',
+                                            ),
                                           ),
                                       ],
                                       onChanged: (value) {
                                         setDialogState(
-                                          () =>
-                                              variants[i].imageIndex = value,
+                                          () => variants[i].imageIndex = value,
                                         );
                                       },
                                     ),
@@ -13339,6 +13869,37 @@ String paymentMethodCode(String label) {
     'Wallet later' => 'WALLET',
     _ => 'CASH_ON_DELIVERY',
   };
+}
+
+String paymentMethodLabel(String value) {
+  return switch (value) {
+    'CARD_ON_DELIVERY' => 'Card on delivery',
+    'WALLET' => 'Wallet',
+    _ => 'Cash on delivery',
+  };
+}
+
+String orderStatusLabel(String value) {
+  return switch (value) {
+    'PENDING_SYNC' => 'Pending Shopify sync',
+    'ACCEPTED' => 'Confirmed',
+    'PACKING' => 'Preparing',
+    'READY' => 'Ready',
+    'OUT_FOR_DELIVERY' => 'Out for delivery',
+    'DELIVERED' => 'Delivered',
+    'CANCELLED' => 'Cancelled',
+    _ => 'Placed',
+  };
+}
+
+String shortDate(Object? value) {
+  final date = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+  if (date == null) {
+    return 'Today';
+  }
+  final month = date.month.toString().padLeft(2, '0');
+  final day = date.day.toString().padLeft(2, '0');
+  return '$month/$day/${date.year}';
 }
 
 String formatFilterLabel(String value) {

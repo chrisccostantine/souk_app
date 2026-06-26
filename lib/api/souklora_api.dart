@@ -217,6 +217,11 @@ class SoukloraApi {
     return body['order'] as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> checkout(Map<String, dynamic> payload) async {
+    final body = await _post('/api/checkout', payload);
+    return body['order'] as Map<String, dynamic>;
+  }
+
   Future<List<dynamic>> fetchOrders({String? customerEmail, String? shopId}) async {
     final body = await _get('/api/orders', {
       'customerEmail': customerEmail,

@@ -204,11 +204,15 @@ export const createProductSchema = z.object({
 export const createOrderSchema = z.object({
   customerEmail: z.string().email(),
   customerName: z.string().min(2),
+  customerPhone: z.string().min(6).max(32).optional(),
+  whatsappPhone: z.string().min(6).max(32).optional().nullable(),
+  city: z.string().min(2).max(120).optional(),
   shopId: z.string().min(1),
+  idempotencyKey: z.string().min(8).max(120).optional(),
   fulfillmentMethod: z.enum(['DELIVERY', 'PICKUP']).default('DELIVERY'),
   paymentMethod: z.enum(['CASH_ON_DELIVERY', 'CARD_ON_DELIVERY', 'WALLET']).default('CASH_ON_DELIVERY'),
-  deliveryAddress: z.string().optional(),
-  note: z.string().optional(),
+  deliveryAddress: z.string().min(3).max(500).optional(),
+  note: z.string().max(1000).optional(),
   items: z.array(
     z.object({
       productId: z.string().min(1),
@@ -221,6 +225,7 @@ export const createOrderSchema = z.object({
 export const updateOrderStatusSchema = z.object({
   status: z.enum([
     'PLACED',
+    'PENDING_SYNC',
     'ACCEPTED',
     'PACKING',
     'READY',

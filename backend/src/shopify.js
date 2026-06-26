@@ -308,6 +308,78 @@ export async function adjustShopifyInventory({ connection, inventoryItemId, loca
   });
 }
 
+export async function createShopifyOrder({ connection, order, items }) {
+  const client = new ShopifyClient(connection);
+  return client.post('/orders.json', {
+    order: {
+      source_name: 'Souklora App',
+      inventory_behaviour: 'decrement_obeying_policy',
+      financial_status: 'pending',
+      currency: order.currency || 'USD',
+      email: order.customerEmail || order.customer?.email,
+      phone: order.customerPhone || order.customer?.phone,
+      tags: ['Souklora', 'App Order', `Store: ${order.shop?.name ?? 'Souklora Store'}`].join(', '),
+      note: [
+        order.note,
+        `Souklora store ID: ${order.shopId}`,
+        `Souklora store name: ${order.shop?.name ?? ''}`,
+        `Buyer user ID: ${order.customerId}`,
+        `Payment method: ${order.paymentMethod}`,
+        order.city ? `City/area: ${order.city}` : null,
+      ].filter(Boolean).join('\n'),
+      note_attributes: [
+        { name: 'Souklora store ID', value: order.shopId },
+        { name: 'Souklora store name', value: order.shop?.name ?? '' },
+        { name: 'Buyer user ID', value: order.customerId },
+        { name: 'Payment method', value: order.paymentMethod },
+        { name: 'Delivery notes', value: order.note ?? '' },
+      ],
+      customer: {
+        first_name: splitName(order.customerName || order.customer?.name).firstName,
+        last_name: splitName(order.customerName || order.customer?.name).lastName,
+        email: order.customerEmail || order.customer?.email,
+        phone: order.customerPhone || order.customer?.phone,
+      },
+      shipping_address: {
+        first_name: splitName(order.customerName || order.customer?.name).firstName,
+        last_name: splitName(order.customerName || order.customer?.name).lastName,
+        address1: order.deliveryAddress || order.city || 'Souklora delivery address',
+        city: order.city || 'Not provided',
+        country: 'Lebanon',
+        phone: order.customerPhone || order.customer?.phone,
+      },
+      line_items: items.map((item) => {
+        const variantId = item.variant?.shopifyVariantId ?? item.product?.shopifyVariantId;
+        return {
+          ...(variantId ? { variant_id: Number(variantId) } : {}),
+          title: item.product?.name ?? 'Souklora product',
+          quantity: item.quantity,
+          price: Number(item.unitPrice).toFixed(2),
+        };
+      }),
+      shipping_lines: Number(order.deliveryFee) > 0
+        ? [
+            {
+              title: 'Souklora delivery',
+              price: Number(order.deliveryFee).toFixed(2),
+              code: 'SOUKLORA_DELIVERY',
+              source: 'Souklora App',
+            },
+          ]
+        : [],
+      transactions: [],
+    },
+  });
+}
+
+function splitName(name = '') {
+  const parts = String(name || 'Souklora Customer').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || 'Souklora',
+    lastName: parts.slice(1).join(' ') || 'Customer',
+  };
+}
+
 function delay(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);

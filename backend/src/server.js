@@ -9,6 +9,7 @@ import { prisma } from './db.js';
 import { sendPushToTokens } from './notifications.js';
 import {
   adjustShopifyInventory,
+  createShopifyOrder,
   fetchShopifyCatalog,
   normalizeShopDomain,
   ShopifyClient,
@@ -51,6 +52,7 @@ const port = process.env.PORT || 8080;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
 const requiredShopifyScopes = [
   'read_products',
+  'write_orders',
   'read_inventory',
   'write_inventory',
   'read_locations',
@@ -1734,9 +1736,38 @@ async function fetchShopifyInventoryAvailable({ connection, inventoryItemId, loc
   return typeof level?.available === 'number' ? level.available : null;
 }
 
-app.post('/api/orders', async (req, res, next) => {
+async function checkoutShopifyConnection(shopId) {
+  const connection = await prisma.shopifyConnection.findUnique({ where: { shopId } });
+  if (connection) {
+    return connection.refreshToken ? refreshShopifyConnection(connection) : connection;
+  }
+  if (process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_ADMIN_ACCESS_TOKEN) {
+    return {
+      shopDomain: process.env.SHOPIFY_STORE_DOMAIN,
+      accessToken: process.env.SHOPIFY_ADMIN_ACCESS_TOKEN,
+      apiVersion: process.env.SHOPIFY_API_VERSION || '2026-01',
+    };
+  }
+  return null;
+}
+
+async function createCheckoutOrder(req, res, next) {
   try {
     const input = validate(createOrderSchema, req.body);
+    if (input.idempotencyKey) {
+      const existing = await prisma.order.findUnique({
+        where: { idempotencyKey: input.idempotencyKey },
+        include: {
+          customer: true,
+          shop: true,
+          items: { include: { product: true, variant: true } },
+        },
+      });
+      if (existing) {
+        return res.json({ order: existing, duplicate: true });
+      }
+    }
+
     const orderItems = aggregateOrderItems(input.items);
     const products = await prisma.product.findMany({
       where: { id: { in: orderItems.map((item) => item.productId) } },
@@ -1765,7 +1796,8 @@ app.post('/api/orders', async (req, res, next) => {
       return sum + Number(variant?.price ?? product.price) * item.quantity;
     }, 0);
     const deliveryFee = input.fulfillmentMethod === 'DELIVERY' ? 3.5 : 0;
-    const total = subtotal + deliveryFee;
+    const discount = 0;
+    const total = subtotal + deliveryFee - discount;
 
     await reserveLocalInventory(orderItems, products);
     let order;
@@ -1785,13 +1817,21 @@ app.post('/api/orders', async (req, res, next) => {
           data: {
             customerId: customer.id,
             shopId: input.shopId,
+            idempotencyKey: input.idempotencyKey,
             fulfillmentMethod: input.fulfillmentMethod,
             paymentMethod: input.paymentMethod,
+            customerName: input.customerName,
+            customerPhone: input.customerPhone,
+            customerEmail: input.customerEmail,
+            whatsappPhone: input.whatsappPhone,
+            city: input.city,
             deliveryAddress: input.deliveryAddress,
             note: input.note,
             subtotal,
             deliveryFee,
+            discount,
             total,
+            currency: 'USD',
             items: {
               create: orderItems.map((item) => {
                 const product = products.find((current) => current.id === item.productId);
@@ -1819,18 +1859,6 @@ app.post('/api/orders', async (req, res, next) => {
       throw error;
     }
 
-    let shopifyUpdates = { updated: [], failed: [] };
-    try {
-      shopifyUpdates = await reserveShopifyInventoryForOrder(input.shopId, orderItems, products);
-    } catch (error) {
-      await restoreLocalInventory(orderItems);
-      await prisma.order.delete({
-        where: { id: order.id },
-      });
-      queueShopifySync(input.shopId, 'Queued Shopify sync after failed checkout reservation');
-      throw error;
-    }
-
     const day = new Date();
     day.setHours(0, 0, 0, 0);
     await prisma.$transaction([
@@ -1852,14 +1880,63 @@ app.post('/api/orders', async (req, res, next) => {
         },
       }),
     ]);
-    res.status(201).json({ order, inventory: shopifyUpdates });
-    if (shopifyUpdates.failed.length > 0) {
-      console.warn('Some Shopify inventory updates failed', shopifyUpdates.failed);
+
+    let shopifyOrder = null;
+    try {
+      const connection = await checkoutShopifyConnection(input.shopId);
+      if (!connection) {
+        const error = new Error('Shopify is not connected for this store');
+        error.status = 409;
+        throw error;
+      }
+      const result = await createShopifyOrder({
+        connection,
+        order,
+        items: order.items,
+      });
+      shopifyOrder = result.order ?? null;
+      order = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          shopifyOrderId: shopifyOrder?.id ? String(shopifyOrder.id) : null,
+          shopifySyncError: null,
+        },
+        include: {
+          customer: true,
+          shop: true,
+          items: { include: { product: true, variant: true } },
+        },
+      });
+    } catch (error) {
+      order = await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: 'PENDING_SYNC',
+          shopifySyncError: error.message || 'Shopify order creation failed',
+        },
+        include: {
+          customer: true,
+          shop: true,
+          items: { include: { product: true, variant: true } },
+        },
+      });
+      queueShopifySync(input.shopId, 'Queued Shopify sync after failed checkout order creation');
+      res.status(error.status >= 400 && error.status < 500 ? 409 : 502).json({
+        error: 'Shopify order creation failed',
+        message: error.message || 'The order was saved in Souklora but could not be sent to Shopify.',
+        order,
+      });
+      return;
     }
+
+    res.status(201).json({ order, shopifyOrder });
   } catch (error) {
     next(error);
   }
-});
+}
+
+app.post('/api/checkout', createCheckoutOrder);
+app.post('/api/orders', createCheckoutOrder);
 
 app.patch('/api/orders/:id/status', async (req, res, next) => {
   try {
