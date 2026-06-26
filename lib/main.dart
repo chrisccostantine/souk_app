@@ -2015,6 +2015,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
                 if (success && sheetContext.mounted) {
                   Navigator.pop(sheetContext);
                 }
+                return success;
               },
             ),
           ),
