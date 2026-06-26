@@ -2963,7 +2963,7 @@ class HomeProductRail extends StatelessWidget {
           onViewAll: onViewAll,
         ),
         SizedBox(
-          height: 276,
+          height: 330,
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
             scrollDirection: Axis.horizontal,
@@ -2972,7 +2972,7 @@ class HomeProductRail extends StatelessWidget {
             itemBuilder: (context, index) {
               final product = products[index];
               return SizedBox(
-                width: 176,
+                width: 184,
                 child: HomeProductCard(
                       product: product,
                       isFavorite: favoriteIds.contains(product.id),
@@ -3038,7 +3038,8 @@ class HomeProductCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
+              AspectRatio(
+                aspectRatio: 1,
                 child: Stack(
                   children: [
                     Positioned.fill(
@@ -3053,31 +3054,6 @@ class HomeProductCard extends StatelessWidget {
                               ),
                             )
                           : AppNetworkImage(url: imageUrl, size: 360),
-                    ),
-                    Positioned(
-                      left: 10,
-                      top: 10,
-                      child: Container(
-                        constraints: const BoxConstraints(maxWidth: 112),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.94),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          product.category,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF17211B),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
                     ),
                     Positioned(
                       right: 8,
@@ -3135,17 +3111,13 @@ class HomeProductCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            product.formattedPrice,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium
+                          child: ProductPriceLine(
+                            price: product.price,
+                            compareAtPrice: product.compareAtPrice,
+                            priceStyle: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(
                                   color: const Color(0xFF17211B),
                                   fontWeight: FontWeight.w900,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
-                                  ],
                                 ),
                           ),
                         ),
@@ -8573,14 +8545,11 @@ class ProductCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            product.formattedPrice,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w900),
-                          ),
+                        child: ProductPriceLine(
+                          price: product.price,
+                          compareAtPrice: product.compareAtPrice,
+                          priceStyle: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w900),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -8659,7 +8628,6 @@ class ProductArt extends StatelessWidget {
                       },
                     ),
             ),
-            Positioned(left: 10, top: 10, child: Tag(label: product.category)),
             Positioned(
               right: 6,
               top: 6,
@@ -8671,6 +8639,59 @@ class ProductArt extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class ProductPriceLine extends StatelessWidget {
+  const ProductPriceLine({
+    super.key,
+    required this.price,
+    this.compareAtPrice,
+    this.priceStyle,
+  });
+
+  final double price;
+  final double? compareAtPrice;
+  final TextStyle? priceStyle;
+
+  @override
+  Widget build(BuildContext context) {
+    final salePriceStyle =
+        priceStyle ??
+        Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w900,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        );
+    final oldPrice = compareAtPrice;
+    final showOldPrice = oldPrice != null && oldPrice > price;
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            money(price),
+            style: salePriceStyle?.copyWith(
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          if (showOldPrice) ...[
+            const SizedBox(width: 7),
+            Text(
+              money(oldPrice!),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.black45,
+                fontWeight: FontWeight.w800,
+                decoration: TextDecoration.lineThrough,
+                decorationThickness: 2,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -9002,7 +9023,12 @@ class ProductMiniCard extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Expanded(child: Text(product.formattedPrice)),
+                  Expanded(
+                    child: ProductPriceLine(
+                      price: product.price,
+                      compareAtPrice: product.compareAtPrice,
+                    ),
+                  ),
                   IconButton.filledTonal(
                     tooltip: 'Add to basket',
                     onPressed: onAdd,
@@ -9040,7 +9066,6 @@ class SoukloraDealCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compareAtPrice = product.compareAtPrice;
     final discountPercent = product.discountPercent;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -9061,7 +9086,8 @@ class SoukloraDealCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
+            AspectRatio(
+              aspectRatio: 1,
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -9135,25 +9161,11 @@ class SoukloraDealCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Wrap(
-                          spacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              product.formattedPrice,
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w900),
-                            ),
-                            if (compareAtPrice != null)
-                              Text(
-                                money(compareAtPrice),
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Colors.black45,
-                                      decoration: TextDecoration.lineThrough,
-                                    ),
-                              ),
-                          ],
+                        child: ProductPriceLine(
+                          price: product.price,
+                          compareAtPrice: product.compareAtPrice,
+                          priceStyle: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
                         ),
                       ),
                       const Icon(
@@ -9455,12 +9467,16 @@ class _ProductDetailSheetState extends State<ProductDetailSheet> {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    money(_selectedVariant?.price ?? widget.product.price),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w900,
+                  child: ProductPriceLine(
+                    price: _selectedVariant?.price ?? widget.product.price,
+                    compareAtPrice:
+                        _selectedVariant?.compareAtPrice ??
+                        widget.product.compareAtPrice,
+                    priceStyle: Theme.of(context).textTheme.headlineSmall
+                        ?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                     ),
-                  ),
                 ),
                 FilledButton.icon(
                   onPressed: (_selectedVariant?.stock ?? stock) == 0
@@ -9801,7 +9817,13 @@ class FavoriteTile extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(product.shop.name),
-        trailing: Text(product.formattedPrice),
+        trailing: SizedBox(
+          width: 96,
+          child: ProductPriceLine(
+            price: product.price,
+            compareAtPrice: product.compareAtPrice,
+          ),
+        ),
       ),
     );
   }
