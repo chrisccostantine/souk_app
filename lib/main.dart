@@ -4114,7 +4114,7 @@ class StoreProductCarousel extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 286,
+          height: 318,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: products.length,
@@ -4166,7 +4166,7 @@ class StoreCollectionProductsPage extends StatelessWidget {
         itemCount: group.products.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          childAspectRatio: 0.56,
+          childAspectRatio: 0.50,
           crossAxisSpacing: 12,
           mainAxisSpacing: 12,
         ),
