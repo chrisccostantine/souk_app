@@ -12,7 +12,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gap/gap.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shimmer/shimmer.dart';
@@ -21,6 +20,9 @@ import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'api/souklora_api.dart';
+import 'config/app_config.dart';
+import 'models/session.dart';
+import 'theme/souklora_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,11 +30,6 @@ Future<void> main() async {
   runApp(const SoukloraApp());
 }
 
-const _soukloraApiUrl = String.fromEnvironment('SOUKLORA_API_URL');
-const soukloraApiUrl = _soukloraApiUrl;
-const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
-const appleServiceId = String.fromEnvironment('APPLE_SERVICE_ID');
-const appleRedirectUri = String.fromEnvironment('APPLE_REDIRECT_URI');
 const soukloraNotificationChannel = AndroidNotificationChannel(
   'souklora_campaigns',
   'Store campaigns',
@@ -133,105 +130,13 @@ class SoukloraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const leaf = Color(0xFF1F7A4D);
-    const saffron = Color(0xFFE7A72E);
-    const clay = Color(0xFFC8673A);
-    const paper = Color(0xFFF8F4EC);
-    const ink = Color(0xFF17211B);
-    final softShadow = Colors.black.withValues(alpha: 0.08);
-
-    final scheme = ColorScheme.fromSeed(
-      seedColor: leaf,
-      primary: leaf,
-      secondary: saffron,
-      tertiary: clay,
-      surface: paper,
-    );
-
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Souklora',
-      theme: ThemeData(
-        textTheme: GoogleFonts.interTextTheme().apply(
-          bodyColor: ink,
-          displayColor: ink,
-        ),
-        primaryTextTheme: GoogleFonts.interTextTheme().apply(
-          bodyColor: ink,
-          displayColor: ink,
-        ),
-        useMaterial3: true,
-        colorScheme: scheme,
-        scaffoldBackgroundColor: paper,
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          centerTitle: false,
-          backgroundColor: paper,
-          foregroundColor: ink,
-        ),
-        cardTheme: CardThemeData(
-          elevation: 1,
-          shadowColor: softShadow,
-          color: Colors.white,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(44, 44),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            textStyle: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
-        outlinedButtonTheme: OutlinedButtonThemeData(
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(44, 44),
-            side: BorderSide(color: Colors.black.withValues(alpha: 0.18)),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            textStyle: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ),
-        iconButtonTheme: IconButtonThemeData(
-          style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          indicatorColor: leaf.withValues(alpha: 0.16),
-          labelTextStyle: WidgetStateProperty.all(
-            const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-          ),
-        ),
-      ),
+      theme: buildSoukloraTheme(),
       home: const AuthGate(),
     );
   }
-}
-
-enum AccountRole { customer, seller, admin }
-
-class AppSession {
-  const AppSession({
-    required this.name,
-    required this.email,
-    required this.role,
-    this.store,
-  });
-
-  final String name;
-  final String email;
-  final AccountRole role;
-  final ShopDraft? store;
 }
 
 Future<void> registerNotificationDevice(AppSession session) async {
@@ -371,20 +276,6 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
       return;
     }
 
-    if (!_signup &&
-        _email.text.trim().toLowerCase() ==
-            'scalora.socialmedia.agency@gmail.com' &&
-        _password.text == '12345678') {
-      widget.onAuthenticated(
-        const AppSession(
-          name: 'Souklora Admin',
-          email: 'admin@souklora.local',
-          role: AccountRole.admin,
-        ),
-      );
-      return;
-    }
-
     if (soukloraApiUrl.isEmpty) {
       setState(() {
         _authError =
@@ -447,7 +338,6 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
 
   Map<String, dynamic> _loginPayload() {
     return {
-      'role': _role == AccountRole.seller ? 'SELLER' : 'CUSTOMER',
       'email': _email.text.trim(),
       'password': _password.text,
     };
@@ -11075,70 +10965,6 @@ class CheckoutInfo {
   final String note;
   final String deliveryMethod;
   final String paymentMethod;
-}
-
-class ShopDraft {
-  const ShopDraft({
-    this.id,
-    required this.name,
-    required this.category,
-    required this.city,
-    required this.hasDelivery,
-    this.verified = false,
-    this.status = 'DRAFT',
-    this.logoUrl,
-    this.bannerUrl,
-    this.instagramUrl,
-    this.tiktokUrl,
-    this.websiteUrl,
-    this.storefrontCollectionIds = const [],
-  });
-
-  factory ShopDraft.fromJson(Map<String, dynamic> json) {
-    return ShopDraft(
-      id: json['id']?.toString(),
-      name: json['name']?.toString() ?? 'My Souklora Store',
-      category: json['category']?.toString() ?? 'Store',
-      city: json['city']?.toString() ?? 'Beirut',
-      hasDelivery: (json['deliveryLabel']?.toString() ?? '').isNotEmpty,
-      verified: json['verified'] == true,
-      status: json['status']?.toString() ?? 'DRAFT',
-      logoUrl: json['logoUrl']?.toString(),
-      bannerUrl: json['bannerUrl']?.toString(),
-      instagramUrl: json['instagramUrl']?.toString(),
-      tiktokUrl: json['tiktokUrl']?.toString(),
-      websiteUrl: json['websiteUrl']?.toString(),
-      storefrontCollectionIds:
-          (json['storefrontCollectionIds'] as List<dynamic>? ?? const [])
-              .map((item) => item.toString())
-              .where((item) => item.isNotEmpty)
-              .toList(),
-    );
-  }
-
-  final String? id;
-  final String name;
-  final String category;
-  final String city;
-  final bool hasDelivery;
-  final bool verified;
-  final String status;
-  final String? logoUrl;
-  final String? bannerUrl;
-  final String? instagramUrl;
-  final String? tiktokUrl;
-  final String? websiteUrl;
-  final List<String> storefrontCollectionIds;
-
-  bool get isActive => status.toUpperCase() == 'ACTIVE' && verified;
-
-  String get statusDisplay {
-    return switch (status.toUpperCase()) {
-      'ACTIVE' => 'Active store',
-      'SUSPENDED' => 'Declined store',
-      _ => 'Pending approval',
-    };
-  }
 }
 
 class SellerInventoryProduct {

@@ -110,6 +110,26 @@ const shops = [
 ];
 
 async function main() {
+  if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
+    const adminSecret = makePasswordSecret(process.env.ADMIN_PASSWORD);
+    await prisma.user.upsert({
+      where: { email: process.env.ADMIN_EMAIL.toLowerCase() },
+      update: {
+        name: process.env.ADMIN_NAME || 'Souklora Admin',
+        role: 'ADMIN',
+        passwordHash: adminSecret.hash,
+        passwordSalt: adminSecret.salt,
+      },
+      create: {
+        name: process.env.ADMIN_NAME || 'Souklora Admin',
+        email: process.env.ADMIN_EMAIL.toLowerCase(),
+        role: 'ADMIN',
+        passwordHash: adminSecret.hash,
+        passwordSalt: adminSecret.salt,
+      },
+    });
+  }
+
   for (const shopData of shops) {
     const owner = await prisma.user.upsert({
       where: { email: shopData.owner.email },

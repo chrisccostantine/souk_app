@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,6 +10,10 @@ class SoukloraApi {
   final String baseUrl;
   final HttpClient _client;
   static const _requestTimeout = Duration(seconds: 20);
+
+  void close({bool force = false}) {
+    _client.close(force: force);
+  }
 
   Uri _uri(String path, [Map<String, String?> query = const {}]) {
     return Uri.parse('$baseUrl$path').replace(
@@ -221,40 +226,71 @@ class SoukloraApi {
   }
 
   Future<Map<String, dynamic>> _get(String path, [Map<String, String?> query = const {}]) async {
-    final request = await _client.getUrl(_uri(path, query));
-    final response = await request.close().timeout(_requestTimeout);
-    return _decode(response);
+    return _send(() => _client.getUrl(_uri(path, query)));
   }
 
   Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> payload) async {
-    final request = await _client.postUrl(_uri(path));
-    request.headers.contentType = ContentType.json;
-    request.write(jsonEncode(payload));
-    final response = await request.close().timeout(_requestTimeout);
-    return _decode(response);
+    return _sendJson(() => _client.postUrl(_uri(path)), payload);
   }
 
   Future<Map<String, dynamic>> _patch(String path, Map<String, dynamic> payload) async {
-    final request = await _client.patchUrl(_uri(path));
-    request.headers.contentType = ContentType.json;
-    request.write(jsonEncode(payload));
-    final response = await request.close().timeout(_requestTimeout);
-    return _decode(response);
+    return _sendJson(() => _client.patchUrl(_uri(path)), payload);
   }
 
   Future<Map<String, dynamic>> _delete(String path, Map<String, dynamic> payload) async {
-    final request = await _client.deleteUrl(_uri(path));
-    request.headers.contentType = ContentType.json;
-    request.write(jsonEncode(payload));
-    final response = await request.close().timeout(_requestTimeout);
-    return _decode(response);
+    return _sendJson(() => _client.deleteUrl(_uri(path)), payload);
+  }
+
+  Future<Map<String, dynamic>> _send(
+    Future<HttpClientRequest> Function() createRequest,
+  ) async {
+    try {
+      final request = await createRequest().timeout(_requestTimeout);
+      final response = await request.close().timeout(_requestTimeout);
+      return _decode(response);
+    } on SoukloraApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const SoukloraApiException(
+        408,
+        'Request timed out. Check your connection and try again.',
+      );
+    } on SocketException catch (error) {
+      throw SoukloraApiException(
+        503,
+        'Could not reach Souklora API: ${error.message}',
+      );
+    } on FormatException {
+      throw const SoukloraApiException(
+        502,
+        'Souklora API returned an invalid response.',
+      );
+    } on HttpException catch (error) {
+      throw SoukloraApiException(502, error.message);
+    }
+  }
+
+  Future<Map<String, dynamic>> _sendJson(
+    Future<HttpClientRequest> Function() createRequest,
+    Map<String, dynamic> payload,
+  ) async {
+    return _send(() async {
+      final request = await createRequest();
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(payload));
+      return request;
+    });
   }
 
   Future<Map<String, dynamic>> _decode(HttpClientResponse response) async {
     final text = await response.transform(utf8.decoder).join();
     final Map<String, dynamic> body;
     try {
-      body = text.isEmpty ? <String, dynamic>{} : jsonDecode(text) as Map<String, dynamic>;
+      final decoded = text.isEmpty ? <String, dynamic>{} : jsonDecode(text);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Expected a JSON object');
+      }
+      body = decoded;
     } catch (_) {
       throw SoukloraApiException(
         response.statusCode,

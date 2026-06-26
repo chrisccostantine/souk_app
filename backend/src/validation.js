@@ -144,7 +144,7 @@ export const signupSchema = z.object({
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  role: z.enum(['CUSTOMER', 'SELLER']).optional(),
+  role: z.enum(['CUSTOMER', 'SELLER', 'ADMIN']).optional(),
 });
 
 export const socialAuthSchema = z.object({
