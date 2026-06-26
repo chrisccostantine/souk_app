@@ -5070,7 +5070,9 @@ class _SellerHubPageState extends State<SellerHubPage>
         _shopifyConnected = connected;
         if (connected) {
           _shopifyPending = false;
-          _shopifyMessage = 'Shopify connected. You can sync products now.';
+          _shopifyMessage = _hasShopifySyncedCatalog
+              ? 'Products are synced from Shopify.'
+              : 'Shopify connected. You can sync products now.';
         } else if (needsReconnect) {
           _shopifyPending = false;
           _shopifyMessage = 'Reconnect Shopify once to refresh access.';
@@ -5245,6 +5247,12 @@ class _SellerHubPageState extends State<SellerHubPage>
       setState(() {
         _syncedProducts = products;
         _syncedCollections = collections;
+        if (_hasShopifySyncedCatalog) {
+          _shopifySynced = true;
+          if (!_shopifySyncing) {
+            _shopifyMessage = 'Products are synced from Shopify.';
+          }
+        }
         if (_selectedCollectionId != null &&
             !collections.any(
               (collection) => collection.id == _selectedCollectionId,
@@ -5666,6 +5674,7 @@ class _SellerHubPageState extends State<SellerHubPage>
           ),
         )
         .toList();
+    final hasShopifySyncedCatalog = _hasShopifySyncedCatalog;
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
       children: [
@@ -5715,7 +5724,7 @@ class _SellerHubPageState extends State<SellerHubPage>
             shopifyStore: _shopifyStore,
             connected: _shopifyConnected,
             pending: _shopifyPending,
-            synced: _shopifySynced,
+            synced: hasShopifySyncedCatalog,
             syncing: _shopifySyncing,
             syncProgress: _shopifySyncProgress,
             message: _shopifyMessage,
@@ -5784,10 +5793,12 @@ class _SellerHubPageState extends State<SellerHubPage>
                   'Products are shown after selecting a collection, keeping this page fast even with large catalogs.',
             )
           else if (visibleSyncedProducts.isEmpty)
-            const EmptyState(
+            EmptyState(
               icon: Icons.inventory_2_outlined,
               title: 'No products yet',
-              message: 'Choose another collection or sync Shopify again.',
+              message: hasShopifySyncedCatalog
+                  ? 'Choose another collection. Products synced from Shopify will appear in their matching collections.'
+                  : 'Choose another collection or sync Shopify to import products.',
             )
           else ...[
             for (final product in visibleSyncedProducts)
@@ -5810,7 +5821,7 @@ class _SellerHubPageState extends State<SellerHubPage>
             productCount: productCount,
             orderCount: _sellerOrders.length,
             growthStats: dashboardGrowthStats,
-            synced: _shopifySynced,
+            synced: hasShopifySyncedCatalog,
             products: _syncedProducts,
             onCreateCampaign: _createCampaign,
             onCreateStory: _createStoreStory,
@@ -5838,6 +5849,11 @@ class _SellerHubPageState extends State<SellerHubPage>
         ],
       ],
     );
+  }
+
+  bool get _hasShopifySyncedCatalog {
+    return _shopifySynced ||
+        _syncedProducts.any((product) => product.syncedFromShopify);
   }
 }
 
@@ -10546,12 +10562,16 @@ class ShopifySyncCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Sync Shopify products',
+                        synced
+                            ? 'Products synced from Shopify'
+                            : 'Sync Shopify products',
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
                       Text(
-                        'Import collections, images, descriptions, prices, and inventory.',
+                        synced
+                            ? 'Your Shopify catalog is live in Souklora.'
+                            : 'Import collections, images, descriptions, prices, and inventory.',
                         style: Theme.of(
                           context,
                         ).textTheme.bodySmall?.copyWith(color: Colors.black54),
@@ -10563,7 +10583,9 @@ class ShopifySyncCard extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              'Enter the store URL, then login with Shopify and approve access.',
+              synced
+                  ? 'Products, variants, prices, images, and inventory are synced from Shopify. Refresh the catalog only when you want to pull the latest Shopify changes.'
+                  : 'Enter the store URL, then login with Shopify and approve access.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 10),
@@ -10587,7 +10609,7 @@ class ShopifySyncCard extends StatelessWidget {
                   label: syncing
                       ? 'Syncing'
                       : synced
-                      ? 'Inventory synced'
+                      ? 'Synced from Shopify'
                       : 'Waiting to sync',
                 ),
                 const Tag(label: 'Two-way stock'),
@@ -10635,7 +10657,13 @@ class ShopifySyncCard extends StatelessWidget {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.cloud_sync_outlined),
-                    label: Text(syncing ? 'Syncing...' : 'Sync products'),
+                    label: Text(
+                      syncing
+                          ? 'Syncing...'
+                          : synced
+                          ? 'Refresh catalog'
+                          : 'Sync products',
+                    ),
                   ),
                 ),
               ],
@@ -11667,6 +11695,8 @@ class SellerInventoryProduct {
     required this.variants,
     required this.images,
     required this.featured,
+    this.syncedFrom,
+    this.shopifyProductId,
     this.imageUrl,
   });
 
@@ -11697,6 +11727,8 @@ class SellerInventoryProduct {
           .map((item) => ProductVariant.fromJson(item as Map<String, dynamic>))
           .toList(),
       featured: json['featured'] == true,
+      syncedFrom: json['syncedFrom']?.toString(),
+      shopifyProductId: json['shopifyProductId']?.toString(),
       collections: collectionRows
           .map((collection) => collection['title'] as String? ?? 'Collection')
           .toList(),
@@ -11717,8 +11749,16 @@ class SellerInventoryProduct {
   final List<String> images;
   final List<ProductVariant> variants;
   final bool featured;
+  final String? syncedFrom;
+  final String? shopifyProductId;
   final List<String> collections;
   final List<String> collectionIds;
+
+  bool get syncedFromShopify {
+    final source = syncedFrom?.trim().toUpperCase();
+    final shopifyId = shopifyProductId?.trim();
+    return source == 'SHOPIFY' || (shopifyId?.isNotEmpty ?? false);
+  }
 
   int get effectiveStock {
     if (variants.isEmpty) {
