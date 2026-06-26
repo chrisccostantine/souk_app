@@ -2963,7 +2963,7 @@ class HomeProductRail extends StatelessWidget {
           onViewAll: onViewAll,
         ),
         SizedBox(
-          height: 330,
+          height: 350,
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
             scrollDirection: Axis.horizontal,
@@ -3082,7 +3082,7 @@ class HomeProductCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -3107,7 +3107,7 @@ class HomeProductCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
