@@ -2529,27 +2529,38 @@ class HomePage extends StatelessWidget {
         .where((product) => product.featured)
         .toList();
     final arrivalSource = chosenFeatured.isEmpty ? products : chosenFeatured;
-    final arrivalProducts =
-        (showAllFeatured ? arrivalSource : arrivalSource.take(8)).toList();
+    final featuredProducts = arrivalSource
+        .take(showAllFeatured ? 12 : 8)
+        .toList();
+    final trendingProducts = [...products]
+      ..sort((a, b) {
+        final rating = b.rating.compareTo(a.rating);
+        if (rating != 0) {
+          return rating;
+        }
+        return b.effectiveStock.compareTo(a.effectiveStock);
+      });
     final popularCategories = categories.isEmpty
         ? ['Home', 'Fashion', 'Electronics', 'Beauty']
-        : categories.take(6).toList();
+        : categories.take(8).toList();
     final suggestions = searchSuggestions(query, allProducts).take(5).toList();
     return CustomScrollView(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SoukloraShopperTopBar(
+                HomeWelcomeHeader(
+                  session: session,
                   cartCount: cartCount,
                   onCartTap: onCartTap,
                 ),
-                const SizedBox(height: 14),
-                const SoukloraDeliveryStrip(),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
                 SoukloraSearchRow(
                   value: query,
                   filters: filters,
@@ -2564,8 +2575,14 @@ class HomePage extends StatelessWidget {
                     onSelected: onOpenProduct,
                   ),
                 ],
+                const SizedBox(height: 16),
+                PremiumCategoryChips(
+                  selected: category,
+                  categories: popularCategories,
+                  onSelected: onCategoryChanged,
+                ),
                 if (stories.isNotEmpty) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 20),
                   SoukloraStoryStrip(stories: stories, onOpenShop: onOpenShop),
                 ],
                 const SizedBox(height: 20),
@@ -2613,147 +2630,780 @@ class HomePage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-                  child: SoukloraSectionHeader(
-                    title: 'Shop by Category',
-                    onViewAll: () => onCategoryChanged('All'),
+                if (featuredProducts.isNotEmpty)
+                  HomeProductRail(
+                    title: 'Featured Products',
+                    subtitle: 'Curated pieces from verified local stores',
+                    products: featuredProducts,
+                    favoriteIds: favoriteIds,
+                    onViewAll: onViewAllFeatured,
+                    onOpenProduct: onOpenProduct,
+                    onAddToCart: onAddToCart,
+                    onToggleFavorite: onToggleFavorite,
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
-                  child: StaggeredGrid.count(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    children: [
-                      for (final name in popularCategories)
-                        StaggeredGridTile.fit(
-                          crossAxisCellCount: 1,
-                          child: SoukloraServiceTile(
-                            name: name,
-                            storeCount: shops
-                                .where((shop) => shop.category == name)
-                                .length,
-                            icon: categoryIcon(name),
-                            onTap: () => onCategoryChanged(name),
-                          ),
-                        ),
-                    ],
+                if (trendingProducts.isNotEmpty)
+                  HomeProductRail(
+                    title: 'Trending Now',
+                    subtitle: 'Popular items shoppers are checking today',
+                    products: trendingProducts.take(10).toList(),
+                    favoriteIds: favoriteIds,
+                    onOpenProduct: onOpenProduct,
+                    onAddToCart: onAddToCart,
+                    onToggleFavorite: onToggleFavorite,
                   ),
-                ),
-                if (nearbyShops.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
-                    child: SoukloraSectionHeader(
-                      title: category == 'All'
-                          ? 'Stores Near You'
-                          : '$category Stores',
-                      icon: Icons.storefront,
-                      onViewAll: onViewAllFeatured,
-                    ),
+                if (nearbyShops.isNotEmpty)
+                  HomeStoreRail(
+                    title: category == 'All'
+                        ? 'Recommended Stores'
+                        : '$category Stores',
+                    subtitle:
+                        'Nearby sellers with strong ratings and fresh stock',
+                    shops: nearbyShops,
+                    allProducts: allProducts,
+                    followedShopIds: followedShopIds,
+                    onViewAll: onViewAllFeatured,
+                    onOpenShop: onOpenShop,
+                    onFollowStore: onFollowStore,
                   ),
-                  ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: nearbyShops.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final shop = nearbyShops[index];
-                      final shopProducts = allProducts
-                          .where((product) => product.shop.id == shop.id)
-                          .toList();
-                      return SoukloraStoreRowCard(
-                            shop: shop,
-                            productCount: shopProducts.length,
-                            isFollowing: followedShopIds.contains(shop.id),
-                            onFollow: () => onFollowStore(shop),
-                            onOpen: () => onOpenShop(shop),
-                          )
-                          .animate(delay: Duration(milliseconds: index * 35))
-                          .fadeIn(duration: const Duration(milliseconds: 220))
-                          .slideY(
-                            begin: 0.03,
-                            end: 0,
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutCubic,
-                          );
-                    },
+                if (featuredShops.isNotEmpty)
+                  HomeStoreRail(
+                    title: 'Popular Sellers',
+                    subtitle: 'Trusted stores with loyal local customers',
+                    shops: featuredShops.take(6).toList(),
+                    allProducts: allProducts,
+                    followedShopIds: followedShopIds,
+                    onOpenShop: onOpenShop,
+                    onFollowStore: onFollowStore,
                   ),
-                ],
-                if (featuredShops.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                    child: SoukloraSectionHeader(
-                      title: 'Featured Partners',
-                      icon: Icons.verified_outlined,
-                    ),
-                  ),
-                  SizedBox(
-                    height: 244,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                      scrollDirection: Axis.horizontal,
-                      itemCount: featuredShops.take(6).length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 14),
-                      itemBuilder: (context, index) {
-                        final shop = featuredShops[index];
-                        final shopProducts = allProducts
-                            .where((product) => product.shop.id == shop.id)
-                            .take(3)
-                            .toList();
-                        return SizedBox(
-                          width: 282,
-                          child: SoukloraFeaturedStoreCard(
-                            shop: shop,
-                            products: shopProducts,
-                            isFollowing: followedShopIds.contains(shop.id),
-                            onFollow: () => onFollowStore(shop),
-                            onOpen: () => onOpenShop(shop),
-                            onOpenProduct: onOpenProduct,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-                if (arrivalProducts.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                    child: SoukloraSectionHeader(
-                      title: 'Fresh Picks',
-                      icon: Icons.new_releases_outlined,
-                      onViewAll: onViewAllFeatured,
-                    ),
-                  ),
-                  SizedBox(
-                    height: 250,
-                    child: ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                      scrollDirection: Axis.horizontal,
-                      itemCount: arrivalProducts.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 14),
-                      itemBuilder: (context, index) {
-                        final product = arrivalProducts[index];
-                        return SizedBox(
-                          width: 178,
-                          child: SoukloraDealCard(
-                            product: product,
-                            isFavorite: favoriteIds.contains(product.id),
-                            onOpen: () => onOpenProduct(product),
-                            onAdd: () => onAddToCart(product),
-                            onFavorite: () => onToggleFavorite(product),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 24),
               ],
             ),
           ),
       ],
+    );
+  }
+}
+
+class HomeWelcomeHeader extends StatelessWidget {
+  const HomeWelcomeHeader({
+    super.key,
+    required this.session,
+    required this.cartCount,
+    required this.onCartTap,
+  });
+
+  final AppSession session;
+  final int cartCount;
+  final VoidCallback onCartTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = session.name.trim().split(RegExp(r'\s+'));
+    final firstName = parts.first.isEmpty ? 'there' : parts.first;
+    final initial = firstName.substring(0, 1).toUpperCase();
+    return Row(
+      children: [
+        Container(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            color: const Color(0xFF17211B),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            initial,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Welcome back,',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                firstName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: const Color(0xFF17211B),
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                  letterSpacing: 0,
+                ),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Notifications',
+          onPressed: () {},
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: const Color(0xFF17211B),
+            fixedSize: const Size(48, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          icon: const Icon(Icons.notifications_none_rounded, size: 24),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: 'Cart',
+          onPressed: onCartTap,
+          style: IconButton.styleFrom(
+            backgroundColor: const Color(0xFF1F7A4D),
+            foregroundColor: Colors.white,
+            fixedSize: const Size(48, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          icon: Badge.count(
+            count: cartCount,
+            isLabelVisible: cartCount > 0,
+            backgroundColor: Colors.white,
+            textColor: const Color(0xFF1F7A4D),
+            child: const Icon(Icons.shopping_bag_outlined, size: 24),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class PremiumCategoryChips extends StatelessWidget {
+  const PremiumCategoryChips({
+    super.key,
+    required this.selected,
+    required this.categories,
+    required this.onSelected,
+  });
+
+  final String selected;
+  final List<String> categories;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = ['All', ...categories];
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: visible.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final name = visible[index];
+          final isSelected = selected == name;
+          return Material(
+            color: isSelected ? const Color(0xFF17211B) : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => onSelected(name),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                constraints: const BoxConstraints(minWidth: 44),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF17211B)
+                        : Colors.black.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      categoryIcon(name),
+                      size: 17,
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFF1F7A4D),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      shopperCategoryLabel(name),
+                      style: TextStyle(
+                        color: isSelected
+                            ? Colors.white
+                            : const Color(0xFF17211B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class HomeSectionHeader extends StatelessWidget {
+  const HomeSectionHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    this.onViewAll,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback? onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: const Color(0xFF17211B),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onViewAll != null)
+            TextButton(
+              onPressed: onViewAll,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF1F7A4D),
+                minimumSize: const Size(44, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text('View all'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class HomeProductRail extends StatelessWidget {
+  const HomeProductRail({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.products,
+    required this.favoriteIds,
+    required this.onOpenProduct,
+    required this.onAddToCart,
+    required this.onToggleFavorite,
+    this.onViewAll,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Product> products;
+  final Set<String> favoriteIds;
+  final ValueChanged<Product> onOpenProduct;
+  final ValueChanged<Product> onAddToCart;
+  final ValueChanged<Product> onToggleFavorite;
+  final VoidCallback? onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(
+          title: title,
+          subtitle: subtitle,
+          onViewAll: onViewAll,
+        ),
+        SizedBox(
+          height: 276,
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            scrollDirection: Axis.horizontal,
+            itemCount: products.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            itemBuilder: (context, index) {
+              final product = products[index];
+              return SizedBox(
+                width: 176,
+                child: HomeProductCard(
+                      product: product,
+                      isFavorite: favoriteIds.contains(product.id),
+                      onOpen: () => onOpenProduct(product),
+                      onAdd: () => onAddToCart(product),
+                      onFavorite: () => onToggleFavorite(product),
+                    )
+                    .animate(delay: Duration(milliseconds: index * 28))
+                    .fadeIn(duration: const Duration(milliseconds: 220))
+                    .slideY(
+                      begin: 0.025,
+                      end: 0,
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                    ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class HomeProductCard extends StatelessWidget {
+  const HomeProductCard({
+    super.key,
+    required this.product,
+    required this.isFavorite,
+    required this.onOpen,
+    required this.onAdd,
+    required this.onFavorite,
+  });
+
+  final Product product;
+  final bool isFavorite;
+  final VoidCallback onOpen;
+  final VoidCallback onAdd;
+  final VoidCallback onFavorite;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = productPrimaryImage(product);
+    final stock = product.effectiveStock;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onOpen,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.055),
+                blurRadius: 24,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: imageUrl == null
+                          ? Container(
+                              color: const Color(0xFFEAF3ED),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                product.icon,
+                                size: 46,
+                                color: const Color(0xFF1F7A4D),
+                              ),
+                            )
+                          : AppNetworkImage(url: imageUrl, size: 360),
+                    ),
+                    Positioned(
+                      left: 10,
+                      top: 10,
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 112),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.94),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          product.category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF17211B),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: IconButton(
+                        tooltip: isFavorite
+                            ? 'Remove favorite'
+                            : 'Save favorite',
+                        onPressed: onFavorite,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: 0.94),
+                          foregroundColor: isFavorite
+                              ? const Color(0xFF1F7A4D)
+                              : const Color(0xFF17211B),
+                          fixedSize: const Size(40, 40),
+                        ),
+                        icon: Icon(
+                          isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF17211B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        height: 1.12,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      product.shop.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            product.formattedPrice,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  color: const Color(0xFF17211B),
+                                  fontWeight: FontWeight.w900,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                          ),
+                        ),
+                        IconButton.filled(
+                          tooltip: stock <= 0
+                              ? 'Out of stock'
+                              : 'Add to basket',
+                          onPressed: stock <= 0 ? null : onAdd,
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFF1F7A4D),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor:
+                                Colors.black.withValues(alpha: 0.08),
+                            fixedSize: const Size(40, 40),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          icon: const Icon(Icons.add_rounded, size: 22),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class HomeStoreRail extends StatelessWidget {
+  const HomeStoreRail({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.shops,
+    required this.allProducts,
+    required this.followedShopIds,
+    required this.onOpenShop,
+    required this.onFollowStore,
+    this.onViewAll,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Shop> shops;
+  final List<Product> allProducts;
+  final Set<String> followedShopIds;
+  final ValueChanged<Shop> onOpenShop;
+  final ValueChanged<Shop> onFollowStore;
+  final VoidCallback? onViewAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        HomeSectionHeader(
+          title: title,
+          subtitle: subtitle,
+          onViewAll: onViewAll,
+        ),
+        SizedBox(
+          height: 178,
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            scrollDirection: Axis.horizontal,
+            itemCount: shops.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 14),
+            itemBuilder: (context, index) {
+              final shop = shops[index];
+              final productCount = allProducts
+                  .where((product) => product.shop.id == shop.id)
+                  .length;
+              return SizedBox(
+                width: 284,
+                child: PremiumStoreCard(
+                  shop: shop,
+                  productCount: productCount,
+                  isFollowing: followedShopIds.contains(shop.id),
+                  onOpen: () => onOpenShop(shop),
+                  onFollow: () => onFollowStore(shop),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class PremiumStoreCard extends StatelessWidget {
+  const PremiumStoreCard({
+    super.key,
+    required this.shop,
+    required this.productCount,
+    required this.isFollowing,
+    required this.onOpen,
+    required this.onFollow,
+  });
+
+  final Shop shop;
+  final int productCount;
+  final bool isFollowing;
+  final VoidCallback onOpen;
+  final VoidCallback onFollow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onOpen,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  StoreAvatar(shop: shop, size: 48),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                shop.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF17211B),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            if (shop.verified)
+                              const Icon(
+                                Icons.verified_rounded,
+                                color: Color(0xFF1F7A4D),
+                                size: 18,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${shop.category} - ${shop.location.isEmpty ? 'Souklora' : shop.location}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: isFollowing ? 'Following store' : 'Follow store',
+                    onPressed: onFollow,
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFFEAF3ED),
+                      foregroundColor: const Color(0xFF1F7A4D),
+                      fixedSize: const Size(40, 40),
+                    ),
+                    icon: Icon(
+                      isFollowing
+                          ? Icons.notifications_active_rounded
+                          : Icons.notifications_none_rounded,
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Text(
+                shop.story,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.black87,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _PremiumStoreStat(
+                    icon: Icons.star_rounded,
+                    label: shop.rating.toStringAsFixed(1),
+                  ),
+                  const SizedBox(width: 8),
+                  _PremiumStoreStat(
+                    icon: Icons.inventory_2_outlined,
+                    label: productCount == 1 ? '1 item' : '$productCount items',
+                  ),
+                  const Spacer(),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: Color(0xFF1F7A4D),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PremiumStoreStat extends StatelessWidget {
+  const _PremiumStoreStat({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F8F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: const Color(0xFF1F7A4D), size: 15),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF17211B),
+              fontWeight: FontWeight.w900,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -3995,16 +4645,16 @@ class SoukloraBottomNav extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 24,
-              offset: const Offset(0, -6),
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 26,
+              offset: const Offset(0, 12),
             ),
           ],
         ),
@@ -4030,44 +4680,44 @@ class SoukloraBottomNav extends StatelessWidget {
             ),
             Expanded(
               child: InkWell(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(18),
                 onTap: () => onSelected(2),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFA8663A),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFFA8663A,
-                            ).withValues(alpha: 0.26),
-                            blurRadius: 18,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: selectedIndex == 2
+                        ? const Color(0xFF1F7A4D)
+                        : const Color(0xFFEAF3ED),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
                         Icons.shopping_bag_outlined,
-                        color: Colors.white,
-                        size: 30,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Sell',
-                      style: TextStyle(
                         color: selectedIndex == 2
-                            ? const Color(0xFFA8663A)
-                            : Colors.black87,
-                        fontWeight: FontWeight.w800,
+                            ? Colors.white
+                            : const Color(0xFF1F7A4D),
+                        size: 24,
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 3),
+                      Text(
+                        'Sell',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selectedIndex == 2
+                              ? Colors.white
+                              : const Color(0xFF1F7A4D),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -4114,17 +4764,26 @@ class SoukloraBottomNavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? const Color(0xFFA8663A) : Colors.black54;
+    final color = selected ? const Color(0xFF1F7A4D) : Colors.black54;
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(18),
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFFEAF3ED)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(selected ? selectedIcon : icon, color: color, size: 28),
-            const SizedBox(height: 4),
+            Icon(selected ? selectedIcon : icon, color: color, size: 23),
+            const SizedBox(height: 3),
             Text(
               label,
               maxLines: 1,
@@ -5615,15 +6274,15 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
       children: [
         Expanded(
           child: Container(
-            height: 62,
+            height: 58,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 14,
-                  offset: const Offset(0, 7),
+                  color: Colors.black.withValues(alpha: 0.055),
+                  blurRadius: 22,
+                  offset: const Offset(0, 12),
                 ),
               ],
             ),
@@ -5632,8 +6291,9 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
               onChanged: widget.onChanged,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Search for products, brands and more...',
-                prefixIcon: const Icon(Icons.search, size: 28),
+                hintText: 'Search products, stores, categories',
+                hintStyle: const TextStyle(fontWeight: FontWeight.w600),
+                prefixIcon: const Icon(Icons.search_rounded, size: 24),
                 suffixIcon: widget.value.isEmpty
                     ? null
                     : IconButton(
@@ -5642,7 +6302,7 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
                           _controller.clear();
                           widget.onChanged('');
                         },
-                        icon: const Icon(Icons.close),
+                        icon: const Icon(Icons.close_rounded),
                       ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -5652,18 +6312,18 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
             ),
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Container(
-          width: 62,
-          height: 62,
+          width: 58,
+          height: 58,
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
+            color: const Color(0xFF17211B),
+            borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 14,
-                offset: const Offset(0, 7),
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 22,
+                offset: const Offset(0, 12),
               ),
             ],
           ),
@@ -5687,7 +6347,12 @@ class _SoukloraSearchRowState extends State<SoukloraSearchRow> {
             icon: Badge(
               isLabelVisible: widget.filters.hasActiveFilters,
               smallSize: 8,
-              child: const Icon(Icons.tune, size: 28),
+              backgroundColor: const Color(0xFF1F7A4D),
+              child: const Icon(
+                Icons.tune_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
           ),
         ),
