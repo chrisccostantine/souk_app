@@ -348,7 +348,6 @@ function shopifyOrderPayload({ order, items, useVariantIds }) {
     financial_status: 'pending',
     currency: order.currency || 'USD',
     email: order.customerEmail || order.customer?.email,
-    ...(phone ? { phone } : {}),
     tags: ['Souklora', 'App Order', `Store: ${order.shop?.name ?? 'Souklora Store'}`].join(', '),
     note: [
       order.note,
@@ -368,12 +367,6 @@ function shopifyOrderPayload({ order, items, useVariantIds }) {
       { name: 'WhatsApp phone', value: order.whatsappPhone ?? '' },
       { name: 'Souklora item mode', value: useVariantIds ? 'Shopify variants' : 'Custom line items' },
     ],
-    customer: {
-      first_name: customerName.firstName,
-      last_name: customerName.lastName,
-      email: order.customerEmail || order.customer?.email,
-      ...(phone ? { phone } : {}),
-    },
     shipping_address: {
       first_name: customerName.firstName,
       last_name: customerName.lastName,
