@@ -4943,6 +4943,7 @@ class _CartPageState extends State<CartPage> {
     super.initState();
     _fullName = TextEditingController(text: widget.session.name);
     _email.text = widget.session.email;
+    _city.addListener(_refreshDeliveryEstimate);
   }
 
   @override
@@ -4952,9 +4953,16 @@ class _CartPageState extends State<CartPage> {
     _whatsapp.dispose();
     _email.dispose();
     _address.dispose();
+    _city.removeListener(_refreshDeliveryEstimate);
     _city.dispose();
     _note.dispose();
     super.dispose();
+  }
+
+  void _refreshDeliveryEstimate() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _submit() async {
@@ -5006,10 +5014,9 @@ class _CartPageState extends State<CartPage> {
 
   @override
   Widget build(BuildContext context) {
-    const delivery = 3.5;
     final deliveryTotal = _method == 'Pickup' || widget.cart.isEmpty
         ? 0.0
-        : delivery * widget.shopCount;
+        : estimatedCartDeliveryFee(widget.cart, _city.text);
     final total = widget.cart.isEmpty ? 0.0 : widget.subtotal + deliveryTotal;
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
@@ -5421,7 +5428,7 @@ class _SellerHubPageState extends State<SellerHubPage>
             _shopifySynced = true;
             _shopifySyncJobId = null;
             _shopifyMessage =
-                'Synced ${result['products'] ?? 0} products and ${result['collections'] ?? 0} collections.';
+                'Synced ${result['products'] ?? 0} products, ${result['collections'] ?? 0} collections, and ${result['deliveryRules'] ?? 0} delivery rules.';
           });
           await _loadSellerInventory();
           await _loadSellerGrowth();
@@ -11633,6 +11640,7 @@ class Shop {
     this.websiteUrl,
     this.storefrontCollectionIds = const [],
     this.shopifyMenu = const ShopifyMenu(),
+    this.deliveryRules = const [],
   });
 
   factory Shop.fromJson(Map<String, dynamic> json) {
@@ -11672,6 +11680,10 @@ class Shop {
       shopifyMenu: ShopifyMenu.fromJson(
         json['shopifyMenu'] as Map<String, dynamic>?,
       ),
+      deliveryRules: (json['deliveryRegions'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(DeliveryRule.fromJson)
+          .toList(),
     );
   }
 
@@ -11698,6 +11710,47 @@ class Shop {
   final String? websiteUrl;
   final List<String> storefrontCollectionIds;
   final ShopifyMenu shopifyMenu;
+  final List<DeliveryRule> deliveryRules;
+}
+
+class DeliveryRule {
+  const DeliveryRule({
+    required this.name,
+    required this.fee,
+    this.minOrder,
+    this.maxOrder,
+    this.active = true,
+  });
+
+  factory DeliveryRule.fromJson(Map<String, dynamic> json) {
+    return DeliveryRule(
+      name: json['name']?.toString() ?? 'Delivery',
+      fee: parseDouble(json['fee']),
+      minOrder: nullableDouble(json['minOrder']),
+      maxOrder: nullableDouble(json['maxOrder']),
+      active: json['active'] != false,
+    );
+  }
+
+  final String name;
+  final double fee;
+  final double? minOrder;
+  final double? maxOrder;
+  final bool active;
+
+  bool matches({required String city, required double subtotal}) {
+    final query = city.trim().toLowerCase();
+    final label = name.trim().toLowerCase();
+    final withinMin = minOrder == null || subtotal >= minOrder!;
+    final withinMax = maxOrder == null || subtotal <= maxOrder!;
+    final regionMatches =
+        query.isEmpty ||
+        label.contains('rest of world') ||
+        label.contains('worldwide') ||
+        label.contains(query) ||
+        query.contains(label);
+    return active && withinMin && withinMax && regionMatches;
+  }
 }
 
 class StoreStory {
@@ -13926,6 +13979,34 @@ String paymentMethodCode(String label) {
     'Wallet later' => 'WALLET',
     _ => 'CASH_ON_DELIVERY',
   };
+}
+
+double estimatedCartDeliveryFee(List<CartLine> cart, String city) {
+  final byShop = <String, List<CartLine>>{};
+  for (final line in cart) {
+    byShop.putIfAbsent(line.product.shop.id, () => []).add(line);
+  }
+  return byShop.values.fold<double>(0, (sum, lines) {
+    final subtotal = lines.fold<double>(
+      0,
+      (lineSum, line) => lineSum + line.unitPrice * line.quantity,
+    );
+    return sum + estimatedShopDeliveryFee(lines.first.product.shop, subtotal, city);
+  });
+}
+
+double estimatedShopDeliveryFee(Shop shop, double subtotal, String city) {
+  final rules = shop.deliveryRules.where((rule) => rule.active).toList()
+    ..sort((a, b) => a.fee.compareTo(b.fee));
+  final matchingRule = firstWhereOrNull(
+        rules,
+        (rule) => rule.matches(city: city, subtotal: subtotal),
+      ) ??
+      firstWhereOrNull(
+        rules,
+        (rule) => rule.minOrder == null || subtotal >= rule.minOrder!,
+      );
+  return matchingRule?.fee ?? 3.5;
 }
 
 String paymentMethodLabel(String value) {

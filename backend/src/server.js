@@ -53,6 +53,7 @@ const corsOrigin = process.env.CORS_ORIGIN || '*';
 const requiredShopifyScopes = [
   'read_products',
   'write_orders',
+  'read_shipping',
   'read_inventory',
   'write_inventory',
   'read_locations',
@@ -799,6 +800,7 @@ app.get('/api/shops', async (req, res, next) => {
       where: req.query.includeAll === 'true' ? {} : { status: 'ACTIVE', verified: true },
       orderBy: { createdAt: 'desc' },
       include: {
+        deliveryRegions: { where: { active: true }, orderBy: { fee: 'asc' } },
         products: {
           where: { active: true },
           orderBy: { createdAt: 'desc' },
@@ -1231,7 +1233,7 @@ app.get('/api/products', async (req, res, next) => {
           : {}),
       },
       include: {
-        shop: true,
+        shop: { include: { deliveryRegions: { where: { active: true }, orderBy: { fee: 'asc' } } } },
         images: { orderBy: { position: 'asc' } },
         variants: { orderBy: { title: 'asc' } },
         collections: {
@@ -1270,7 +1272,7 @@ app.patch('/api/products/:id/featured', async (req, res, next) => {
       where: { id: product.id },
       data: { featured },
       include: {
-        shop: true,
+        shop: { include: { deliveryRegions: { where: { active: true }, orderBy: { fee: 'asc' } } } },
         images: { orderBy: { position: 'asc' } },
         variants: { orderBy: { title: 'asc' } },
         collections: { include: { collection: true } },
@@ -1736,6 +1738,38 @@ async function fetchShopifyInventoryAvailable({ connection, inventoryItemId, loc
   return typeof level?.available === 'number' ? level.available : null;
 }
 
+function normalizeDeliveryText(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function deliveryRuleMatches(rule, { city, subtotal }) {
+  const query = normalizeDeliveryText(city);
+  const name = normalizeDeliveryText(rule.name);
+  const withinMin = rule.minOrder === null || rule.minOrder === undefined || subtotal >= Number(rule.minOrder);
+  const withinMax = rule.maxOrder === null || rule.maxOrder === undefined || subtotal <= Number(rule.maxOrder);
+  const regionMatches =
+    !query ||
+    name.includes('rest of world') ||
+    name.includes('worldwide') ||
+    name.includes(query) ||
+    query.includes(name);
+  return rule.active && withinMin && withinMax && regionMatches;
+}
+
+async function calculateDeliveryFee({ shopId, subtotal, city, fulfillmentMethod }) {
+  if (fulfillmentMethod !== 'DELIVERY') {
+    return 0;
+  }
+  const rules = await prisma.deliveryRegion.findMany({
+    where: { shopId, active: true },
+    orderBy: [{ ruleType: 'desc' }, { fee: 'asc' }],
+  });
+  const matchingRule =
+    rules.find((rule) => deliveryRuleMatches(rule, { city, subtotal })) ??
+    rules.find((rule) => rule.active && (rule.minOrder === null || subtotal >= Number(rule.minOrder)));
+  return matchingRule ? Number(matchingRule.fee) : 3.5;
+}
+
 async function checkoutShopifyConnection(shopId) {
   const connection = await prisma.shopifyConnection.findUnique({ where: { shopId } });
   if (connection) {
@@ -1795,7 +1829,12 @@ async function createCheckoutOrder(req, res, next) {
         : null;
       return sum + Number(variant?.price ?? product.price) * item.quantity;
     }, 0);
-    const deliveryFee = input.fulfillmentMethod === 'DELIVERY' ? 3.5 : 0;
+    const deliveryFee = await calculateDeliveryFee({
+      shopId: input.shopId,
+      subtotal,
+      city: input.city,
+      fulfillmentMethod: input.fulfillmentMethod,
+    });
     const discount = 0;
     const total = subtotal + deliveryFee - discount;
 
@@ -2248,6 +2287,10 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
     });
   }
   const productByShopifyId = new Map();
+  const deliveryRuleCount = await upsertShopifyDeliveryRegions(
+    shopId,
+    catalog.shippingZones ?? [],
+  );
 
   for (let index = 0; index < catalog.collections.length; index += 1) {
     const collection = catalog.collections[index];
@@ -2439,7 +2482,69 @@ async function upsertShopifyCatalog(shopId, connection, catalog, onProgress = ()
     syncedAt: now,
     products: productByShopifyId.size,
     collections: catalog.collections.length,
+    deliveryRules: deliveryRuleCount,
   };
+}
+
+async function upsertShopifyDeliveryRegions(shopId, shippingZones) {
+  const regions = normalizeShopifyDeliveryRegions(shippingZones);
+  await prisma.deliveryRegion.deleteMany({
+    where: { shopId, ruleType: 'SHOPIFY' },
+  });
+  if (regions.length === 0) {
+    return 0;
+  }
+  await prisma.deliveryRegion.createMany({
+    data: regions.map((region) => ({
+      ...region,
+      shopId,
+      ruleType: 'SHOPIFY',
+      eta: region.eta || 'Shopify delivery rate',
+      active: true,
+    })),
+  });
+  const cheapest = regions.reduce(
+    (best, region) => (Number(region.fee) < Number(best.fee) ? region : best),
+    regions[0],
+  );
+  await prisma.shop.update({
+    where: { id: shopId },
+    data: {
+      deliveryLabel: `Delivery from $${Number(cheapest.fee).toFixed(2)}`,
+      minimumOrder: cheapest.minOrder ?? 0,
+    },
+  });
+  return regions.length;
+}
+
+function normalizeShopifyDeliveryRegions(shippingZones) {
+  const regions = [];
+  for (const zone of shippingZones) {
+    const zoneName = zone.name || 'Shopify zone';
+    const priceRates = zone.price_based_shipping_rates ?? [];
+    const weightRates = zone.weight_based_shipping_rates ?? [];
+    for (const rate of priceRates) {
+      regions.push({
+        name: `${zoneName} - ${rate.name || 'Shopify delivery'}`,
+        minOrder: rate.min_order_subtotal ? Number(rate.min_order_subtotal) : null,
+        maxOrder: rate.max_order_subtotal ? Number(rate.max_order_subtotal) : null,
+        fee: Number(rate.price ?? 0),
+        eta: rate.name || 'Shopify delivery rate',
+      });
+    }
+    for (const rate of weightRates) {
+      regions.push({
+        name: `${zoneName} - ${rate.name || 'Shopify delivery'}`,
+        minOrder: null,
+        maxOrder: null,
+        fee: Number(rate.price ?? 0),
+        eta: rate.name || 'Shopify delivery rate',
+      });
+    }
+  }
+  return regions
+    .filter((region) => Number.isFinite(region.fee))
+    .sort((a, b) => Number(a.fee) - Number(b.fee));
 }
 
 async function sendCampaignPush(campaign) {

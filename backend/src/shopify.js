@@ -159,6 +159,7 @@ export async function fetchShopifyCatalog(connection, onProgress = () => {}) {
   onProgress({ progress: 48, message: `Downloaded ${smartCollections.length} smart collections` });
   const locationsResult = await client.get('/locations.json', { limit: 250 });
   const menu = await fetchShopifyMainMenu(client, onProgress);
+  const shippingZones = await fetchShopifyShippingZones(client, onProgress);
 
   const collections = [
     ...customCollections.map((collection) => ({
@@ -222,8 +223,23 @@ export async function fetchShopifyCatalog(connection, onProgress = () => {}) {
     collects,
     inventoryLevels,
     locations: locationsResult.locations ?? [],
+    shippingZones,
     menu,
   };
+}
+
+async function fetchShopifyShippingZones(client, onProgress) {
+  onProgress({ progress: 50, message: 'Reading Shopify delivery rates' });
+  try {
+    const result = await client.get('/shipping_zones.json');
+    return result.shipping_zones ?? [];
+  } catch (error) {
+    onProgress({
+      progress: 50,
+      message: 'Products will sync, but Shopify delivery rates need shipping permission',
+    });
+    return [];
+  }
 }
 
 async function fetchShopifyMainMenu(client, onProgress) {
