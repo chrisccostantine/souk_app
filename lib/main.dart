@@ -13987,7 +13987,10 @@ String checkoutFriendlyError(SoukloraApiException error) {
     return 'Checkout is not deployed on the backend yet. Redeploy the Railway backend with the latest checkout changes.';
   }
   if (message.toLowerCase().contains('shopify order creation failed')) {
-    return message;
+    return message.replaceFirst(
+      RegExp(r'^Shopify order creation failed:\s*', caseSensitive: false),
+      '',
+    );
   }
   if (message.toLowerCase().contains('shopify is not connected')) {
     return 'This store needs to reconnect Shopify before checkout can create Shopify orders.';

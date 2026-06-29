@@ -167,6 +167,36 @@ function emailSendError(error) {
   return `Could not send the password reset email: ${message}`;
 }
 
+function externalErrorMessage(error) {
+  const details = error?.details;
+  if (!details) {
+    return error?.message || 'External request failed';
+  }
+  if (typeof details === 'string') {
+    return details;
+  }
+  if (Array.isArray(details)) {
+    return details
+      .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+      .join('; ');
+  }
+  if (typeof details === 'object') {
+    if (typeof details.errors === 'string') {
+      return details.errors;
+    }
+    if (details.errors && typeof details.errors === 'object') {
+      return Object.entries(details.errors)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+        .join('; ');
+    }
+    if (details.error) {
+      return String(details.error);
+    }
+    return JSON.stringify(details);
+  }
+  return error?.message || 'External request failed';
+}
+
 async function sendPasswordResetEmailWithResend({ to, name, resetCode }) {
   const response = await withTimeout(
     fetch('https://api.resend.com/emails', {
@@ -1947,11 +1977,12 @@ async function createCheckoutOrder(req, res, next) {
         },
       });
     } catch (error) {
+      const shopifyErrorMessage = externalErrorMessage(error);
       order = await prisma.order.update({
         where: { id: order.id },
         data: {
           status: 'PENDING_SYNC',
-          shopifySyncError: error.message || 'Shopify order creation failed',
+          shopifySyncError: shopifyErrorMessage,
         },
         include: {
           customer: true,
@@ -1962,7 +1993,8 @@ async function createCheckoutOrder(req, res, next) {
       queueShopifySync(input.shopId, 'Queued Shopify sync after failed checkout order creation');
       res.status(error.status >= 400 && error.status < 500 ? 409 : 502).json({
         error: 'Shopify order creation failed',
-        message: error.message || 'The order was saved in Souklora but could not be sent to Shopify.',
+        message: `Shopify order creation failed: ${shopifyErrorMessage}`,
+        details: error.details ?? null,
         order,
       });
       return;

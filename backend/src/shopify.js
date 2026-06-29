@@ -326,14 +326,15 @@ export async function adjustShopifyInventory({ connection, inventoryItemId, loca
 
 export async function createShopifyOrder({ connection, order, items }) {
   const client = new ShopifyClient(connection);
+  const customerName = splitName(order.customerName || order.customer?.name);
+  const phone = shopifyPhone(order.customerPhone || order.customer?.phone);
   return client.post('/orders.json', {
     order: {
       source_name: 'Souklora App',
-      inventory_behaviour: 'decrement_obeying_policy',
       financial_status: 'pending',
       currency: order.currency || 'USD',
       email: order.customerEmail || order.customer?.email,
-      phone: order.customerPhone || order.customer?.phone,
+      ...(phone ? { phone } : {}),
       tags: ['Souklora', 'App Order', `Store: ${order.shop?.name ?? 'Souklora Store'}`].join(', '),
       note: [
         order.note,
@@ -349,25 +350,27 @@ export async function createShopifyOrder({ connection, order, items }) {
         { name: 'Buyer user ID', value: order.customerId },
         { name: 'Payment method', value: order.paymentMethod },
         { name: 'Delivery notes', value: order.note ?? '' },
+        { name: 'Customer phone', value: order.customerPhone ?? '' },
+        { name: 'WhatsApp phone', value: order.whatsappPhone ?? '' },
       ],
       customer: {
-        first_name: splitName(order.customerName || order.customer?.name).firstName,
-        last_name: splitName(order.customerName || order.customer?.name).lastName,
+        first_name: customerName.firstName,
+        last_name: customerName.lastName,
         email: order.customerEmail || order.customer?.email,
-        phone: order.customerPhone || order.customer?.phone,
+        ...(phone ? { phone } : {}),
       },
       shipping_address: {
-        first_name: splitName(order.customerName || order.customer?.name).firstName,
-        last_name: splitName(order.customerName || order.customer?.name).lastName,
+        first_name: customerName.firstName,
+        last_name: customerName.lastName,
         address1: order.deliveryAddress || order.city || 'Souklora delivery address',
         city: order.city || 'Not provided',
         country: 'Lebanon',
-        phone: order.customerPhone || order.customer?.phone,
+        ...(phone ? { phone } : {}),
       },
       line_items: items.map((item) => {
         const variantId = item.variant?.shopifyVariantId ?? item.product?.shopifyVariantId;
         return {
-          ...(variantId ? { variant_id: Number(variantId) } : {}),
+          ...(variantId && Number.isFinite(Number(variantId)) ? { variant_id: Number(variantId) } : {}),
           title: item.product?.name ?? 'Souklora product',
           quantity: item.quantity,
           price: Number(item.unitPrice).toFixed(2),
@@ -383,7 +386,6 @@ export async function createShopifyOrder({ connection, order, items }) {
             },
           ]
         : [],
-      transactions: [],
     },
   });
 }
@@ -394,6 +396,11 @@ function splitName(name = '') {
     firstName: parts[0] || 'Souklora',
     lastName: parts.slice(1).join(' ') || 'Customer',
   };
+}
+
+function shopifyPhone(value) {
+  const phone = String(value ?? '').replace(/[\s().-]/g, '');
+  return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
 }
 
 function delay(ms) {
