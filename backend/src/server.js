@@ -2051,7 +2051,7 @@ async function createCheckoutOrder(req, res, next) {
       });
       queueShopifySync(input.shopId, 'Queued Shopify sync after failed checkout order creation');
       res.status(error.status >= 400 && error.status < 500 ? 409 : 502).json({
-        error: 'Shopify order creation failed',
+        error: `Shopify order creation failed: ${shopifyErrorMessage}`,
         message: `Shopify order creation failed: ${shopifyErrorMessage}`,
         details: error.details ?? null,
         order,

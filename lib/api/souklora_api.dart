@@ -308,8 +308,8 @@ class SoukloraApi {
       final errorMessage = body['error']?.toString();
       final message =
           (errorMessage == 'Validation failed' ? detailMessage : null) ??
-          errorMessage ??
           body['message'] ??
+          errorMessage ??
           detailMessage ??
           response.reasonPhrase;
       throw SoukloraApiException(response.statusCode, 'HTTP ${response.statusCode}: $message');
