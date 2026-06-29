@@ -1610,59 +1610,107 @@ function stockError(product) {
 }
 
 async function reserveLocalInventory(orderItems, products) {
+  const reservations = [];
   for (const item of orderItems) {
     const product = products.find((current) => current.id === item.productId);
-    if (!product || product.stock < item.quantity) {
+    if (!product) {
       throw stockError(product ?? { name: 'This product' });
     }
     const variant = item.variantId
       ? product.variants?.find((current) => current.id === item.variantId)
       : null;
-    if (item.variantId && (!variant || variant.stock < item.quantity)) {
+    const syncedWithShopify = Boolean(
+      variant?.shopifyInventoryItemId ??
+        product.shopifyInventoryItemId ??
+        product.shopifyVariantId,
+    );
+    const variantTotal = (product.variants ?? []).reduce(
+      (sum, current) => sum + Number(current.stock ?? 0),
+      0,
+    );
+    const availableStock = variant
+      ? Number(variant.stock ?? 0)
+      : Math.max(Number(product.stock ?? 0), variantTotal);
+    if (!syncedWithShopify && availableStock < item.quantity) {
+      throw stockError(product ?? { name: 'This product' });
+    }
+    if (item.variantId && !variant) {
       throw stockError({
-        name: `${product.name} ${variant?.title ?? 'variant'}`,
+        name: `${product.name} variant`,
       });
     }
-    const result = await prisma.product.updateMany({
-      where: {
-        id: item.productId,
-        active: true,
-        stock: { gte: item.quantity },
-      },
-      data: {
-        stock: { decrement: item.quantity },
-        lastSyncedAt: new Date(),
-      },
-    });
-    if (result.count !== 1) {
-      throw stockError(product);
-    }
-    if (variant) {
-      const variantResult = await prisma.productVariant.updateMany({
+
+    const reservation = {
+      productId: item.productId,
+      variantId: item.variantId,
+      quantity: item.quantity,
+      restoreProduct: false,
+      restoreVariant: false,
+    };
+    if (Number(product.stock ?? 0) >= item.quantity) {
+      const result = await prisma.product.updateMany({
         where: {
-          id: variant.id,
+          id: item.productId,
+          active: true,
           stock: { gte: item.quantity },
         },
         data: {
           stock: { decrement: item.quantity },
+          lastSyncedAt: new Date(),
         },
       });
-      if (variantResult.count !== 1) {
-        await restoreLocalInventory([item]);
+      if (result.count !== 1 && !syncedWithShopify) {
+        throw stockError(product);
+      }
+      reservation.restoreProduct = result.count === 1;
+    } else if (!syncedWithShopify) {
+      throw stockError(product);
+    } else {
+      await prisma.product.updateMany({
+        where: { id: item.productId, active: true },
+        data: { lastSyncedAt: new Date() },
+      });
+    }
+    if (variant) {
+      if (Number(variant.stock ?? 0) >= item.quantity) {
+        const variantResult = await prisma.productVariant.updateMany({
+          where: {
+            id: variant.id,
+            stock: { gte: item.quantity },
+          },
+          data: {
+            stock: { decrement: item.quantity },
+          },
+        });
+        if (variantResult.count !== 1 && !syncedWithShopify) {
+          await restoreLocalInventory(reservations);
+          throw stockError({ name: `${product.name} ${variant.title}` });
+        }
+        reservation.restoreVariant = variantResult.count === 1;
+      } else if (!syncedWithShopify) {
+        await restoreLocalInventory(reservations);
         throw stockError({ name: `${product.name} ${variant.title}` });
       }
     }
+    reservations.push(reservation);
   }
+  return reservations;
 }
 
 async function restoreLocalInventory(orderItems) {
-  await prisma.$transaction(
-    orderItems.flatMap((item) => [
-      prisma.product.updateMany({
-        where: { id: item.productId },
-        data: { stock: { increment: item.quantity } },
-      }),
-      ...(item.variantId
+  if (orderItems.length === 0) {
+    return;
+  }
+  const operations = orderItems.flatMap((item) => [
+      ...(item.restoreProduct !== false
+        ? [
+            prisma.product.updateMany({
+              where: { id: item.productId },
+              data: { stock: { increment: item.quantity } },
+            }),
+          ]
+        : []),
+      ...(item.variantId && item.restoreVariant !== false
         ? [
             prisma.productVariant.updateMany({
               where: { id: item.variantId },
@@ -1670,8 +1718,11 @@ async function restoreLocalInventory(orderItems) {
             }),
           ]
         : []),
-    ]),
-  );
+    ]);
+  if (operations.length === 0) {
+    return;
+  }
+  await prisma.$transaction(operations);
 }
 
 async function reserveShopifyInventoryForOrder(shopId, orderItems, products) {
@@ -1868,7 +1919,7 @@ async function createCheckoutOrder(req, res, next) {
     const discount = 0;
     const total = subtotal + deliveryFee - discount;
 
-    await reserveLocalInventory(orderItems, products);
+    const inventoryReservations = await reserveLocalInventory(orderItems, products);
     let order;
     try {
       order = await prisma.$transaction(async (tx) => {
@@ -1924,7 +1975,7 @@ async function createCheckoutOrder(req, res, next) {
         });
       });
     } catch (error) {
-      await restoreLocalInventory(orderItems);
+      await restoreLocalInventory(inventoryReservations);
       throw error;
     }
 
@@ -1977,6 +2028,7 @@ async function createCheckoutOrder(req, res, next) {
         },
       });
     } catch (error) {
+      await restoreLocalInventory(inventoryReservations);
       const shopifyErrorMessage = externalErrorMessage(error);
       order = await prisma.order.update({
         where: { id: order.id },
