@@ -2030,6 +2030,13 @@ async function createCheckoutOrder(req, res, next) {
     } catch (error) {
       await restoreLocalInventory(inventoryReservations);
       const shopifyErrorMessage = externalErrorMessage(error);
+      console.error('Shopify order creation failed', {
+        shopId: input.shopId,
+        orderId: order.id,
+        status: error.status,
+        message: shopifyErrorMessage,
+        details: error.details ?? null,
+      });
       order = await prisma.order.update({
         where: { id: order.id },
         data: {
