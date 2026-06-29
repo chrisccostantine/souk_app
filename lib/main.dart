@@ -1763,16 +1763,15 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         .catchError((_) => <String, dynamic>{});
   }
 
-  Future<bool> _placeOrder(CheckoutInfo info) async {
+  Future<String?> _placeOrder(CheckoutInfo info) async {
     if (_cart.isEmpty) {
-      return false;
+      return 'Your basket is empty.';
     }
     if (_checkoutSubmitting) {
-      return false;
+      return 'Checkout is already in progress.';
     }
     if (soukloraApiUrl.isEmpty) {
-      _showSnack('SOUKLORA_API_URL is required for checkout');
-      return false;
+      return 'SOUKLORA_API_URL is required for checkout.';
     }
     setState(() => _checkoutSubmitting = true);
     try {
@@ -1855,13 +1854,15 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
           ),
         );
       }
-      return true;
+      return null;
     } on SoukloraApiException catch (error) {
-      _showSnack(error.message);
-      return false;
+      final message = checkoutFriendlyError(error);
+      _showSnack(message);
+      return message;
     } catch (_) {
-      _showSnack('Could not place order');
-      return false;
+      const message = 'Could not place order. Check your connection and try again.';
+      _showSnack(message);
+      return message;
     } finally {
       if (mounted) {
         setState(() => _checkoutSubmitting = false);
@@ -2011,11 +2012,11 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
               shopCount: _cartShopCount,
               onQuantityChanged: _updateQuantity,
               onCheckout: (info) async {
-                final success = await _placeOrder(info);
-                if (success && sheetContext.mounted) {
+                final error = await _placeOrder(info);
+                if (error == null && sheetContext.mounted) {
                   Navigator.pop(sheetContext);
                 }
-                return success;
+                return error;
               },
             ),
           ),
@@ -4919,7 +4920,7 @@ class CartPage extends StatefulWidget {
   final double subtotal;
   final int shopCount;
   final void Function(CartLine line, int quantity) onQuantityChanged;
-  final Future<bool> Function(CheckoutInfo info) onCheckout;
+  final Future<String?> Function(CheckoutInfo info) onCheckout;
 
   @override
   State<CartPage> createState() => _CartPageState();
@@ -4990,7 +4991,7 @@ class _CartPageState extends State<CartPage> {
       _submitting = true;
       _error = null;
     });
-    final success = await widget.onCheckout(
+    final errorMessage = await widget.onCheckout(
       CheckoutInfo(
         fullName: fullName,
         phone: phone,
@@ -5003,11 +5004,10 @@ class _CartPageState extends State<CartPage> {
         paymentMethod: _payment,
       ),
     );
-    if (mounted && !success) {
+    if (mounted && errorMessage != null) {
       setState(() {
         _submitting = false;
-        _error =
-            'Checkout could not be completed. Please review and try again.';
+        _error = errorMessage;
       });
     }
   }
@@ -13979,6 +13979,23 @@ String paymentMethodCode(String label) {
     'Wallet later' => 'WALLET',
     _ => 'CASH_ON_DELIVERY',
   };
+}
+
+String checkoutFriendlyError(SoukloraApiException error) {
+  final message = error.message.replaceFirst(RegExp(r'^HTTP \d+:\s*'), '');
+  if (error.statusCode == 404) {
+    return 'Checkout is not deployed on the backend yet. Redeploy the Railway backend with the latest checkout changes.';
+  }
+  if (message.toLowerCase().contains('shopify order creation failed')) {
+    return message;
+  }
+  if (message.toLowerCase().contains('shopify is not connected')) {
+    return 'This store needs to reconnect Shopify before checkout can create Shopify orders.';
+  }
+  if (message.toLowerCase().contains('validation')) {
+    return 'Some checkout details are missing or invalid. Please check your phone, address, and city.';
+  }
+  return message.isEmpty ? 'Checkout failed. Please try again.' : message;
 }
 
 double estimatedCartDeliveryFee(List<CartLine> cart, String city) {
