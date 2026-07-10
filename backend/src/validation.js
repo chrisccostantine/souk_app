@@ -54,6 +54,19 @@ export const createStoreStorySchema = z.object({
   imageUrl: z.string().min(1),
 });
 
+export const createAddressSchema = z.object({
+  label: z.string().min(2).max(80).default('Home'),
+  city: z.string().min(2).max(120),
+  line1: z.string().min(3).max(240),
+  line2: z.string().max(240).optional().nullable(),
+  latitude: z.coerce.number().optional().nullable(),
+  longitude: z.coerce.number().optional().nullable(),
+});
+
+export const cancelOrderSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+
 export const registerDeviceTokenSchema = z.object({
   email: z.string().email(),
   token: z.string().min(20),

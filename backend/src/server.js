@@ -19,8 +19,10 @@ import {
   analyticsEventSchema,
   aiAdCopySchema,
   aiProductCopySchema,
+  cancelOrderSchema,
   changePasswordSchema,
   confirmPasswordResetSchema,
+  createAddressSchema,
   createAffiliateLinkSchema,
   createCampaignSchema,
   createDeliveryRegionSchema,
@@ -62,7 +64,6 @@ const requiredShopifyScopes = [
 const shopifyScopes = requiredShopifyScopes.join(',');
 const oauthStates = new Map();
 const shopifySyncJobs = new Map();
-const passwordResetCodes = new Map();
 const shopifyAutoSyncIntervalMs = Math.max(
   Number(process.env.SHOPIFY_AUTO_SYNC_INTERVAL_MINUTES || 1),
   1,
@@ -75,6 +76,11 @@ const shopifyAutoSyncBatchSize = Math.max(
   Number(process.env.SHOPIFY_AUTO_SYNC_BATCH_SIZE || 5),
   1,
 );
+const accessTokenTtlSeconds = Math.max(
+  Number(process.env.ACCESS_TOKEN_TTL_SECONDS || 60 * 60 * 24 * 30),
+  60 * 15,
+);
+const rateLimitBuckets = new Map();
 
 app.use(helmet());
 app.use(cors({ origin: corsOrigin }));
@@ -109,6 +115,13 @@ function passwordMatches(password, user) {
     return false;
   }
   return makePasswordSecret(password, user.passwordSalt).hash === user.passwordHash;
+}
+
+function hashResetCode(email, resetCode) {
+  return crypto
+    .createHmac('sha256', sessionSecret())
+    .update(`${String(email).toLowerCase()}:${resetCode}`)
+    .digest('hex');
 }
 
 function requireResetEmailConfig() {
@@ -195,6 +208,27 @@ function externalErrorMessage(error) {
     return JSON.stringify(details);
   }
   return error?.message || 'External request failed';
+}
+
+function rateLimit({ windowMs, max, keyPrefix }) {
+  return (req, _res, next) => {
+    const now = Date.now();
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const email = req.body?.email ? String(req.body.email).toLowerCase() : '';
+    const key = `${keyPrefix}:${ip}:${email}`;
+    const bucket = rateLimitBuckets.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    if (bucket.count >= max) {
+      const error = new Error('Too many attempts. Try again shortly.');
+      error.status = 429;
+      return next(error);
+    }
+    bucket.count += 1;
+    return next();
+  };
 }
 
 async function sendPasswordResetEmailWithResend({ to, name, resetCode }) {
@@ -535,6 +569,161 @@ function publicUser(user) {
   };
 }
 
+function base64UrlEncode(value) {
+  return Buffer.from(value)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(normalized, 'base64').toString('utf8');
+}
+
+function sessionSecret() {
+  return process.env.SESSION_SECRET || process.env.SHOPIFY_API_SECRET || 'souklora-dev-session-secret';
+}
+
+function signSessionToken(user) {
+  const header = base64UrlEncode(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = base64UrlEncode(JSON.stringify({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + accessTokenTtlSeconds,
+  }));
+  const signature = crypto
+    .createHmac('sha256', sessionSecret())
+    .update(`${header}.${payload}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  return `${header}.${payload}.${signature}`;
+}
+
+function verifySessionToken(token) {
+  const [header, payload, signature] = String(token).split('.');
+  if (!header || !payload || !signature) {
+    return null;
+  }
+  const expected = crypto
+    .createHmac('sha256', sessionSecret())
+    .update(`${header}.${payload}`)
+    .digest('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+  const expectedBuffer = Buffer.from(expected);
+  const signatureBuffer = Buffer.from(signature);
+  if (
+    expectedBuffer.length !== signatureBuffer.length ||
+    !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)
+  ) {
+    return null;
+  }
+  const claims = JSON.parse(base64UrlDecode(payload));
+  if (!claims.sub || !claims.exp || Number(claims.exp) * 1000 < Date.now()) {
+    return null;
+  }
+  return claims;
+}
+
+async function authenticate(req, _res, next) {
+  try {
+    req.user = await sessionUserFromRequest(req);
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function sessionUserFromRequest(req) {
+  const authorization = req.get('Authorization') || '';
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    const error = new Error('Authentication required');
+    error.status = 401;
+    throw error;
+  }
+  const claims = verifySessionToken(match[1]);
+  if (!claims) {
+    const error = new Error('Invalid or expired session');
+    error.status = 401;
+    throw error;
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: claims.sub },
+    include: { shops: { select: { id: true }, orderBy: { createdAt: 'desc' } } },
+  });
+  if (!user) {
+    const error = new Error('Session user no longer exists');
+    error.status = 401;
+    throw error;
+  }
+  return user;
+}
+
+function requireRole(...roles) {
+  return (req, _res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      const error = new Error('You do not have permission to perform this action');
+      error.status = 403;
+      return next(error);
+    }
+    return next();
+  };
+}
+
+function requireSelfEmail(req, email) {
+  if (!email || String(email).toLowerCase() !== reqUserEmail(req)) {
+    const error = new Error('You can only access your own customer data');
+    error.status = 403;
+    throw error;
+  }
+}
+
+function reqUserEmail(req) {
+  return String(req.user?.email ?? '').toLowerCase();
+}
+
+async function requireOwnedShop(req, shopId) {
+  if (req.user?.role === 'ADMIN') {
+    return;
+  }
+  if (req.user?.role !== 'SELLER') {
+    const error = new Error('Seller access required');
+    error.status = 403;
+    throw error;
+  }
+  const ownsShop = req.user.shops?.some((shop) => shop.id === shopId);
+  if (ownsShop) {
+    return;
+  }
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    select: { ownerId: true },
+  });
+  if (!shop || shop.ownerId !== req.user.id) {
+    const error = new Error('You can only manage your own store');
+    error.status = 403;
+    throw error;
+  }
+}
+
+function authResponse(user, shop = null) {
+  return {
+    user: publicUser(user),
+    shop,
+    token: signSessionToken(user),
+    tokenType: 'Bearer',
+    expiresIn: accessTokenTtlSeconds,
+  };
+}
+
 function decodeJwtPayload(token) {
   const [, payload] = String(token).split('.');
   if (!payload) {
@@ -601,7 +790,7 @@ async function socialProfile(input) {
   return verifyAppleIdentity(input.idToken, input);
 }
 
-app.post('/api/auth/signup', async (req, res, next) => {
+app.post('/api/auth/signup', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'signup' }), async (req, res, next) => {
   try {
     const input = validate(signupSchema, req.body);
 
@@ -651,16 +840,13 @@ app.post('/api/auth/signup', async (req, res, next) => {
       return { user, shop };
     });
 
-    res.status(201).json({
-      user: publicUser(result.user),
-      shop: result.shop,
-    });
+    res.status(201).json(authResponse(result.user, result.shop));
   } catch (error) {
     next(error);
   }
 });
 
-app.post('/api/auth/login', async (req, res, next) => {
+app.post('/api/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'login' }), async (req, res, next) => {
   try {
     const input = validate(loginSchema, req.body);
     const user = await prisma.user.findUnique({
@@ -680,16 +866,13 @@ app.post('/api/auth/login', async (req, res, next) => {
       throw error;
     }
 
-    res.json({
-      user: publicUser(user),
-      shop: user.shops[0] ?? null,
-    });
+    res.json(authResponse(user, user.shops[0] ?? null));
   } catch (error) {
     next(error);
   }
 });
 
-app.post('/api/auth/social', async (req, res, next) => {
+app.post('/api/auth/social', rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'social' }), async (req, res, next) => {
   try {
     const input = validate(socialAuthSchema, req.body);
     const profile = await socialProfile(input);
@@ -717,10 +900,7 @@ app.post('/api/auth/social', async (req, res, next) => {
           include: { shops: { orderBy: { createdAt: 'desc' }, take: 1 } },
         });
 
-    res.json({
-      user: publicUser(user),
-      shop: user.shops[0] ?? null,
-    });
+    res.json(authResponse(user, user.shops[0] ?? null));
   } catch (error) {
     next(error);
   }
@@ -729,6 +909,7 @@ app.post('/api/auth/social', async (req, res, next) => {
 async function changePassword(req, res, next) {
   try {
     const input = validate(changePasswordSchema, req.body);
+    requireSelfEmail(req, input.email);
     const user = await prisma.user.findUnique({ where: { email: input.email } });
 
     if (!user || !passwordMatches(input.currentPassword, user)) {
@@ -764,9 +945,19 @@ async function forgotPassword(req, res, next) {
     }
 
     const resetCode = crypto.randomInt(100000, 999999).toString();
-    passwordResetCodes.set(input.email.toLowerCase(), {
-      code: resetCode,
-      expiresAt: Date.now() + 10 * 60 * 1000,
+    await prisma.passwordResetCode.updateMany({
+      where: {
+        userId: user.id,
+        usedAt: null,
+      },
+      data: { usedAt: new Date() },
+    });
+    await prisma.passwordResetCode.create({
+      data: {
+        userId: user.id,
+        codeHash: hashResetCode(user.email, resetCode),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
     });
     await sendPasswordResetEmail({
       to: user.email,
@@ -786,29 +977,41 @@ async function forgotPassword(req, res, next) {
 async function confirmPasswordReset(req, res, next) {
   try {
     const input = validate(confirmPasswordResetSchema, req.body);
-    const reset = passwordResetCodes.get(input.email.toLowerCase());
-    if (!reset || reset.code !== input.resetCode || reset.expiresAt < Date.now()) {
-      const error = new Error('Reset code is invalid or expired');
-      error.status = 400;
-      throw error;
-    }
-
     const user = await prisma.user.findUnique({ where: { email: input.email } });
     if (!user) {
       const error = new Error('No account was found for this email');
       error.status = 404;
       throw error;
     }
+    const reset = await prisma.passwordResetCode.findFirst({
+      where: {
+        userId: user.id,
+        codeHash: hashResetCode(user.email, input.resetCode),
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!reset) {
+      const error = new Error('Reset code is invalid or expired');
+      error.status = 400;
+      throw error;
+    }
 
     const passwordSecret = makePasswordSecret(input.newPassword);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        passwordHash: passwordSecret.hash,
-        passwordSalt: passwordSecret.salt,
-      },
-    });
-    passwordResetCodes.delete(input.email.toLowerCase());
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: passwordSecret.hash,
+          passwordSalt: passwordSecret.salt,
+        },
+      }),
+      prisma.passwordResetCode.update({
+        where: { id: reset.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
 
     res.json({ ok: true, message: 'Password updated' });
   } catch (error) {
@@ -816,18 +1019,31 @@ async function confirmPasswordReset(req, res, next) {
   }
 }
 
-app.post('/api/auth/change-password', changePassword);
-app.post('/api/auth/password/change', changePassword);
-app.post('/api/auth/forgot-password', forgotPassword);
-app.post('/api/auth/password/forgot', forgotPassword);
-app.post('/api/auth/reset-password', forgotPassword);
-app.post('/api/auth/reset-password/confirm', confirmPasswordReset);
-app.post('/api/auth/password/reset/confirm', confirmPasswordReset);
+app.post('/api/auth/change-password', authenticate, changePassword);
+app.post('/api/auth/password/change', authenticate, changePassword);
+app.post('/api/auth/forgot-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyPrefix: 'forgot' }), forgotPassword);
+app.post('/api/auth/password/forgot', rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyPrefix: 'forgot' }), forgotPassword);
+app.post('/api/auth/reset-password', rateLimit({ windowMs: 15 * 60 * 1000, max: 5, keyPrefix: 'forgot' }), forgotPassword);
+app.post('/api/auth/reset-password/confirm', rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'reset-confirm' }), confirmPasswordReset);
+app.post('/api/auth/password/reset/confirm', rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'reset-confirm' }), confirmPasswordReset);
 
 app.get('/api/shops', async (req, res, next) => {
   try {
+    let where = { status: 'ACTIVE', verified: true };
+    if (req.query.includeAll === 'true') {
+      const user = await sessionUserFromRequest(req);
+      if (user.role === 'ADMIN') {
+        where = {};
+      } else if (user.role === 'SELLER') {
+        where = { ownerId: user.id };
+      } else {
+        const error = new Error('Seller or admin access required');
+        error.status = 403;
+        throw error;
+      }
+    }
     const shops = await prisma.shop.findMany({
-      where: req.query.includeAll === 'true' ? {} : { status: 'ACTIVE', verified: true },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         deliveryRegions: { where: { active: true }, orderBy: { fee: 'asc' } },
@@ -873,9 +1089,12 @@ app.get('/api/stories', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops', async (req, res, next) => {
+app.post('/api/shops', authenticate, requireRole('SELLER', 'ADMIN'), async (req, res, next) => {
   try {
     const input = validate(createShopSchema, req.body);
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, input.ownerEmail);
+    }
     const owner = await prisma.user.upsert({
       where: { email: input.ownerEmail },
       update: { name: input.ownerName, role: 'SELLER' },
@@ -906,8 +1125,9 @@ app.post('/api/shops', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/stories', async (req, res, next) => {
+app.post('/api/shops/:id/stories', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(createStoreStorySchema, req.body);
     const now = new Date();
     const story = await prisma.storeStory.create({
@@ -926,8 +1146,9 @@ app.post('/api/shops/:id/stories', async (req, res, next) => {
   }
 });
 
-app.patch('/api/shops/:id/profile', async (req, res, next) => {
+app.patch('/api/shops/:id/profile', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(updateShopProfileSchema, req.body);
     const shop = await prisma.shop.update({
       where: { id: String(req.params.id) },
@@ -939,9 +1160,10 @@ app.patch('/api/shops/:id/profile', async (req, res, next) => {
   }
 });
 
-app.get('/api/shops/:id/growth', async (req, res, next) => {
+app.get('/api/shops/:id/growth', authenticate, async (req, res, next) => {
   try {
     const shopId = String(req.params.id);
+    await requireOwnedShop(req, shopId);
     const [shop, analytics, followers, loyaltyAccounts, campaigns, placements] = await Promise.all([
       prisma.shop.findUnique({
         where: { id: shopId },
@@ -979,8 +1201,9 @@ app.get('/api/shops/:id/growth', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/delivery-regions', async (req, res, next) => {
+app.post('/api/shops/:id/delivery-regions', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(createDeliveryRegionSchema, req.body);
     const region = await prisma.deliveryRegion.create({
       data: { ...input, shopId: String(req.params.id) },
@@ -991,8 +1214,9 @@ app.post('/api/shops/:id/delivery-regions', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/live-events', async (req, res, next) => {
+app.post('/api/shops/:id/live-events', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(createLiveEventSchema, req.body);
     const event = await prisma.liveSellingEvent.create({
       data: { ...input, shopId: String(req.params.id) },
@@ -1003,8 +1227,9 @@ app.post('/api/shops/:id/live-events', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/affiliate-links', async (req, res, next) => {
+app.post('/api/shops/:id/affiliate-links', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(createAffiliateLinkSchema, req.body);
     const link = await prisma.affiliateLink.create({
       data: { ...input, shopId: String(req.params.id) },
@@ -1015,7 +1240,7 @@ app.post('/api/shops/:id/affiliate-links', async (req, res, next) => {
   }
 });
 
-app.patch('/api/admin/shops/:id/verification', async (req, res, next) => {
+app.patch('/api/admin/shops/:id/verification', authenticate, requireRole('ADMIN'), async (req, res, next) => {
   try {
     const input = validate(verifyShopSchema, req.body);
     const shop = await prisma.shop.update({
@@ -1032,9 +1257,12 @@ app.patch('/api/admin/shops/:id/verification', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/follow', async (req, res, next) => {
+app.post('/api/shops/:id/follow', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
   try {
     const input = validate(followStoreSchema, req.body);
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, input.email);
+    }
     const shopId = String(req.params.id);
     const email = input.email.toLowerCase();
     const user = await prisma.user.upsert({
@@ -1065,9 +1293,12 @@ app.post('/api/shops/:id/follow', async (req, res, next) => {
   }
 });
 
-app.delete('/api/shops/:id/follow', async (req, res, next) => {
+app.delete('/api/shops/:id/follow', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
   try {
     const input = validate(followStoreSchema, req.body);
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, input.email);
+    }
     const shopId = String(req.params.id);
     const email = input.email.toLowerCase();
     const user = await prisma.user.findUnique({ where: { email } });
@@ -1083,15 +1314,82 @@ app.delete('/api/shops/:id/follow', async (req, res, next) => {
   }
 });
 
-app.get('/api/customers/:email/follows', async (req, res, next) => {
+app.get('/api/customers/:email/follows', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
   try {
     const email = String(req.params.email).toLowerCase();
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, email);
+    }
     const follows = await prisma.storeFollow.findMany({
       where: { user: { email } },
       include: { shop: true },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ follows });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/customers/:email/addresses', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
+  try {
+    const email = String(req.params.email).toLowerCase();
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, email);
+    }
+    const addresses = await prisma.address.findMany({
+      where: { user: { email } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ addresses });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/customers/:email/addresses', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
+  try {
+    const email = String(req.params.email).toLowerCase();
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, email);
+    }
+    const input = validate(createAddressSchema, req.body);
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      const error = new Error('Customer account not found');
+      error.status = 404;
+      throw error;
+    }
+    const address = await prisma.address.create({
+      data: {
+        userId: user.id,
+        label: input.label,
+        city: input.city,
+        line1: input.line1,
+        line2: input.line2,
+        latitude: input.latitude,
+        longitude: input.longitude,
+      },
+    });
+    res.status(201).json({ address });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/customers/:email/addresses/:addressId', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
+  try {
+    const email = String(req.params.email).toLowerCase();
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, email);
+    }
+    const result = await prisma.address.deleteMany({
+      where: {
+        id: String(req.params.addressId),
+        user: { email },
+      },
+    });
+    res.json({ deleted: result.count > 0 });
   } catch (error) {
     next(error);
   }
@@ -1134,8 +1432,9 @@ app.post('/api/shops/:id/analytics', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/campaigns', async (req, res, next) => {
+app.post('/api/shops/:id/campaigns', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(createCampaignSchema, req.body);
     const campaign = await prisma.notificationCampaign.create({
       data: { ...input, shopId: String(req.params.id) },
@@ -1150,9 +1449,10 @@ app.post('/api/shops/:id/campaigns', async (req, res, next) => {
   }
 });
 
-app.post('/api/devices/register', async (req, res, next) => {
+app.post('/api/devices/register', authenticate, async (req, res, next) => {
   try {
     const input = validate(registerDeviceTokenSchema, req.body);
+    requireSelfEmail(req, input.email);
     const user = await prisma.user.findUnique({
       where: { email: input.email.toLowerCase() },
     });
@@ -1181,8 +1481,9 @@ app.post('/api/devices/register', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/placements', async (req, res, next) => {
+app.post('/api/shops/:id/placements', authenticate, async (req, res, next) => {
   try {
+    await requireOwnedShop(req, String(req.params.id));
     const input = validate(createPlacementSchema, req.body);
     const placement = await prisma.sponsoredPlacement.create({
       data: { ...input, shopId: String(req.params.id) },
@@ -1193,9 +1494,10 @@ app.post('/api/shops/:id/placements', async (req, res, next) => {
   }
 });
 
-app.get('/api/shops/:id/inventory', async (req, res, next) => {
+app.get('/api/shops/:id/inventory', authenticate, async (req, res, next) => {
   try {
     const shopId = String(req.params.id);
+    await requireOwnedShop(req, shopId);
     queueShopifySyncIfStale(shopId, 'Seller inventory opened').catch((error) => {
       console.warn('Could not queue stale Shopify inventory sync', {
         shopId,
@@ -1279,7 +1581,7 @@ app.get('/api/products', async (req, res, next) => {
   }
 });
 
-app.patch('/api/products/:id/featured', async (req, res, next) => {
+app.patch('/api/products/:id/featured', authenticate, async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!product) {
@@ -1287,6 +1589,7 @@ app.patch('/api/products/:id/featured', async (req, res, next) => {
       error.status = 404;
       throw error;
     }
+    await requireOwnedShop(req, product.shopId);
     const featured = Boolean(req.body?.featured);
     if (featured && !product.featured) {
       const count = await prisma.product.count({
@@ -1314,9 +1617,12 @@ app.patch('/api/products/:id/featured', async (req, res, next) => {
   }
 });
 
-app.post('/api/products/:id/favorite', async (req, res, next) => {
+app.post('/api/products/:id/favorite', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
   try {
     const input = validate(favoriteProductSchema, req.body);
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, input.customerEmail);
+    }
     const user = await prisma.user.upsert({
       where: { email: input.customerEmail },
       update: { name: input.customerName },
@@ -1337,9 +1643,10 @@ app.post('/api/products/:id/favorite', async (req, res, next) => {
   }
 });
 
-app.post('/api/products', async (req, res, next) => {
+app.post('/api/products', authenticate, async (req, res, next) => {
   try {
     const input = validate(createProductSchema, req.body);
+    await requireOwnedShop(req, input.shopId);
     const images = (input.images ?? [])
       .filter((image) => image.url)
       .slice(0, 7)
@@ -1403,9 +1710,10 @@ app.post('/api/products', async (req, res, next) => {
   }
 });
 
-app.post('/api/shopify/oauth/start', async (req, res, next) => {
+app.post('/api/shopify/oauth/start', authenticate, async (req, res, next) => {
   try {
     const input = validate(startShopifyOAuthSchema, req.body);
+    await requireOwnedShop(req, input.shopId);
     ensureShopifyOAuthConfig();
     if (!input.shopDomain) {
       const error = new Error('Shopify store URL is required');
@@ -1506,7 +1814,7 @@ app.get('/api/shopify/oauth/callback', async (req, res, next) => {
   }
 });
 
-app.get('/api/shopify/status', async (req, res, next) => {
+app.get('/api/shopify/status', authenticate, async (req, res, next) => {
   try {
     const { shopId } = req.query;
     if (!shopId) {
@@ -1514,6 +1822,7 @@ app.get('/api/shopify/status', async (req, res, next) => {
       error.status = 400;
       throw error;
     }
+    await requireOwnedShop(req, String(shopId));
     const connection = await prisma.shopifyConnection.findUnique({
       where: { shopId: String(shopId) },
       select: {
@@ -1539,9 +1848,10 @@ app.get('/api/shopify/status', async (req, res, next) => {
   }
 });
 
-app.post('/api/shopify/sync', async (req, res, next) => {
+app.post('/api/shopify/sync', authenticate, async (req, res, next) => {
   try {
     const input = validate(syncShopifySchema, req.body);
+    await requireOwnedShop(req, input.shopId);
     const shop = await prisma.shop.findUnique({
       where: { id: input.shopId },
       select: { status: true, verified: true },
@@ -1558,17 +1868,34 @@ app.post('/api/shopify/sync', async (req, res, next) => {
   }
 });
 
-app.get('/api/shopify/sync/:jobId', (req, res) => {
+app.get('/api/shopify/sync/:jobId', authenticate, async (req, res, next) => {
   const job = shopifySyncJobs.get(req.params.jobId);
   if (!job) {
     return res.status(404).json({ error: 'Sync job not found' });
   }
-  res.json(job);
+  try {
+    await requireOwnedShop(req, job.shopId);
+    res.json(job);
+  } catch (error) {
+    next(error);
+  }
 });
 
-app.get('/api/orders', async (req, res, next) => {
+app.get('/api/orders', authenticate, async (req, res, next) => {
   try {
     const { customerEmail, shopId } = req.query;
+    if (req.user.role === 'CUSTOMER') {
+      requireSelfEmail(req, customerEmail);
+    } else if (req.user.role === 'SELLER') {
+      if (!shopId) {
+        const error = new Error('shopId is required for seller order access');
+        error.status = 400;
+        throw error;
+      }
+      await requireOwnedShop(req, String(shopId));
+    } else if (shopId) {
+      await requireOwnedShop(req, String(shopId));
+    }
     const orders = await prisma.order.findMany({
       where: {
         ...(shopId ? { shopId: String(shopId) } : {}),
@@ -1869,6 +2196,9 @@ async function checkoutShopifyConnection(shopId) {
 async function createCheckoutOrder(req, res, next) {
   try {
     const input = validate(createOrderSchema, req.body);
+    if (req.user?.role !== 'ADMIN') {
+      requireSelfEmail(req, input.customerEmail);
+    }
     if (input.idempotencyKey) {
       const existing = await prisma.order.findUnique({
         where: { idempotencyKey: input.idempotencyKey },
@@ -2065,12 +2395,63 @@ async function createCheckoutOrder(req, res, next) {
   }
 }
 
-app.post('/api/checkout', createCheckoutOrder);
-app.post('/api/orders', createCheckoutOrder);
+app.post('/api/checkout', authenticate, requireRole('CUSTOMER', 'ADMIN'), createCheckoutOrder);
+app.post('/api/orders', authenticate, requireRole('CUSTOMER', 'ADMIN'), createCheckoutOrder);
 
-app.patch('/api/orders/:id/status', async (req, res, next) => {
+app.post('/api/orders/:id/cancel', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
+  try {
+    validate(cancelOrderSchema, req.body);
+    const existing = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: {
+        customer: true,
+        shop: true,
+        items: { include: { product: true, variant: true } },
+      },
+    });
+    if (!existing) {
+      const error = new Error('Order not found');
+      error.status = 404;
+      throw error;
+    }
+    if (req.user.role !== 'ADMIN' && existing.customer.email.toLowerCase() !== reqUserEmail(req)) {
+      const error = new Error('You can only cancel your own orders');
+      error.status = 403;
+      throw error;
+    }
+    if (!['PLACED', 'PENDING_SYNC'].includes(existing.status)) {
+      const error = new Error('This order is already being prepared and cannot be cancelled in the app');
+      error.status = 409;
+      throw error;
+    }
+    const order = await prisma.order.update({
+      where: { id: existing.id },
+      data: { status: 'CANCELLED' },
+      include: {
+        customer: true,
+        shop: true,
+        items: { include: { product: true, variant: true } },
+      },
+    });
+    res.json({ order });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch('/api/orders/:id/status', authenticate, async (req, res, next) => {
   try {
     const input = validate(updateOrderStatusSchema, req.body);
+    const existing = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      select: { shopId: true },
+    });
+    if (!existing) {
+      const error = new Error('Order not found');
+      error.status = 404;
+      throw error;
+    }
+    await requireOwnedShop(req, existing.shopId);
     const order = await prisma.order.update({
       where: { id: req.params.id },
       data: { status: input.status },
@@ -2086,9 +2467,12 @@ app.patch('/api/orders/:id/status', async (req, res, next) => {
   }
 });
 
-app.post('/api/shops/:id/reviews', async (req, res, next) => {
+app.post('/api/shops/:id/reviews', authenticate, requireRole('CUSTOMER', 'ADMIN'), async (req, res, next) => {
   try {
     const input = validate(createReviewSchema, req.body);
+    if (req.user.role !== 'ADMIN') {
+      requireSelfEmail(req, input.customerEmail);
+    }
     const shopId = String(req.params.id);
     const user = await prisma.user.upsert({
       where: { email: input.customerEmail },
@@ -2135,7 +2519,7 @@ app.get('/api/shops/:id/reviews', async (req, res, next) => {
   }
 });
 
-app.post('/api/ai/product-copy', (req, res, next) => {
+app.post('/api/ai/product-copy', authenticate, requireRole('SELLER', 'ADMIN'), (req, res, next) => {
   try {
     const input = validate(aiProductCopySchema, req.body);
     const keywords = input.keywords ? ` Designed around ${input.keywords}.` : '';
@@ -2149,7 +2533,7 @@ app.post('/api/ai/product-copy', (req, res, next) => {
   }
 });
 
-app.post('/api/ai/ad-copy', (req, res, next) => {
+app.post('/api/ai/ad-copy', authenticate, requireRole('SELLER', 'ADMIN'), (req, res, next) => {
   try {
     const input = validate(aiAdCopySchema, req.body);
     const prefix = input.channel === 'whatsapp' ? 'Hi! ' : '';

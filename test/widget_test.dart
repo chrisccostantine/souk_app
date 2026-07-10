@@ -27,6 +27,7 @@ void main() {
       name: 'Maya',
       email: 'maya@store.com',
       role: AccountRole.seller,
+      token: 'test-token',
       store: ShopDraft(
         id: 'test-shop-id',
         name: 'Mint Market',

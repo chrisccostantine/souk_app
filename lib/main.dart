@@ -21,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'api/souklora_api.dart';
 import 'config/app_config.dart';
 import 'models/session.dart';
+import 'state/session_store.dart';
 import 'theme/souklora_theme.dart';
 
 Future<void> main() async {
@@ -155,7 +156,7 @@ Future<void> registerNotificationDevice(AppSession session) async {
     if (token == null || token.isEmpty) {
       return;
     }
-    final api = SoukloraApi(baseUrl: soukloraApiUrl);
+    final api = SoukloraApi(baseUrl: soukloraApiUrl, token: session.token);
     await api.registerDevice({
       'email': session.email,
       'token': token,
@@ -194,14 +195,52 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   AppSession? _session;
+  bool _restoringSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreSession());
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final restored = await restoreSession();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _session = restored;
+        _restoringSession = false;
+      });
+      if (restored != null) {
+        unawaited(registerNotificationDevice(restored));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _restoringSession = false);
+      }
+    }
+  }
 
   void _setSession(AppSession nextSession) {
     setState(() => _session = nextSession);
+    unawaited(saveSession(nextSession));
     unawaited(registerNotificationDevice(nextSession));
+  }
+
+  void _logout() {
+    setState(() => _session = null);
+    unawaited(clearSession());
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_restoringSession) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     final session = _session;
     if (session == null) {
       return AccountEntryPage(
@@ -212,20 +251,20 @@ class _AuthGateState extends State<AuthGate> {
     if (session.role == AccountRole.seller) {
       return SellerAppShell(
         session: session,
-        onLogout: () => setState(() => _session = null),
+        onLogout: _logout,
       );
     }
 
     if (session.role == AccountRole.admin) {
       return AdminDashboardPage(
         session: session,
-        onLogout: () => setState(() => _session = null),
+        onLogout: _logout,
       );
     }
 
     return MarketplaceShell(
       session: session,
-      onLogout: () => setState(() => _session = null),
+      onLogout: _logout,
     );
   }
 }
@@ -345,6 +384,7 @@ class _AccountEntryPageState extends State<AccountEntryPage> {
     return AppSession(
       name: user['name']?.toString() ?? _email.text.trim(),
       email: user['email']?.toString() ?? _email.text.trim(),
+      token: response['token']?.toString() ?? '',
       role: user['role'] == 'SELLER'
           ? AccountRole.seller
           : user['role'] == 'ADMIN'
@@ -1433,7 +1473,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       _catalogMessage = null;
     });
     try {
-      final api = SoukloraApi(baseUrl: soukloraApiUrl);
+      final api = SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      );
       final shopRows = await api.fetchShops();
       final shops = shopRows
           .map((item) => Shop.fromJson(item as Map<String, dynamic>))
@@ -1496,6 +1539,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     try {
       final rows = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchOrders(customerEmail: widget.session.email);
       if (!mounted) {
         return;
@@ -1519,6 +1563,7 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
     try {
       final rows = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchCustomerFollows(widget.session.email);
       if (!mounted) {
         return;
@@ -1606,7 +1651,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).favoriteProduct(product.id, {
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      ).favoriteProduct(product.id, {
         'customerEmail': widget.session.email,
         'customerName': widget.session.name,
       });
@@ -1636,10 +1684,14 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       if (wasFollowing) {
         await SoukloraApi(
           baseUrl: soukloraApiUrl,
+          token: widget.session.token,
         ).unfollowShop(shop.id, payload);
         _showSnack('Unfollowed ${shop.name}');
       } else {
-        await SoukloraApi(baseUrl: soukloraApiUrl).followShop(shop.id, payload);
+        await SoukloraApi(
+          baseUrl: soukloraApiUrl,
+          token: widget.session.token,
+        ).followShop(shop.id, payload);
         _showSnack('Following ${shop.name}');
       }
     } on SoukloraApiException catch (error) {
@@ -1735,7 +1787,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
       return;
     }
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).createReview(product.shop.id, {
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      ).createReview(product.shop.id, {
         'customerEmail': widget.session.email,
         'customerName': widget.session.name,
         'rating': rating,
@@ -1780,7 +1835,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
         groupedLines.putIfAbsent(line.product.shop.id, () => []).add(line);
       }
       final placedOrders = <Order>[];
-      final api = SoukloraApi(baseUrl: soukloraApiUrl);
+      final api = SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      );
 
       for (final entry in groupedLines.entries) {
         final lines = entry.value;
@@ -1900,7 +1958,10 @@ class _MarketplaceShellState extends State<MarketplaceShell> {
                 error = null;
               });
               try {
-                await SoukloraApi(baseUrl: soukloraApiUrl).changePassword({
+                await SoukloraApi(
+                  baseUrl: soukloraApiUrl,
+                  token: widget.session.token,
+                ).changePassword({
                   'email': widget.session.email,
                   'currentPassword': currentPassword.text,
                   'newPassword': newPassword.text,
@@ -2365,7 +2426,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Future<void> _reviewShop(Shop shop, bool approved) async {
     try {
-      await SoukloraApi(baseUrl: soukloraApiUrl).verifyShop(shop.id, {
+      await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      ).verifyShop(shop.id, {
         'verified': approved,
         'verificationNote': approved
             ? 'Approved by Souklora admin'
@@ -5189,6 +5253,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final rows = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchShops(includeAll: true);
       final row = firstWhereOrNull(
         rows.whereType<Map<String, dynamic>>(),
@@ -5239,7 +5304,10 @@ class _SellerHubPageState extends State<SellerHubPage>
     }
 
     try {
-      final api = SoukloraApi(baseUrl: soukloraApiUrl);
+      final api = SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      );
       final installUrl = await api.startShopifyOAuth({
         'shopId': shopId,
         'shopDomain': _shopifyStore.text.trim(),
@@ -5300,6 +5368,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final status = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchShopifyStatus(shopId);
       if (!mounted) {
         return;
@@ -5357,6 +5426,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final result = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).syncShopify(shopId);
       if (!mounted) {
         return;
@@ -5408,6 +5478,7 @@ class _SellerHubPageState extends State<SellerHubPage>
       try {
         final job = await SoukloraApi(
           baseUrl: soukloraApiUrl,
+          token: widget.session.token,
         ).fetchShopifySyncJob(jobId);
         if (!mounted || _shopifySyncJobId != jobId) {
           return;
@@ -5480,6 +5551,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final data = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchShopInventory(shopId);
       final products = (data['products'] as List<dynamic>? ?? [])
           .map(
@@ -5536,6 +5608,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final rows = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchOrders(shopId: shopId);
       if (!mounted) {
         return;
@@ -5559,6 +5632,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final data = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).fetchShopGrowth(shopId);
       if (!mounted) {
         return;
@@ -5580,6 +5654,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final shop = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).updateShopProfile(shopId, payload);
       if (!mounted) {
         return;
@@ -5657,6 +5732,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       final result = await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createCampaign(shopId, payload);
       await _loadSellerGrowth();
       if (!mounted) {
@@ -5686,6 +5762,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createStoreStory(shopId, payload);
       _showSellerSnack('Story posted for 24 hours');
     } on SoukloraApiException catch (error) {
@@ -5704,6 +5781,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createProduct({...payload, 'shopId': shopId});
       await _loadSellerInventory();
       _showSellerSnack('Product added to your catalog');
@@ -5723,6 +5801,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createPlacement(shopId, payload);
       await _loadSellerGrowth();
       _showSellerSnack('Featured placement created');
@@ -5744,6 +5823,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).updateOrderStatus(order.id, status);
       await _loadSellerOrders();
       _showSellerSnack('Order updated to $status');
@@ -5761,7 +5841,10 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final copy = await SoukloraApi(baseUrl: soukloraApiUrl)
+      final copy = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      )
           .generateProductCopy({
             'productName': product.name,
             'category': product.category,
@@ -5783,7 +5866,10 @@ class _SellerHubPageState extends State<SellerHubPage>
       return;
     }
     try {
-      final copy = await SoukloraApi(baseUrl: soukloraApiUrl).generateAdCopy({
+      final copy = await SoukloraApi(
+        baseUrl: soukloraApiUrl,
+        token: widget.session.token,
+      ).generateAdCopy({
         'storeName': widget.session.store?.name ?? 'Your store',
         'offer': 'new arrivals and limited stock',
         'channel': 'instagram',
@@ -5810,6 +5896,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createDeliveryRegion(shopId, payload);
       _showSellerSnack('Delivery region saved');
     } on SoukloraApiException catch (error) {
@@ -5828,6 +5915,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createLiveEvent(shopId, payload);
       _showSellerSnack('Live selling event scheduled');
     } on SoukloraApiException catch (error) {
@@ -5846,6 +5934,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).createAffiliateLink(shopId, payload);
       _showSellerSnack('Affiliate link created');
     } on SoukloraApiException catch (error) {
@@ -5868,6 +5957,7 @@ class _SellerHubPageState extends State<SellerHubPage>
     try {
       await SoukloraApi(
         baseUrl: soukloraApiUrl,
+        token: widget.session.token,
       ).setProductFeatured(product.id, !product.featured);
       await _loadSellerInventory();
     } on SoukloraApiException catch (error) {

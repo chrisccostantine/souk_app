@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 
 class SoukloraApi {
-  SoukloraApi({required String baseUrl, HttpClient? client})
+  SoukloraApi({required String baseUrl, String? token, HttpClient? client})
       : baseUrl = baseUrl.replaceAll(RegExp(r'/+$'), ''),
+        token = token,
         _client = client ?? (HttpClient()..connectionTimeout = _requestTimeout);
 
   final String baseUrl;
+  final String? token;
   final HttpClient _client;
   static const _requestTimeout = Duration(seconds: 20);
 
@@ -114,6 +116,23 @@ class SoukloraApi {
     return body['follows'] as List<dynamic>;
   }
 
+  Future<List<dynamic>> fetchCustomerAddresses(String email) async {
+    final body = await _get('/api/customers/${Uri.encodeComponent(email)}/addresses');
+    return body['addresses'] as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createCustomerAddress(String email, Map<String, dynamic> payload) async {
+    final body = await _post('/api/customers/${Uri.encodeComponent(email)}/addresses', payload);
+    return body['address'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> deleteCustomerAddress(String email, String addressId) async {
+    return _delete(
+      '/api/customers/${Uri.encodeComponent(email)}/addresses/${Uri.encodeComponent(addressId)}',
+      const {},
+    );
+  }
+
   Future<Map<String, dynamic>> trackShopAnalytics(String shopId, Map<String, dynamic> payload) async {
     return _post('/api/shops/$shopId/analytics', payload);
   }
@@ -169,6 +188,13 @@ class SoukloraApi {
 
   Future<Map<String, dynamic>> updateOrderStatus(String orderId, String status) async {
     final body = await _patch('/api/orders/$orderId/status', {'status': status});
+    return body['order'] as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> cancelOrder(String orderId, {String? reason}) async {
+    final body = await _post('/api/orders/$orderId/cancel', {
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+    });
     return body['order'] as Map<String, dynamic>;
   }
 
@@ -251,6 +277,10 @@ class SoukloraApi {
   ) async {
     try {
       final request = await createRequest().timeout(_requestTimeout);
+      final authToken = token;
+      if (authToken != null && authToken.isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $authToken');
+      }
       final response = await request.close().timeout(_requestTimeout);
       return _decode(response);
     } on SoukloraApiException {

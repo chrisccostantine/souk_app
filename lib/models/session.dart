@@ -5,12 +5,14 @@ class AppSession {
     required this.name,
     required this.email,
     required this.role,
+    required this.token,
     this.store,
   });
 
   final String name;
   final String email;
   final AccountRole role;
+  final String token;
   final ShopDraft? store;
 }
 
